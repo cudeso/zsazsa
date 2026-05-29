@@ -130,7 +130,106 @@ PORT = 5000
 
 These values can also be changed from the Settings page in the web app (System tab). After saving, restart the application for the port change to take effect (the HOSTNAME value is stored for reference; the listener address is always `0.0.0.0`).
 
-## Why the name zsazsa
+
+# Screenshots and features
+
+## MISP
+
+zsazsa keeps its operational data in MISP, using events, object templates, attributes and event reports. This keeps auditability clear and allows teams to inspect raw records directly in MISP when needed.
+
+![docs/x-misp1.png](docs/x-misp1.png)
+
+The second view shows how product content and supporting context sit together in one place, so analysts can move from collection evidence to published output without losing traceability.
+
+![docs/x-misp2.png](docs/x-misp2.png)
+
+
+## Dashboard
+
+The dashboard gives a quick operational picture, including pipeline state, active requirements, stakeholder footprint and recent processing results.
+
+![docs/1-dashboard.png](docs/1-dashboard.png)
+
+The built-in reference panel helps teams apply common intelligence concepts consistently, including Admiralty Scale, TLP and CTI evaluation criteria.
+
+![docs/1a-intelref.png](docs/1a-intelref.png)
+
+## Stakeholders
+
+Stakeholders are managed locally and linked to MISP organisations. Each record supports internal or external roles, multiple contact fields, TLP clearance, product subscriptions and delivery preferences, so distribution can match real organisational needs.
+
+![docs/2-stakeholders.png](docs/2-stakeholders.png)
+
+Stakeholders can be linked to PIRs and GIRs for ownership and distribution, which makes accountability and downstream delivery easier to track.
+
+## PIR
+
+PIR pages capture the core intelligence questions that drive collection and analysis priorities.
+
+![docs/3-pir.png](docs/3-pir.png)
+
+Triage allows submitted PIRs to be acknowledged, approved, deferred, rejected or merged with clear decision context.
+
+![docs/3a-pirtriage.png](docs/3a-pirtriage.png)
+
+The PIR detail view combines scope, sub-questions, ownership, distribution and collection mapping so analysts can maintain one coherent requirement record.
+
+![docs/3b-pir-detail.png](docs/3b-pir-detail.png)
+
+## GIR
+
+GIR records intelligence needs over longer cycles, including review cadence, scope and expected outputs for recurring reporting.
+
+![docs/4-gir.png](docs/4-gir.png)
+
+## RFI
+
+The RFI workflow covers intake through closure, with priority, SLA, owner assignment, requirement linkage and response tracking.
+
+![docs/5-rfi.png](docs/5-rfi.png)
+
+## Data collection
+
+The data collection view provides a cached feed with filters for source, tags and context, helping analysts sift large event volumes quickly.
+
+![docs/6-datacollection.png](docs/6-datacollection.png)
+
+CTI evaluation can be applied during collection triage to score relevance and confidence before product drafting.
+
+![docs/6-ctievaluation.png](docs/6-ctievaluation.png)
+
+From the same view, analysts can launch product creation directly from selected source events.
+
+![docs/6-createproduct.png](docs/6-createproduct.png)
+
+Daily threat briefing drafting is integrated into the collection workflow, so triaged items can be turned into a briefing without context switching.
+
+![docs/6-dailythreatbriefing.png](docs/6-dailythreatbriefing.png)
+
+Vulnerability advisory creation follows the same pattern, with evidence and indicators carried forward from source events.
+
+![docs/6-vulnadv.png](docs/6-vulnadv.png)
+
+## Statistics
+
+The statistics pages combine operational metrics with CTI maturity signals.
+
+![docs/7-statistics.png](docs/7-statistics.png)
+
+## AI Support
+
+AI-assisted features support analyst efficiency in triage, relevance checking and drafting.
+
+![docs/8-ai.png](docs/8-ai.png)
+
+## Data collection source management
+
+Source management allows teams to manage collection sources centrally, including manual sources and additional MISP instances.
+
+![docs/9-collectionsources.png](docs/9-collectionsources.png)
+
+
+# Why the name zsazsa
 
 Officially, it is the cat.
 
