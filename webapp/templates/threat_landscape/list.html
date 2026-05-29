@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Threat landscape reports | zsazsa CTI{% endblock %}
+{% block page_title %}Threat landscape reports{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('threat_landscape.wizard_new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> New report
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if tlrs %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Title</th>
+          <th>Period</th>
+          <th>Author</th>
+          <th>TLP</th>
+          <th>State</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tlrs %}
+        <tr>
+          <td class="font-monospace small">
+            <a href="{{ url_for('threat_landscape.detail', id=t.uuid) }}" class="text-decoration-none fw-semibold">
+              {{ t.tlr_id }}
+            </a>
+          </td>
+          <td>{{ t.title or '-' }}</td>
+          <td>{{ t.reporting_period or '-' }}</td>
+          <td>{{ t.author or '-' }}</td>
+          <td><span class="tlp-badge tlp-{{ t.tlp | slug }}">TLP:{{ t.tlp | upper }}</span></td>
+          <td>
+            {% if t.review_state == 'published' %}<span class="badge bg-success">published</span>
+            {% else %}<span class="badge bg-secondary">draft</span>{% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('threat_landscape.detail', id=t.uuid) }}" class="btn btn-sm btn-outline-primary">Open</a>
+            <a href="{{ url_for('threat_landscape.wizard_edit', id=t.uuid) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-4 text-muted">
+      No threat landscape reports yet.
+      <a href="{{ url_for('threat_landscape.wizard_new') }}">Create the first one</a>.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

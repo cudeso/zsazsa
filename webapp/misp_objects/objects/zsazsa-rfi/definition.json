@@ -1,0 +1,135 @@
+{
+  "name": "zsazsa-rfi",
+  "meta-category": "intelligence",
+  "description": "Request for Information (RFI) managed by the zsazsa CTI program",
+  "uuid": "7a8b9c0d-1e2f-4a5b-8c6d-7e8f9a0b1c2d",
+  "version": 2,
+  "attributes": {
+    "rfi-id": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Unique RFI identifier (e.g. RFI-001)",
+      "disable_correlation": true
+    },
+    "question": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "The intelligence question asked by the requester",
+      "disable_correlation": true
+    },
+    "context": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Background and decision the answer will support",
+      "disable_correlation": true
+    },
+    "requester-name": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "Name of the person submitting the RFI",
+      "disable_correlation": true
+    },
+    "requester-team": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "Team or business unit",
+      "disable_correlation": true
+    },
+    "owner-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "UUID of the linked stakeholder MISP event",
+      "disable_correlation": true
+    },
+    "owner-name": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "Denormalised stakeholder display name",
+      "disable_correlation": true
+    },
+    "priority": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "RFI priority (High / Medium / Low)",
+      "disable_correlation": true
+    },
+    "status": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "Workflow status (New / Acknowledged / In Progress / Delivered / Closed)",
+      "disable_correlation": true
+    },
+    "assigned-analyst": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "Analyst handling the RFI",
+      "disable_correlation": true
+    },
+    "due-date": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "Target delivery date (ISO 8601)",
+      "disable_correlation": true
+    },
+    "linked-pir-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "UUID of a related PIR, if any",
+      "disable_correlation": true
+    },
+    "linked-gir-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "UUID of a related GIR, if any",
+      "disable_correlation": true
+    },
+    "output-format-list": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "JSON array of output formats with per-format TLP",
+      "disable_correlation": true
+    },
+    "output-format": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Deliverable format (Briefing / Email / Report) - legacy single-format field",
+      "disable_correlation": true
+    },
+    "deliverable-tlp": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "TLP classification of the response",
+      "disable_correlation": true
+    },
+    "response": {
+      "misp-attribute": "text",
+      "ui-priority": 15,
+      "description": "Final response text delivered to the requester",
+      "disable_correlation": true
+    },
+    "feedback-requirement-met": {
+      "misp-attribute": "text",
+      "ui-priority": 16,
+      "description": "Did the response meet the requirement? (Yes / Partially / No)",
+      "disable_correlation": true
+    },
+    "feedback-on-time": {
+      "misp-attribute": "text",
+      "ui-priority": 17,
+      "description": "Was the response delivered on time? (Yes / No)",
+      "disable_correlation": true
+    },
+    "feedback-usefulness": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "Usefulness rating (Very useful / Somewhat / Not useful)",
+      "disable_correlation": true
+    },
+    "feedback-suggestions": {
+      "misp-attribute": "text",
+      "ui-priority": 19,
+      "description": "Free-text feedback or suggestions for improvement",
+      "disable_correlation": true
+    }
+  }
+}

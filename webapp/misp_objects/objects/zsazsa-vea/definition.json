@@ -1,0 +1,201 @@
+{
+  "name": "zsazsa-vea",
+  "meta-category": "intelligence",
+  "description": "Vulnerability Exploitation Advisory (VEA) managed by the zsazsa CTI program",
+  "uuid": "b2c3d4e5-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+  "version": 1,
+  "attributes": {
+    "vea-id": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Unique VEA identifier (e.g. VEA-00042)",
+      "disable_correlation": true
+    },
+    "cve-id": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "CVE identifier (e.g. CVE-2024-1234)",
+      "disable_correlation": true
+    },
+    "title": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Short descriptive title",
+      "disable_correlation": true
+    },
+    "tlp": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "TLP classification (clear / green / amber / amber+strict / red)",
+      "disable_correlation": true
+    },
+    "author": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "Analyst who authored the advisory",
+      "disable_correlation": true
+    },
+    "audience": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "Primary audience (SOC, IR, VM, Executive, ...)",
+      "disable_correlation": true
+    },
+    "affected-product": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "Affected product name",
+      "disable_correlation": true
+    },
+    "affected-versions": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Affected version range",
+      "disable_correlation": true
+    },
+    "fixed-version": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "Version that fixes the vulnerability",
+      "disable_correlation": true
+    },
+    "exposure": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "Internet / intranet / none",
+      "disable_correlation": true
+    },
+    "observed-exploitation": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "Whether exploitation has been observed in the wild",
+      "disable_correlation": true
+    },
+    "exploit-availability": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "Public / private / none",
+      "disable_correlation": true
+    },
+    "exploitation-complexity": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "Low / medium / high",
+      "disable_correlation": true
+    },
+    "threat-actor-interest": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "Known or suspected threat actor interest",
+      "disable_correlation": true
+    },
+    "cisa-kev": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Whether listed in CISA KEV (Yes / No)",
+      "disable_correlation": true
+    },
+    "source-description": {
+      "misp-attribute": "text",
+      "ui-priority": 15,
+      "description": "Free-text source description",
+      "disable_correlation": true
+    },
+    "source-reliability": {
+      "misp-attribute": "text",
+      "ui-priority": 16,
+      "description": "Admiralty source reliability (A-F)",
+      "disable_correlation": true
+    },
+    "information-credibility": {
+      "misp-attribute": "text",
+      "ui-priority": 17,
+      "description": "Admiralty information credibility (1-6)",
+      "disable_correlation": true
+    },
+    "worst-case": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "Worst-case impact assessment",
+      "disable_correlation": true
+    },
+    "most-likely": {
+      "misp-attribute": "text",
+      "ui-priority": 19,
+      "description": "Most likely impact assessment",
+      "disable_correlation": true
+    },
+    "immediate-actions": {
+      "misp-attribute": "text",
+      "ui-priority": 20,
+      "description": "Immediate (0-24h) recommended actions",
+      "disable_correlation": true
+    },
+    "patch-sla-internet": {
+      "misp-attribute": "text",
+      "ui-priority": 21,
+      "description": "Patch SLA for internet-exposed systems",
+      "disable_correlation": true
+    },
+    "patch-sla-internal": {
+      "misp-attribute": "text",
+      "ui-priority": 22,
+      "description": "Patch SLA for internal systems",
+      "disable_correlation": true
+    },
+    "target-patch-version": {
+      "misp-attribute": "text",
+      "ui-priority": 23,
+      "description": "Target patch/remediation version",
+      "disable_correlation": true
+    },
+    "exploitation-indicators": {
+      "misp-attribute": "text",
+      "ui-priority": 24,
+      "description": "Indicators of exploitation (one per line)",
+      "disable_correlation": true
+    },
+    "detection-rules": {
+      "misp-attribute": "text",
+      "ui-priority": 25,
+      "description": "Detection rules or signatures (one per line)",
+      "disable_correlation": true
+    },
+    "references": {
+      "misp-attribute": "text",
+      "ui-priority": 26,
+      "description": "External references (one per line)",
+      "disable_correlation": true
+    },
+    "review-state": {
+      "misp-attribute": "text",
+      "ui-priority": 27,
+      "description": "Review state (draft / pending-review / approved / rejected)",
+      "disable_correlation": true
+    },
+    "rejection-reason": {
+      "misp-attribute": "text",
+      "ui-priority": 28,
+      "description": "If rejected, why",
+      "disable_correlation": true
+    },
+    "source-event-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 29,
+      "description": "UUID of the originating scraper event",
+      "disable_correlation": true
+    },
+    "linked-pir-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 30,
+      "description": "UUID of the linked PIR event",
+      "disable_correlation": true
+    },
+    "context-tags": {
+      "misp-attribute": "text",
+      "ui-priority": 31,
+      "description": "JSON array of context tag strings",
+      "disable_correlation": true
+    }
+  }
+}

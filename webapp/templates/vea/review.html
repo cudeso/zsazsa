@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Vulnerability advisories | zsazsa CTI{% endblock %}
+{% block page_title %}Vulnerability exploitation advisories{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('vea.wizard_new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> New VEA
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Review state</label>
+        <select name="state" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All states</option>
+          {% for s in review_states %}
+          <option value="{{ s }}" {{ 'selected' if state_filter == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if state_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('vea.review') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ veas | length }} advisor{{ 'ies' if veas|length != 1 else 'y' }}</div>
+    </form>
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if veas %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:120px">VEA</th>
+          <th style="width:130px">CVE</th>
+          <th>Title</th>
+          <th>TLP</th>
+          <th>Exploitation</th>
+          <th>State</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in veas %}
+        <tr>
+          <td>
+            <a href="{{ url_for('vea.detail', id=v.uuid) }}" class="text-decoration-none">
+              <span class="req-id-badge">{{ v.vea_id }}</span>
+            </a>
+          </td>
+          <td><code class="small">{{ v.cve_id or '-' }}</code></td>
+          <td>
+            {{ v.title or v.cve_id or '(untitled)' }}
+            {% if v.audience %}
+            <div class="mt-1">
+              {% for a in v.audience.split(', ') %}{% if a.strip() %}
+              <span class="badge" style="font-size:.63rem;background:#e8f0fe;color:#1a56a0;border:1px solid #b3c8ed;">{{ a.strip() }}</span>
+              {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td><span class="tlp-badge tlp-{{ v.tlp | slug }}">TLP:{{ v.tlp | upper }}</span></td>
+          <td>
+            {% if v.observed_exploitation and 'yes' in v.observed_exploitation.lower() %}
+              <span class="badge bg-danger">Active</span>
+            {% elif v.cisa_kev == 'Yes' %}
+              <span class="badge bg-warning text-dark">KEV listed</span>
+            {% else %}
+              <span class="text-muted small">{{ v.exploit_availability or '-' }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if v.review_state == 'approved' %}<span class="badge bg-success">approved</span>
+            {% elif v.review_state == 'rejected' %}<span class="badge bg-danger">rejected</span>
+            {% elif v.review_state == 'pending-review' %}<span class="badge bg-info text-dark">pending review</span>
+            {% else %}<span class="badge bg-secondary">{{ v.review_state }}</span>{% endif %}
+          </td>
+          <td class="text-end" style="white-space:nowrap;">
+            <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
+            <div class="btn-group btn-group-sm" role="group" aria-label="VEA navigation actions">
+              <a href="{{ url_for('vea.detail', id=v.uuid) }}" class="btn btn-outline-primary">Open</a>
+              <a href="{{ url_for('vea.wizard_edit', id=v.uuid) }}" class="btn btn-outline-secondary">Edit</a>
+            </div>
+            {% if v.review_state == 'approved' %}
+            <form method="post" action="{{ url_for('vea.resend', id=v.uuid) }}" class="d-inline m-0">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-primary" title="Resend to stakeholders">
+                <i class="fas fa-paper-plane me-1"></i>Resend
+              </button>
+            </form>
+            {% endif %}
+            {% if v.review_state != 'approved' %}
+            <form method="post" action="{{ url_for('vea.delete', id=v.uuid) }}"
+                  class="d-inline m-0"
+                  onsubmit="return confirm('Delete {{ v.vea_id }}?\n\nThis also removes the MISP event and cannot be undone.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete advisory">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </form>
+            {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-4 text-muted">No vulnerability advisories yet. <a href="{{ url_for('vea.wizard_new') }}">Create one</a>.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

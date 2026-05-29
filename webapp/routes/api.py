@@ -1,0 +1,787 @@
+"""Lightweight JSON API endpoints used by the webapp UI.
+
+All endpoints require the CSRF token (POST methods are covered by the global
+before_request hook). Results are returned as JSON.
+"""
+
+import json
+import logging
+import re
+
+import config
+from flask import Blueprint, jsonify, request
+
+from webapp import audit, misp_store
+from webapp.collection_cache import AI_SUMMARY_PREFIX
+from webapp.rate_limit import rate_limited
+from webapp.utils import json_body as _json_object, parse_bool as _parse_bool
+
+_TECH_RE = re.compile(r'\bT\d{4}(?:\.\d{3})?\b')
+
+logger = logging.getLogger(__name__)
+bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+def _get_event_content_and_scope(event_uuid: str):
+    """Fetch report content and scope tags from a scraper MISP event.
+
+    Returns (content: str | None, scope: dict) where scope has keys
+    sectors, geo, techniques - each a list of strings.
+    """
+    empty_scope = {"sectors": [], "geo": [], "techniques": []}
+    if not event_uuid:
+        return None, empty_scope
+    misp = misp_store._scraper_misp()
+    try:
+        event = misp.get_event(event_uuid, pythonify=True)
+    except Exception as exc:
+        logger.warning("api: get_event %s failed: %s", event_uuid, exc)
+        return None, empty_scope
+    if not event or isinstance(event, dict):
+        return None, empty_scope
+    # Extract content
+    reports = getattr(event, "event_reports", []) or []
+    content = None
+    for r in reports:
+        if not (getattr(r, "name", "") or "").startswith(AI_SUMMARY_PREFIX):
+            c = getattr(r, "content", None)
+            if c:
+                content = c
+                break
+    if not content:
+        for r in reports:
+            c = getattr(r, "content", None)
+            if c:
+                content = c
+                break
+    # Extract scope from galaxy tags already on the event
+    sectors, geo, techniques = [], [], []
+    for t in getattr(event, "tags", []) or []:
+        name = getattr(t, "name", "") or ""
+        if name.startswith('misp-galaxy:sector='):
+            v = name.split('=', 1)[1].strip('"')
+            if v:
+                sectors.append(v)
+        elif name.startswith('misp-galaxy:country='):
+            v = name.split('=', 1)[1].strip('"')
+            if v:
+                geo.append(v)
+        elif name.startswith('misp-galaxy:mitre-attack-pattern='):
+            v = name.split('=', 1)[1].strip('"')
+            m = _TECH_RE.search(v)
+            if m:
+                techniques.append(m.group(0))
+    return content, {"sectors": sectors, "geo": geo, "techniques": techniques}
+
+
+def _get_event_content(event_uuid: str) -> str | None:
+    """Fetch the first event report content from the scraper MISP."""
+    content, _ = _get_event_content_and_scope(event_uuid)
+    return content
+
+
+@bp.route("/misp-status", methods=["GET"])
+def misp_status():
+    """Return webapp MISP connectivity status. No CSRF required (GET)."""
+    result = misp_store.test_webapp_misp()
+    return jsonify(result)
+
+
+@bp.route("/draft-story", methods=["POST"])
+@rate_limited("api_draft_story", limit=30, window_s=60)
+def draft_story():
+    """Draft a 5-line daily briefing story from a scraper event.
+
+    POST JSON: {"event_uuid": "...", "context_hint": "optional extra context"}
+    Returns: {"story": "...", "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"story": "", "scope": {}, "error": "Invalid JSON payload."}), 400
+    event_uuid = (body.get("event_uuid") or "").strip()
+    context_hint = (body.get("context_hint") or "").strip()
+
+    content, scope = _get_event_content_and_scope(event_uuid)
+    if not content and not context_hint:
+        return jsonify({"story": "", "scope": {}, "error": "No content found for this event."})
+
+    try:
+        from analyser import llm
+
+        focus_points = {
+            "geographies": list(getattr(config, "FOCUS_POINTS_GEOGRAPHIES", []) or []),
+            "sectors": list(getattr(config, "FOCUS_POINTS_SECTORS", []) or []),
+            "technologies": list(getattr(config, "FOCUS_POINTS_TECHNOLOGIES", []) or []),
+            "threat_types": list(getattr(config, "FOCUS_POINTS_THREAT_TYPES", []) or []),
+            "threat_actors": list(getattr(config, "FOCUS_POINTS_THREAT_ACTORS", []) or []),
+        }
+
+        story = llm.draft_briefing_story(content or context_hint, focus_points)
+        return jsonify({"story": story, "scope": scope, "error": None})
+    except Exception as exc:
+        logger.warning("draft_story LLM call failed: %s", exc)
+        return jsonify({"story": "", "scope": scope, "error": "Failed to generate story."}), 502
+
+
+@bp.route("/briefing-overlap-check", methods=["POST"])
+@rate_limited("api_briefing_overlap_check", limit=20, window_s=60)
+def briefing_overlap_check():
+    """Check whether briefing stories likely cover the same event.
+
+    POST JSON: {"stories": [{"title": "...", "content": "...", "source_url": "..."}, ...]}
+    Returns: {"overlaps": [...], "summary": "...", "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"overlaps": [], "summary": "", "error": "Invalid JSON payload."}), 400
+    stories = body.get("stories")
+    if not isinstance(stories, list):
+        return jsonify({"overlaps": [], "summary": "", "error": "Stories must be a list."}), 400
+
+    normalized = []
+    for s in stories:
+        if not isinstance(s, dict):
+            continue
+        normalized.append({
+            "title": (s.get("title") or "").strip(),
+            "content": (s.get("content") or "").strip(),
+            "source_url": (s.get("source_url") or "").strip(),
+        })
+
+    if len(normalized) < 2:
+        return jsonify({"overlaps": [], "summary": "Add at least two stories to compare.", "error": None})
+    if any(not s["content"] for s in normalized):
+        return jsonify({"overlaps": [], "summary": "", "error": "All stories need text before running overlap check."}), 400
+
+    try:
+        from analyser import llm
+
+        result = llm.detect_story_overlaps(normalized)
+        overlaps = result.get("overlaps", []) if isinstance(result, dict) else []
+        summary = result.get("summary", "") if isinstance(result, dict) else ""
+        if not isinstance(overlaps, list):
+            overlaps = []
+        return jsonify({"overlaps": overlaps, "summary": summary, "error": None})
+    except Exception as exc:
+        logger.warning("briefing_overlap_check failed: %s", exc)
+        return jsonify({"overlaps": [], "summary": "", "error": "Failed to check overlap."}), 502
+
+
+@bp.route("/draft-vea", methods=["POST"])
+@rate_limited("api_draft_vea", limit=30, window_s=60)
+def draft_vea():
+    """Draft VEA section content from CVE info and optional article content.
+
+    POST JSON: {"cve_id": "CVE-...", "product_info": "...", "article_content": "..."}
+    Returns: {"sections": {...}, "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"sections": {}, "error": "Invalid JSON payload."}), 400
+    cve_id = (body.get("cve_id") or "").strip()
+    product_info = (body.get("product_info") or "").strip()
+    article_content = (body.get("article_content") or "").strip()
+
+    if not cve_id and not article_content:
+        return jsonify({"sections": {}, "error": "CVE ID or article content required."})
+
+    try:
+        from analyser import llm
+        sections = llm.draft_vea_sections(cve_id, product_info, article_content)
+        return jsonify({"sections": sections, "error": None})
+    except Exception as exc:
+        logger.warning("draft_vea LLM call failed: %s", exc)
+        return jsonify({"sections": {}, "error": "Failed to draft VEA content."}), 502
+
+
+@bp.route("/event-preview", methods=["POST"])
+def event_preview():
+    """Return event info and report content for the triage preview panel.
+
+    POST JSON: {"uuid": "..."}
+    Returns: {"uuid", "info", "date", "tags", "reports": [{"name", "content"}], "error"}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"error": "Invalid JSON payload."}), 400
+    uuid = (body.get("uuid") or "").strip()
+    if not uuid:
+        return jsonify({"error": "UUID required"})
+
+    misp = misp_store._scraper_misp()
+    try:
+        event = misp.get_event(uuid, pythonify=True)
+    except Exception as exc:
+        logger.warning("event_preview: get_event %s failed: %s", uuid, exc)
+        return jsonify({"error": "Could not fetch event."}), 502
+
+    if not event or isinstance(event, dict):
+        return jsonify({"error": "Event not found"})
+
+    reports = []
+    for r in getattr(event, "event_reports", []) or []:
+        content = getattr(r, "content", None)
+        name = getattr(r, "name", "") or ""
+        if content:
+            reports.append({"name": name, "content": content})
+
+    return jsonify({
+        "uuid": event.uuid,
+        "info": event.info or "",
+        "date": str(event.date) if event.date else "",
+        "tags": [t.name for t in getattr(event, "tags", []) or []],
+        "reports": reports,
+        "error": None,
+    })
+
+
+@bp.route("/correlate", methods=["POST"])
+def correlate():
+    """Find scraper MISP events matching a keyword or indicator.
+
+    POST JSON: {"query": "CVE-2024-1234 or keyword", "limit": 20}
+    Returns: {"matches": [...], "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"matches": [], "error": "Invalid JSON payload."}), 400
+    query = (body.get("query") or "").strip()
+    try:
+        limit = max(1, min(int(body.get("limit", 20)), 100))
+    except (TypeError, ValueError):
+        limit = 20
+
+    if not query or len(query) < 3:
+        return jsonify({"matches": [], "error": "Query must be at least 3 characters."})
+
+    try:
+        misp = misp_store._scraper_misp()
+        events = misp.search(
+            tags=[config.SCRAPER_MARKER_TAG],
+            limit=getattr(config, "MISP_SCRAPER_LIMIT", 500),
+            page=1,
+            metadata=False,
+            pythonify=True,
+        )
+        if not events or isinstance(events, dict):
+            return jsonify({"matches": [], "error": None})
+
+        ql = query.lower()
+        matches = []
+        for e in events:
+            text = misp_store._event_text(e).lower()
+            if ql in text:
+                matches.append({
+                    "uuid": e.uuid,
+                    "info": e.info or "",
+                    "date": str(e.date) if e.date else "",
+                })
+            if len(matches) >= limit:
+                break
+
+        return jsonify({"matches": matches, "error": None})
+    except Exception as exc:
+        logger.warning("correlate search failed: %s", exc)
+        return jsonify({"matches": [], "error": "Search failed."}), 502
+
+
+@bp.route("/fetch-url", methods=["POST"])
+@rate_limited("api_fetch_url", limit=20, window_s=60)
+def fetch_url():
+    """Fetch a URL and return its content as Markdown.
+
+    POST JSON: {"url": "https://..."}
+    Returns: {"title": "...", "content": "...", "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"title": "", "content": "", "error": "Invalid JSON payload."}), 400
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"title": "", "content": "", "error": "URL required."})
+    try:
+        from curl_cffi import requests as cf_requests
+        from bs4 import BeautifulSoup
+        from markdownify import markdownify as md
+
+        response = cf_requests.get(url, impersonate="chrome124", timeout=20)
+        rawhtml = response.text
+
+        soup = BeautifulSoup(rawhtml, "html.parser")
+
+        title = ""
+        if soup.title:
+            title = soup.title.get_text(strip=True)
+
+        for tag in soup.find_all(["script", "head", "header", "footer", "meta", "nav", "style"]):
+            tag.decompose()
+
+        content = md(str(soup), heading_style="ATX", strip=["a", "img"])
+        content = "\n".join(
+            line for line in content.splitlines()
+            if line.strip()
+        )
+        return jsonify({"title": title, "content": content, "error": None})
+    except Exception as exc:
+        logger.warning("fetch_url failed for %s: %s", url, exc)
+        return jsonify({"title": "", "content": "", "error": "Could not fetch URL content."}), 502
+
+
+def _parse_fia_markdown(text: str) -> dict:
+    """Parse flash_intel_generate.md LLM output into form field values."""
+    import re as _re
+    fields = {
+        'title': '', 'summary': '', 'action_required': '',
+        'what_happened': [], 'source_description': '',
+        'likely_impact': '', 'affected_assets': '', 'actor_context': '',
+        'actions_immediate': [], 'actions_near_term': [],
+        'mitre_techniques': [], 'hunting_hypotheses': [],
+        'source_reliability': '', 'information_credibility': '', 'credibility_justification': '',
+    }
+    section = None
+    for line in text.split('\n'):
+        s = line.strip()
+        if not s or s == '---':
+            continue
+        m = _re.match(r'^#\s+Flash intel alert:\s*(.*)', s, _re.IGNORECASE)
+        if m:
+            fields['title'] = m.group(1).strip()
+            continue
+        if s.startswith('## '):
+            sl = s[3:].lower()
+            if 'summary' in sl: section = 'summary'
+            elif 'what happened' in sl: section = 'what_happened'
+            elif 'why it matters' in sl: section = 'why_matters'
+            elif 'recommended' in sl: section = 'actions'
+            elif 'detection' in sl: section = 'detection'
+            else: section = None
+            continue
+        if s.startswith('### '):
+            sl = s[4:].lower()
+            if 'immediate' in sl: section = 'actions_immediate'
+            elif 'near' in sl: section = 'actions_near_term'
+            continue
+        if section in ('detection', 'mitre', 'hunting'):
+            if _re.match(r'^\*\*Relevant MITRE', s, _re.IGNORECASE):
+                section = 'mitre'; continue
+            if _re.match(r'^\*\*Hunting', s, _re.IGNORECASE):
+                section = 'hunting'; continue
+        if section == 'summary':
+            if s.startswith('**Action required:**'):
+                fields['action_required'] = s[len('**Action required:**'):].strip()
+            elif not s.startswith('**') and not s.startswith('#'):
+                fields['summary'] = (fields['summary'] + '\n' + s).strip() if fields['summary'] else s
+        elif section == 'what_happened':
+            if s.startswith('**Source reliability:**'):
+                val = s[len('**Source reliability:**'):].strip()
+                fields['source_reliability'] = val[:1].upper() if val and val[:1].upper() in 'ABCDEF' else ''
+            elif s.startswith('**Information credibility:**'):
+                val = s[len('**Information credibility:**'):].strip()
+                fields['information_credibility'] = val[:1] if val and val[:1] in '123456' else ''
+            elif s.startswith('**Information credibility justification:**'):
+                fields['credibility_justification'] = s[len('**Information credibility justification:**'):].strip()
+            elif s.startswith('**Source:**'):
+                fields['source_description'] = s[len('**Source:**'):].strip()
+            elif s.startswith('- ') and not s.startswith('- <'):
+                fields['what_happened'].append(s[2:].strip())
+        elif section == 'why_matters':
+            if s.startswith('- **Likely impact:**'):
+                fields['likely_impact'] = s[len('- **Likely impact:**'):].strip()
+            elif s.startswith('- **Affected assets:**'):
+                fields['affected_assets'] = s[len('- **Affected assets:**'):].strip()
+            elif s.startswith('- **Threat actor context:**'):
+                fields['actor_context'] = s[len('- **Threat actor context:**'):].strip()
+        elif section == 'actions_immediate':
+            if s.startswith('- ') and not s.startswith('- <'):
+                fields['actions_immediate'].append(s[2:].strip())
+        elif section == 'actions_near_term':
+            if s.startswith('- ') and not s.startswith('- <'):
+                fields['actions_near_term'].append(s[2:].strip())
+        elif section == 'mitre':
+            if s.startswith('- ') and not s.startswith('- <'):
+                fields['mitre_techniques'].append(s[2:].strip())
+        elif section == 'hunting':
+            if s.startswith('- ') and not s.startswith('- <'):
+                fields['hunting_hypotheses'].append(s[2:].strip())
+    # Convert list fields to newline-joined strings
+    for f in ('what_happened', 'actions_immediate', 'actions_near_term', 'mitre_techniques', 'hunting_hypotheses'):
+        if isinstance(fields[f], list):
+            fields[f] = '\n'.join(fields[f])
+    return fields
+
+
+@bp.route("/build-fia", methods=["POST"])
+@rate_limited("api_build_fia", limit=10, window_s=60)
+def build_fia():
+    """Generate FIA draft content using the flash_intel_generate prompt.
+
+    POST JSON: {"source_uuids": ["uuid1", ...]}
+    Returns {"fields": {...}, "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"fields": {}, "error": "Invalid JSON payload."}), 400
+    source_uuids = [u.strip() for u in (body.get("source_uuids") or []) if u.strip()]
+    if not source_uuids:
+        return jsonify({"fields": {}, "error": "No source event UUIDs provided."})
+
+    try:
+        source_events = misp_store.fetch_source_events(source_uuids)
+    except Exception as exc:
+        logger.warning("build_fia: fetch_source_events failed: %s", exc)
+        source_events = []
+
+    report_mode = body.get("report_mode", "both")
+    content_parts, all_tags, info_parts, dates = [], [], [], []
+    for ev in source_events:
+        if ev.get('info'): info_parts.append(ev['info'])
+        if ev.get('date'): dates.append(str(ev['date']))
+        all_tags.extend(ev.get('tags', []))
+        for r in ev.get('reports', []):
+            if report_mode == 'raw_only' and (r.get('name') or '').startswith('[AI-Summary]'):
+                continue
+            c = (r.get('content') or '').strip()
+            if c: content_parts.append(c)
+
+    content = '\n\n---\n\n'.join(content_parts)
+    if not content:
+        return jsonify({"fields": {}, "error": "No report content found in source events."})
+
+    def _extract_galaxy_values(tags, prefixes):
+        seen, result = set(), []
+        for tag in tags:
+            for prefix in prefixes:
+                if tag.startswith(prefix):
+                    val = tag[len(prefix):].strip().strip('"')
+                    if val and val not in seen:
+                        seen.add(val); result.append(val)
+                    break
+        return result
+
+    geo_values = _extract_galaxy_values(all_tags, ['misp-galaxy:country=', 'misp-galaxy:target-information='])
+    sector_values = _extract_galaxy_values(all_tags, ['misp-galaxy:sector='])
+    actor_values = _extract_galaxy_values(all_tags, ['misp-galaxy:threat-actor='])
+
+    reliability_letters, credibility_numbers = [], []
+    for t in all_tags:
+        if 'admiralty-scale:source-reliability=' in t:
+            v = t.split('"')[1] if '"' in t else ''
+            if v: reliability_letters.append(v.upper())
+        elif 'admiralty-scale:information-credibility=' in t:
+            v = t.split('"')[1] if '"' in t else ''
+            if v.isdigit(): credibility_numbers.append(int(v))
+
+    worst_reliability = max(reliability_letters) if reliability_letters else ""
+    worst_credibility = str(max(credibility_numbers)) if credibility_numbers else ""
+
+    try:
+        from analyser import llm
+        raw = llm.generate_fia_draft(
+            content[:12000],
+            event_info=' | '.join(info_parts[:2]) if info_parts else "",
+            event_date=dates[0] if dates else "",
+            source_reliability=worst_reliability,
+        )
+    except Exception as exc:
+        logger.warning("build_fia: LLM call failed: %s", exc)
+        return jsonify({"fields": {}, "error": "Failed to generate FIA draft."}), 502
+
+    fields = _parse_fia_markdown(raw)
+    if worst_reliability: fields['source_reliability'] = worst_reliability
+    if worst_credibility: fields['information_credibility'] = worst_credibility
+
+    # Infer sectors and geo from LLM-generated text when tags alone don't cover it
+    scope_text = ' '.join([
+        fields.get('summary', ''), fields.get('actor_context', ''),
+        fields.get('likely_impact', ''), fields.get('affected_assets', ''), raw,
+    ]).lower()
+
+    def _infer_scope(known, candidates):
+        existing = {v.lower() for v in known}
+        extra = []
+        for item in (candidates or []):
+            if item.lower() not in existing and item.lower() in scope_text:
+                existing.add(item.lower())
+                extra.append(item)
+        return known + extra
+
+    try:
+        sector_values = _infer_scope(sector_values, misp_store.galaxy_sectors())
+    except Exception as exc:
+        logger.warning("build_fia: sector scope inference failed: %s", exc)
+    try:
+        geo_values = _infer_scope(geo_values, misp_store.galaxy_geography())
+    except Exception as exc:
+        logger.warning("build_fia: geo scope inference failed: %s", exc)
+
+    fields['geographic_scope'] = geo_values
+    fields['sectors'] = sector_values
+    fields['threat_actors'] = actor_values
+    audit.record("generate", "ai_fia_draft", details=f"sources: {', '.join(source_uuids[:5])}")
+    return jsonify({"fields": fields, "error": None})
+
+
+@bp.route("/pull-estimate", methods=["POST"])
+@rate_limited("api_pull_estimate", limit=20, window_s=60)
+def pull_estimate():
+    """Estimate how many events a MISP server would return with the current filter settings.
+
+    POST JSON: {misp_url, misp_key, verify_tls, tags, tags_and, tags_not,
+                since_days, org_filter_type, org_filter}
+    Returns {"count": N, "error": null}.
+    """
+    import datetime as _dt
+    from pymisp import PyMISP
+    from webapp.collection_cache import _split_tags
+
+    body, err = _json_object()
+    if err:
+        return jsonify({"count": None, "error": "Invalid JSON payload."}), 400
+    misp_url = (body.get("misp_url") or "").strip()
+    misp_key = (body.get("misp_key") or "").strip()
+    if not misp_url or not misp_key:
+        return jsonify({"count": None, "error": "URL and API key required."})
+
+    try:
+        verify_tls = _parse_bool(body.get("verify_tls", False), default=False)
+    except ValueError as exc:
+        return jsonify({"count": None, "error": str(exc)}), 400
+    tags_or = _split_tags(body.get("tags") or "")
+    tags_and = _split_tags(body.get("tags_and") or "")
+    tags_not = _split_tags(body.get("tags_not") or "")
+    since_days = int(body.get("since_days") or 0)
+    org_filter_type = (body.get("org_filter_type") or "").strip()
+    org_filter = {u.lower() for u in _split_tags(body.get("org_filter") or "")}
+    try:
+        limit = max(1, int(body.get("limit") or 500))
+    except (ValueError, TypeError):
+        limit = 500
+
+    try:
+        m = PyMISP(misp_url, misp_key, verify_tls)
+        use_published = body.get("published", True)
+        kwargs = dict(limit=limit, page=1, metadata=True, pythonify=True)
+        if use_published:
+            kwargs["published"] = True
+        if tags_and or tags_not:
+            kwargs["tags"] = m.build_complex_query(
+                or_parameters=tags_or or None,
+                and_parameters=tags_and or None,
+                not_parameters=tags_not or None,
+            )
+        elif tags_or:
+            kwargs["tags"] = tags_or
+        if since_days:
+            cutoff = (_dt.date.today() - _dt.timedelta(days=since_days)).isoformat()
+            kwargs["date_from"] = cutoff
+        events = m.search(**kwargs)
+        if not events or isinstance(events, dict):
+            return jsonify({"count": 0, "error": None})
+
+        if org_filter_type and org_filter:
+            def _org_uuids(e):
+                uuids = set()
+                for attr in ("Org", "org", "Orgc", "orgc"):
+                    obj = getattr(e, attr, None)
+                    u = (getattr(obj, "uuid", "") or "").lower()
+                    if u:
+                        uuids.add(u)
+                return uuids
+            if org_filter_type == "include":
+                events = [e for e in events if _org_uuids(e) & org_filter]
+            elif org_filter_type == "exclude":
+                events = [e for e in events if not (_org_uuids(e) & org_filter)]
+
+        return jsonify({"count": len(events), "error": None})
+    except Exception as exc:
+        logger.warning("pull_estimate failed: %s", exc)
+        return jsonify({"count": None, "error": "Pull estimate failed."}), 502
+
+
+@bp.route("/lookup-org", methods=["POST"])
+@rate_limited("api_lookup_org", limit=60, window_s=60)
+def lookup_org():
+    """Look up a MISP organisation name by UUID.
+
+    POST JSON: {"uuid": "...", "misp_url": "...", "misp_key": "..."}
+    The misp_url / misp_key fields are optional; if omitted the configured
+    webapp and scraper MISP instances are tried instead.
+    Returns {"name": "Org Name", "error": null} or {"name": null, "error": "..."}.
+    """
+    from pymisp import PyMISP
+    body, err = _json_object()
+    if err:
+        return jsonify({"name": None, "error": "Invalid JSON payload."}), 400
+    uuid = (body.get("uuid") or "").strip()
+    if not uuid:
+        return jsonify({"name": None, "error": "UUID required."})
+
+    misp_url = (body.get("misp_url") or "").strip()
+    misp_key = (body.get("misp_key") or "").strip()
+
+    servers = []
+    if misp_url and misp_key:
+        servers.append((misp_url, misp_key, False))
+    servers.append((config.MISP_WEBAPP_URL, config.MISP_WEBAPP_KEY, config.MISP_WEBAPP_VERIFYCERT))
+    if config.MISP_URL != config.MISP_WEBAPP_URL:
+        servers.append((config.MISP_URL, config.MISP_KEY, config.MISP_VERIFYCERT))
+
+    for url, key, verify in servers:
+        try:
+            m = PyMISP(url, key, verify)
+            result = m.get_organisation(uuid, pythonify=True)
+            if result and not isinstance(result, dict):
+                return jsonify({"name": result.name, "error": None})
+        except Exception as exc:
+            logger.debug("lookup_org failed against %s: %s", url, exc)
+            continue
+
+    return jsonify({"name": None, "error": "Not found."})
+
+
+@bp.route("/cve-lookup", methods=["POST"])
+@rate_limited("api_cve_lookup", limit=20, window_s=60)
+def cve_lookup():
+    """Proxy CVE details from vulnerability.circl.lu.
+
+    POST JSON: {"cve_ids": ["CVE-2024-1234", ...]}
+    Returns: {"ok": true, "results": [{...}, ...]}
+    """
+    import requests as _req
+
+    body, err = _json_object()
+    if err:
+        return jsonify({"ok": False, "error": "Invalid JSON payload."}), 400
+    raw_ids = [c.strip().upper() for c in (body.get("cve_ids") or []) if c.strip()]
+    cve_ids = [c for c in raw_ids if c.startswith("CVE-")][:10]
+    if not cve_ids:
+        return jsonify({"ok": False, "error": "No valid CVE IDs provided"})
+
+    # SSVC Exploitation value → VEA exploit_availability option
+    _SSVC_EXPLOIT_MAP = {
+        "active": "Weaponised",
+        "poc": "PoC public",
+        "none": "None known",
+    }
+
+    def _extract(data):
+        containers = data.get("containers") or {}
+        cna = containers.get("cna") or {}
+        title = cna.get("title") or ""
+        descriptions = cna.get("descriptions") or []
+        desc = next((d["value"] for d in descriptions if d.get("lang", "").lower().startswith("en")), "")
+        affected = cna.get("affected") or []
+        products, versions = [], []
+        for a in affected:
+            vendor = (a.get("vendor") or "").strip()
+            product = (a.get("product") or "").strip()
+            if product and product.lower() not in ("n/a", "na"):
+                label = f"{vendor} {product}".strip() if vendor else product
+                if label not in products:
+                    products.append(label)
+            for v in a.get("versions") or []:
+                ver = (v.get("version") or "").strip()
+                less_than = (v.get("lessThan") or v.get("lessThanOrEqual") or "").strip()
+                if ver and ver not in ("0", "n/a", "*"):
+                    entry = ver
+                    if less_than:
+                        entry += f" < {less_than}"
+                    if entry not in versions:
+                        versions.append(entry)
+        # CWE
+        cwes = []
+        for pt in cna.get("problemTypes") or []:
+            for d in pt.get("descriptions") or []:
+                cwe = (d.get("cweId") or "").strip()
+                if cwe and cwe not in cwes:
+                    cwes.append(cwe)
+        # References
+        refs = []
+        for ref in cna.get("references") or []:
+            url = (ref.get("url") or "").strip()
+            if url and url not in refs:
+                refs.append(url)
+        # Scan all containers (cna + adp) for CVSS, SSVC exploitation, KEV
+        cvss_score = ""
+        cvss_severity = ""
+        cvss_vector = ""
+        exploit_availability = ""
+        cisa_kev = "No"
+        for source in [cna] + (containers.get("adp") or []):
+            metrics = source.get("metrics") or []
+            for m in metrics:
+                if not cvss_score:
+                    for key in ("cvssV3_1", "cvssV3_0", "cvssV4_0", "cvssV2_0"):
+                        if key in m:
+                            cvss_score = str(m[key].get("baseScore") or "")
+                            cvss_severity = str(m[key].get("baseSeverity") or "").upper()
+                            cvss_vector = str(m[key].get("vectorString") or "")
+                            break
+                if "other" in m:
+                    other = m["other"]
+                    if isinstance(other, dict) and other.get("type") == "ssvc":
+                        for opt in (other.get("content") or {}).get("options") or []:
+                            if "Exploitation" in opt:
+                                raw = (opt["Exploitation"] or "").lower()
+                                exploit_availability = _SSVC_EXPLOIT_MAP.get(raw, "")
+            for entry in source.get("timeline") or []:
+                val = (entry.get("value") or "").lower()
+                if "cisa kev" in val or "kev" in val:
+                    cisa_kev = "Yes"
+        return {
+            "title": title,
+            "description": desc[:600],
+            "products": products,
+            "versions": versions[:8],
+            "cwes": cwes[:5],
+            "cvss_score": cvss_score,
+            "cvss_severity": cvss_severity,
+            "cvss_vector": cvss_vector,
+            "exploit_availability": exploit_availability,
+            "cisa_kev": cisa_kev,
+            "references": refs[:20],
+        }
+
+    results = []
+    for cve_id in cve_ids:
+        try:
+            r = _req.get(
+                f"https://vulnerability.circl.lu/api/cve/{cve_id}",
+                timeout=10,
+                headers={"Accept": "application/json"},
+            )
+            if r.status_code == 200:
+                info = _extract(r.json())
+                results.append({"cve_id": cve_id, "ok": True, **info})
+            else:
+                results.append({"cve_id": cve_id, "ok": False, "error": f"HTTP {r.status_code}"})
+        except Exception as exc:
+            logger.warning("cve_lookup %s failed: %s", cve_id, exc)
+            results.append({"cve_id": cve_id, "ok": False, "error": "Lookup failed"})
+
+    return jsonify({"ok": True, "results": results})
+
+
+@bp.route("/summarise-content", methods=["POST"])
+@rate_limited("api_summarise_content", limit=15, window_s=60)
+def summarise_content():
+    """Generate an AI summary from raw text content.
+
+    POST JSON: {"content": "...", "title": "optional event title"}
+    Returns: {"summary": "...", "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"summary": "", "error": "Invalid JSON payload."}), 400
+    content = (body.get("content") or "").strip()
+    title = (body.get("title") or "").strip()
+    if not content:
+        return jsonify({"summary": "", "error": "Content required."})
+    try:
+        from analyser import llm
+        summary = llm.summarise_report(content[:12000], event_info=title)
+        audit.record("generate", "ai_summary", details=title or f"{len(content)} chars")
+        return jsonify({"summary": summary, "error": None})
+    except Exception as exc:
+        logger.warning("summarise_content LLM call failed: %s", exc)
+        return jsonify({"summary": "", "error": "Failed to generate summary."}), 502

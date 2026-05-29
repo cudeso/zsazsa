@@ -1,0 +1,656 @@
+import importlib
+import logging
+import os
+import shutil
+import ast
+import tempfile
+from pathlib import Path
+
+import config as _config
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from webapp import audit, misp_store
+from webapp.rate_limit import rate_limited
+from webapp.utils import (
+    json_body as _json_object,
+    normalize_notification_channels as _normalize_notification_channels,
+    parse_bool as _parse_bool,
+)
+
+bp = Blueprint("config_page", __name__)
+logger = logging.getLogger(__name__)
+
+_ROOT = Path(__file__).parent.parent.parent
+_CONFIG_FILE = _ROOT / "config" / "__init__.py"
+_BACKUP_FILE = _ROOT / "config" / "__init__.py.backup"
+_PROMPTS_DIR = _ROOT / "prompts"
+
+
+def _llm_usage_stats() -> dict:
+    """Return token usage totals from the analyser DB. Never raises."""
+    empty = {"total_calls": 0, "total_tokens": 0,
+             "today_calls": 0, "today_tokens": 0,
+             "week_calls": 0, "week_tokens": 0, "by_feature": []}
+    import sqlite3 as _sq
+    db_path = getattr(_config, "DB_FILE", "data/analyser.db")
+    if not os.path.exists(db_path):
+        return empty
+    try:
+        with _sq.connect(db_path) as conn:
+            conn.row_factory = _sq.Row
+            r = conn.execute(
+                "SELECT COUNT(*) AS calls, COALESCE(SUM(total_tokens),0) AS tokens FROM llm_usage"
+            ).fetchone()
+            r_today = conn.execute(
+                "SELECT COUNT(*) AS calls, COALESCE(SUM(total_tokens),0) AS tokens"
+                " FROM llm_usage WHERE date(called_at) = date('now')"
+            ).fetchone()
+            r_week = conn.execute(
+                "SELECT COUNT(*) AS calls, COALESCE(SUM(total_tokens),0) AS tokens"
+                " FROM llm_usage WHERE called_at >= datetime('now', '-7 days')"
+            ).fetchone()
+            features = conn.execute(
+                "SELECT feature, COUNT(*) AS calls,"
+                " COALESCE(SUM(input_tokens),0) AS input_tokens,"
+                " COALESCE(SUM(output_tokens),0) AS output_tokens,"
+                " COALESCE(SUM(total_tokens),0) AS total_tokens"
+                " FROM llm_usage GROUP BY feature ORDER BY total_tokens DESC"
+            ).fetchall()
+        return {
+            "total_calls": r["calls"], "total_tokens": r["tokens"],
+            "today_calls": r_today["calls"], "today_tokens": r_today["tokens"],
+            "week_calls": r_week["calls"], "week_tokens": r_week["tokens"],
+            "by_feature": [dict(f) for f in features],
+        }
+    except Exception:
+        return empty
+
+
+def _load_ai_features() -> dict:
+    try:
+        from core.ai_config import load as _ai_load
+        return _ai_load()
+    except Exception as exc:
+        logger.warning("_load_ai_features failed: %s", exc)
+        return {}
+
+
+def _list_prompts() -> list[dict]:
+    prompts = []
+    for p in sorted(_PROMPTS_DIR.glob("*.md")):
+        content = p.read_text(encoding="utf-8")
+        first_line = next((ln.strip() for ln in content.splitlines() if ln.strip()), "")
+        description = first_line[:100] if first_line else ""
+        prompts.append({"filename": p.name, "description": description, "content": content})
+    return prompts
+
+
+def _read_notification_channels() -> list:
+    """Return NOTIFICATION_CHANNELS, migrating from legacy single-webhook config if needed."""
+    return _normalize_notification_channels(
+        getattr(_config, "NOTIFICATION_CHANNELS", []),
+        legacy_url=getattr(_config, "MATTERMOST_WEBHOOK_URL", ""),
+        legacy_enabled=getattr(_config, "MATTERMOST_ENABLED", False),
+    )
+
+
+def _read() -> dict:
+    importlib.reload(_config)
+    raw_exclusions = getattr(_config, "DAILY_BRIEFING_TITLE_EXCLUSIONS", [])
+    if isinstance(raw_exclusions, str):
+        daily_briefing_title_exclusions = [p.strip() for p in raw_exclusions.splitlines() if p.strip()]
+    else:
+        daily_briefing_title_exclusions = [str(p).strip() for p in (raw_exclusions or []) if str(p).strip()]
+    focus_points_geographies = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_GEOGRAPHIES", []) or []) if str(p).strip()]
+    focus_points_sectors = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_SECTORS", []) or []) if str(p).strip()]
+    focus_points_technologies = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_TECHNOLOGIES", []) or []) if str(p).strip()]
+    focus_points_threat_types = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_THREAT_TYPES", []) or []) if str(p).strip()]
+    focus_points_threat_actors = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_THREAT_ACTORS", []) or []) if str(p).strip()]
+    return {
+        "MISP_URL": _config.MISP_URL,
+        "MISP_KEY": _config.MISP_KEY,
+        "MISP_VERIFYCERT": _config.MISP_VERIFYCERT,
+        "MISP_WEBAPP_URL": _config.MISP_WEBAPP_URL,
+        "MISP_WEBAPP_KEY": _config.MISP_WEBAPP_KEY,
+        "MISP_WEBAPP_VERIFYCERT": _config.MISP_WEBAPP_VERIFYCERT,
+        "OPENAI_API_KEY": _config.OPENAI_API_KEY,
+        "OPENAI_MODEL": _config.OPENAI_MODEL,
+        "NOTIFICATION_CHANNELS": _read_notification_channels(),
+        "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []),
+        "PRODUCT_TYPES": _config.PRODUCT_TYPES,
+        "DAILY_BRIEFING_TITLE_EXCLUSIONS": daily_briefing_title_exclusions,
+        "FOCUS_POINTS_GEOGRAPHIES": focus_points_geographies,
+        "FOCUS_POINTS_SECTORS": focus_points_sectors,
+        "FOCUS_POINTS_TECHNOLOGIES": focus_points_technologies,
+        "FOCUS_POINTS_THREAT_TYPES": focus_points_threat_types,
+        "FOCUS_POINTS_THREAT_ACTORS": focus_points_threat_actors,
+        "TAG_STAKEHOLDER": _config.TAG_STAKEHOLDER,
+        "TAG_PIR": _config.TAG_PIR,
+        "TAG_GIR": _config.TAG_GIR,
+        "TAG_RFI": _config.TAG_RFI,
+        "TAG_FLASH_INTEL": _config.TAG_FLASH_INTEL,
+        "TAG_VEA": _config.TAG_VEA,
+        "TAG_BRIEFING": _config.TAG_BRIEFING,
+        "TAG_TLR": getattr(_config, "TAG_TLR", 'zsazsa:ctiproduct="threat-landscape-report"'),
+        "TAG_COLLECTION_FOLLOWUP": getattr(_config, "TAG_COLLECTION_FOLLOWUP", 'zsazsa:collection="follow-up"'),
+        "RECOMMENDED_ACTIONS_IMMEDIATE": getattr(_config, "RECOMMENDED_ACTIONS_IMMEDIATE", []),
+        "RECOMMENDED_ACTIONS_NEAR_TERM": getattr(_config, "RECOMMENDED_ACTIONS_NEAR_TERM", []),
+        "POLL_WINDOW_HOURS": _config.POLL_WINDOW_HOURS,
+        "SCRAPER_MARKER_TAG": _config.SCRAPER_MARKER_TAG,
+        "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+        "LOG_LEVEL": _config.LOG_LEVEL,
+        "HOSTNAME": getattr(_config, "HOSTNAME", "0.0.0.0"),
+        "PORT": getattr(_config, "PORT", 5000),
+        "SSL_ENABLED": getattr(_config, "SSL_ENABLED", False),
+        "SSL_CERT": getattr(_config, "SSL_CERT", "certs/zsazsa.crt"),
+        "SSL_KEY": getattr(_config, "SSL_KEY", "certs/zsazsa.key"),
+        "prompts": _list_prompts(),
+        "llm_usage": _llm_usage_stats(),
+        "ai_features": _load_ai_features(),
+    }
+
+
+def _write(values):
+    shutil.copy2(str(_CONFIG_FILE), str(_BACKUP_FILE))
+    products = values["PRODUCT_TYPES"]
+    products_repr = "[\n" + "".join(f"    {p!r},\n" for p in products) + "]"
+    briefing_title_exclusions = values.get("DAILY_BRIEFING_TITLE_EXCLUSIONS", [])
+    briefing_title_exclusions_repr = "[\n" + "".join(f"    {p!r},\n" for p in briefing_title_exclusions) + "]"
+    fp_geographies = values.get("FOCUS_POINTS_GEOGRAPHIES", [])
+    fp_geographies_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_geographies) + "]"
+    fp_sectors = values.get("FOCUS_POINTS_SECTORS", [])
+    fp_sectors_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_sectors) + "]"
+    fp_technologies = values.get("FOCUS_POINTS_TECHNOLOGIES", [])
+    fp_technologies_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_technologies) + "]"
+    fp_threat_types = values.get("FOCUS_POINTS_THREAT_TYPES", [])
+    fp_threat_types_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_threat_types) + "]"
+    fp_threat_actors = values.get("FOCUS_POINTS_THREAT_ACTORS", [])
+    fp_threat_actors_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_threat_actors) + "]"
+    servers = values.get("MISP_SERVERS", [])
+    if servers:
+        lines = []
+        for s in servers:
+            lines.append("    {")
+            for k in ("id", "label", "url", "api_key", "verify_tls", "enabled", "tags", "tags_and", "tags_not", "org_filter_type", "org_filter", "since_days", "limit"):
+                lines.append(f"        {k!r}: {s.get(k)!r},")
+            lines.append("    },")
+        servers_repr = "[\n" + "\n".join(lines) + "\n]"
+    else:
+        servers_repr = "[]"
+    channels = values.get("NOTIFICATION_CHANNELS", [])
+    if channels:
+        ch_lines = []
+        for c in channels:
+            ch_lines.append("    {")
+            for k in ("id", "name", "type", "url", "enabled", "verify_tls"):
+                ch_lines.append(f"        {k!r}: {c.get(k)!r},")
+            ch_lines.append("    },")
+        channels_repr = "[\n" + "\n".join(ch_lines) + "\n]"
+    else:
+        channels_repr = "[]"
+    content = f"""SECRET_KEY = {_config.SECRET_KEY!r}
+
+# MISP - scraper / analyser pipeline
+MISP_URL = {values['MISP_URL']!r}
+MISP_KEY = {values['MISP_KEY']!r}
+MISP_VERIFYCERT = {bool(values['MISP_VERIFYCERT'])}
+
+# MISP - webapp (CTI program objects: stakeholders, PIRs, GIRs)
+# Defaults to the same server; override to use a dedicated MISP instance.
+MISP_WEBAPP_URL = {values['MISP_WEBAPP_URL']!r}
+MISP_WEBAPP_KEY = {values['MISP_WEBAPP_KEY']!r}
+MISP_WEBAPP_VERIFYCERT = {bool(values['MISP_WEBAPP_VERIFYCERT'])}
+
+# OpenAI
+OPENAI_API_KEY = {values['OPENAI_API_KEY']!r}
+OPENAI_MODEL = {values['OPENAI_MODEL']!r}
+
+# Notification channels
+NOTIFICATION_CHANNELS = {channels_repr}
+
+# Legacy aliases: first active Mattermost channel (used by notifier for fallback)
+MATTERMOST_ENABLED = any(c.get('type') == 'mattermost' and c.get('enabled') for c in NOTIFICATION_CHANNELS)
+MATTERMOST_WEBHOOK_URL = next((c.get('url', '') for c in NOTIFICATION_CHANNELS if c.get('type') == 'mattermost' and c.get('enabled')), '')
+
+# Additional MISP servers queried by the data-collection page.
+MISP_SERVERS = {servers_repr}
+
+# Collection sources offered when editing a PIR or GIR.
+# Derived automatically from the MISP scraper and configured MISP servers.
+# Do not set manually; edit the sources above instead.
+def _build_collection_sources():
+    items = ['misp-scraper']
+    for s in MISP_SERVERS:
+        label = (s.get('label') or '').strip()
+        if label and label not in items:
+            items.append(label)
+    return items
+
+COLLECTION_SOURCES = _build_collection_sources()
+
+# Product types used for stakeholder subscriptions and PIR deliverables
+PRODUCT_TYPES = {products_repr}
+
+# Daily briefing analyser: skip source events/reports whose titles contain
+# any of these substrings (case-insensitive).
+DAILY_BRIEFING_TITLE_EXCLUSIONS = {briefing_title_exclusions_repr}
+
+# Organisation-wide focus points used for AI-assisted briefing and relevance logic.
+FOCUS_POINTS_GEOGRAPHIES = {fp_geographies_repr}
+FOCUS_POINTS_SECTORS = {fp_sectors_repr}
+FOCUS_POINTS_TECHNOLOGIES = {fp_technologies_repr}
+FOCUS_POINTS_THREAT_TYPES = {fp_threat_types_repr}
+FOCUS_POINTS_THREAT_ACTORS = {fp_threat_actors_repr}
+
+# MISP context tags - entity type markers (stakeholders, requirements, RFIs)
+TAG_STAKEHOLDER = {values['TAG_STAKEHOLDER']!r}
+TAG_PIR         = {values['TAG_PIR']!r}
+TAG_GIR         = {values['TAG_GIR']!r}
+TAG_RFI         = {values['TAG_RFI']!r}
+
+# MISP context tags - product classification (serve as both type and product marker)
+TAG_FLASH_INTEL = {values['TAG_FLASH_INTEL']!r}
+TAG_VEA         = {values['TAG_VEA']!r}
+TAG_BRIEFING    = {values['TAG_BRIEFING']!r}
+TAG_TLR         = {values['TAG_TLR']!r}
+TAG_COLLECTION_FOLLOWUP = {values['TAG_COLLECTION_FOLLOWUP']!r}
+
+# Recommended actions shown in flash intel and VEA wizards
+RECOMMENDED_ACTIONS_IMMEDIATE = {values.get('RECOMMENDED_ACTIONS_IMMEDIATE', [])!r}
+RECOMMENDED_ACTIONS_NEAR_TERM = {values.get('RECOMMENDED_ACTIONS_NEAR_TERM', [])!r}
+
+# Analyser
+POLL_WINDOW_HOURS = {int(values['POLL_WINDOW_HOURS'])}
+SCRAPER_MARKER_TAG = {values['SCRAPER_MARKER_TAG']!r}
+MISP_SCRAPER_LIMIT = {int(values.get('MISP_SCRAPER_LIMIT') or 500)}
+
+# Paths
+STATE_FILE = {_config.STATE_FILE!r}
+DB_FILE = {_config.DB_FILE!r}
+
+# Logging
+LOG_FILE = {_config.LOG_FILE!r}
+LOG_LEVEL = {values['LOG_LEVEL']!r}
+
+# Web server
+HOSTNAME = {values['HOSTNAME']!r}
+PORT = {int(values['PORT'])}
+SSL_ENABLED = {bool(values['SSL_ENABLED'])}
+SSL_CERT = {values['SSL_CERT']!r}
+SSL_KEY = {values['SSL_KEY']!r}
+"""
+    cfg_path = str(_CONFIG_FILE)
+    cfg_dir = os.path.dirname(cfg_path)
+    fd, tmp_path = tempfile.mkstemp(dir=cfg_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, cfg_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+@bp.route("/config", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        products_raw = request.form.get("PRODUCT_TYPES", "")
+        products = [p.strip() for p in products_raw.splitlines() if p.strip()]
+        exclusions_raw = request.form.get("DAILY_BRIEFING_TITLE_EXCLUSIONS", "")
+        exclusions = [p.strip() for p in exclusions_raw.splitlines() if p.strip()]
+        fp_geographies = [p.strip() for p in request.form.get("FOCUS_POINTS_GEOGRAPHIES", "").splitlines() if p.strip()]
+        fp_sectors = [p.strip() for p in request.form.get("FOCUS_POINTS_SECTORS", "").splitlines() if p.strip()]
+        fp_technologies = [p.strip() for p in request.form.get("FOCUS_POINTS_TECHNOLOGIES", "").splitlines() if p.strip()]
+        fp_threat_types = [p.strip() for p in request.form.get("FOCUS_POINTS_THREAT_TYPES", "").splitlines() if p.strip()]
+        fp_threat_actors = [p.strip() for p in request.form.get("FOCUS_POINTS_THREAT_ACTORS", "").splitlines() if p.strip()]
+        values = {
+            "MISP_URL": getattr(_config, "MISP_URL", ""),
+            "MISP_KEY": getattr(_config, "MISP_KEY", ""),
+            "MISP_VERIFYCERT": getattr(_config, "MISP_VERIFYCERT", True),
+            "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []) or [],
+            "MISP_WEBAPP_URL": request.form.get("MISP_WEBAPP_URL", ""),
+            "MISP_WEBAPP_KEY": request.form.get("MISP_WEBAPP_KEY", ""),
+            "MISP_WEBAPP_VERIFYCERT": request.form.get("MISP_WEBAPP_VERIFYCERT") == "true",
+            "OPENAI_API_KEY": request.form.get("OPENAI_API_KEY", ""),
+            "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", ""),
+            "NOTIFICATION_CHANNELS": _read_notification_channels(),
+            "PRODUCT_TYPES": products,
+            "DAILY_BRIEFING_TITLE_EXCLUSIONS": exclusions,
+            "FOCUS_POINTS_GEOGRAPHIES": fp_geographies,
+            "FOCUS_POINTS_SECTORS": fp_sectors,
+            "FOCUS_POINTS_TECHNOLOGIES": fp_technologies,
+            "FOCUS_POINTS_THREAT_TYPES": fp_threat_types,
+            "FOCUS_POINTS_THREAT_ACTORS": fp_threat_actors,
+            "TAG_STAKEHOLDER": request.form.get("TAG_STAKEHOLDER", "").strip(),
+            "TAG_PIR": request.form.get("TAG_PIR", "").strip(),
+            "TAG_GIR": request.form.get("TAG_GIR", "").strip(),
+            "TAG_RFI": request.form.get("TAG_RFI", "").strip(),
+            "TAG_FLASH_INTEL": request.form.get("TAG_FLASH_INTEL", "").strip(),
+            "TAG_VEA": request.form.get("TAG_VEA", "").strip(),
+            "TAG_BRIEFING": request.form.get("TAG_BRIEFING", "").strip(),
+            "TAG_TLR": request.form.get("TAG_TLR", "").strip(),
+            "TAG_COLLECTION_FOLLOWUP": request.form.get("TAG_COLLECTION_FOLLOWUP", "").strip(),
+            "RECOMMENDED_ACTIONS_IMMEDIATE": [l.strip() for l in request.form.get("RECOMMENDED_ACTIONS_IMMEDIATE", "").splitlines() if l.strip()],
+            "RECOMMENDED_ACTIONS_NEAR_TERM": [l.strip() for l in request.form.get("RECOMMENDED_ACTIONS_NEAR_TERM", "").splitlines() if l.strip()],
+            "POLL_WINDOW_HOURS": int(request.form.get("POLL_WINDOW_HOURS", 24) or 24),
+            "SCRAPER_MARKER_TAG": request.form.get("SCRAPER_MARKER_TAG", ""),
+            "LOG_LEVEL": request.form.get("LOG_LEVEL", "INFO"),
+            "HOSTNAME": request.form.get("HOSTNAME", "0.0.0.0").strip(),
+            "PORT": int(request.form.get("PORT", 5000) or 5000),
+            "SSL_ENABLED": request.form.get("SSL_ENABLED") == "true",
+            "SSL_CERT": request.form.get("SSL_CERT", "certs/zsazsa.crt").strip(),
+            "SSL_KEY": request.form.get("SSL_KEY", "certs/zsazsa.key").strip(),
+        }
+        try:
+            _write(values)
+            importlib.reload(_config)
+            audit.record("update", "config", details="full configuration saved")
+            flash("Configuration saved. A backup was written to config/__init__.py.backup.", "success")
+        except Exception as exc:
+            logger.exception("config save failed")
+            audit.record("update", "config", details="save failed")
+            flash("Could not save configuration.", "warning")
+        return redirect(url_for("config_page.index"))
+
+    cfg = _read()
+    return render_template("config_page.html", cfg=cfg)
+
+
+@bp.route("/config/sources/save-scraper", methods=["POST"])
+def save_scraper_config():
+    """Save only the MISP scraper connection settings."""
+    current = _read()
+    current["MISP_URL"] = request.form.get("MISP_URL", "").strip()
+    current["MISP_KEY"] = request.form.get("MISP_KEY", "").strip()
+    current["MISP_VERIFYCERT"] = request.form.get("MISP_VERIFYCERT") == "true"
+    try:
+        current["MISP_SCRAPER_LIMIT"] = max(1, int(request.form.get("MISP_SCRAPER_LIMIT") or 500))
+    except (ValueError, TypeError):
+        current["MISP_SCRAPER_LIMIT"] = 500
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("update", "config", entity_label="misp-scraper")
+        flash("MISP scraper settings saved.", "success")
+    except Exception as exc:
+        logger.exception("save_scraper_config failed")
+        flash("Could not save configuration.", "warning")
+    return redirect(url_for("collection_sources.index"))
+
+
+@bp.route("/config/sources/save-server", methods=["POST"])
+@rate_limited("config_save_server", limit=60, window_s=60)
+def save_server_config():
+    """Add or update a single MISP server entry (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    original_id = (data.get("original_id") or "").strip()
+    label = (data.get("label") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not label and not url:
+        return jsonify({"ok": False, "error": "Label or URL required"}), 400
+    sid = (data.get("id") or "").strip()
+    if not sid:
+        sid = "".join(c.lower() if c.isalnum() else "-" for c in label).strip("-") or "server"
+    try:
+        since = max(1, min(3650, int(data.get("since_days") or 7)))
+    except (ValueError, TypeError):
+        since = 7
+    try:
+        limit = max(1, int(data.get("limit") or 500))
+    except (ValueError, TypeError):
+        limit = 500
+    try:
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+        enabled = _parse_bool(data.get("enabled", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    entry = {
+        "id": sid,
+        "label": label,
+        "url": url,
+        "api_key": (data.get("api_key") or "").strip(),
+        "verify_tls": verify_tls,
+        "enabled": enabled,
+        "tags": (data.get("tags") or "").strip(),
+        "tags_and": (data.get("tags_and") or "").strip(),
+        "tags_not": (data.get("tags_not") or "").strip(),
+        "org_filter_type": (data.get("org_filter_type") or "").strip(),
+        "org_filter": (data.get("org_filter") or "").strip(),
+        "since_days": since,
+        "limit": limit,
+    }
+    current = _read()
+    servers = list(current.get("MISP_SERVERS") or [])
+    action = "create"
+    if original_id:
+        for i, s in enumerate(servers):
+            if s.get("id") == original_id:
+                servers[i] = entry
+                action = "update"
+                break
+        if action == "create":
+            servers.append(entry)
+    else:
+        servers.append(entry)
+    current["MISP_SERVERS"] = servers
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record(action, "misp_server", entity_label=label)
+        return jsonify({"ok": True, "new_id": sid})
+    except Exception as exc:
+        logger.exception("save_server_config failed")
+        audit.record(action, "misp_server", entity_label=label, details="failed")
+        return jsonify({"ok": False, "error": "Could not save server settings."}), 500
+
+
+@bp.route("/config/sources/delete-server", methods=["POST"])
+@rate_limited("config_delete_server", limit=60, window_s=60)
+def delete_server_config():
+    """Remove a single MISP server entry by ID (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    server_id = (data.get("server_id") or "").strip()
+    if not server_id:
+        return jsonify({"ok": False, "error": "server_id required"}), 400
+    current = _read()
+    servers = current.get("MISP_SERVERS") or []
+    label = next((s.get("label", server_id) for s in servers if s.get("id") == server_id), server_id)
+    current["MISP_SERVERS"] = [s for s in servers if s.get("id") != server_id]
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("delete", "misp_server", entity_label=label)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        logger.exception("delete_server_config failed")
+        audit.record("delete", "misp_server", entity_label=label, details="failed")
+        return jsonify({"ok": False, "error": "Could not delete server."}), 500
+
+
+@bp.route("/config/test_misp_connection", methods=["POST"])
+@rate_limited("config_test_misp_connection", limit=20, window_s=60)
+def test_misp_connection():
+    data, err = _json_object()
+    if err:
+        return err
+    url = (data.get("url") or "").strip()
+    api_key = (data.get("api_key") or "").strip()
+    try:
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not url or not api_key:
+        return jsonify({"ok": False, "error": "URL and API key are required"}), 400
+    result = misp_store._test_connection(url, api_key, verify_tls)
+    audit.record("test", "misp_connection", entity_label=url, details="ok" if result.get("ok") else result.get("error"))
+    return jsonify(result)
+
+
+@bp.route("/config/server_usage")
+def server_usage():
+    """Return PIR/GIR counts that reference a given collection source label."""
+    label = request.args.get("label", "").strip()
+    if not label:
+        return jsonify({"ok": False, "error": "label required"}), 400
+    try:
+        pirs = misp_store.list_pirs()
+        girs = misp_store.list_girs()
+        pir_count = sum(1 for p in pirs if label in (p.collection_sources or []))
+        gir_count = sum(1 for g in girs if label in (g.collection_sources or []))
+        return jsonify({"ok": True, "pir_count": pir_count, "gir_count": gir_count,
+                        "in_use": (pir_count + gir_count) > 0})
+    except Exception as exc:
+        logger.exception("server_usage failed")
+        return jsonify({"ok": False, "error": "Could not compute server usage."}), 500
+
+
+@bp.route("/config/save-notification-channel", methods=["POST"])
+@rate_limited("config_save_notification_channel", limit=30, window_s=60)
+def save_notification_channel():
+    """Add or update a single notification channel entry (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    original_id = (data.get("original_id") or "").strip()
+    name = (data.get("name") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Name required"}), 400
+    cid = (data.get("id") or "").strip()
+    if not cid:
+        cid = "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-") or "channel"
+    try:
+        enabled = _parse_bool(data.get("enabled", True), default=True)
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    channel_type = (data.get("type") or "mattermost").strip().lower()
+    entry = {
+        "id": cid,
+        "name": name,
+        "type": channel_type,
+        "url": url,
+        "enabled": enabled,
+        "verify_tls": verify_tls,
+    }
+    current = _read()
+    channels = list(current.get("NOTIFICATION_CHANNELS") or [])
+    action = "create"
+    if original_id:
+        for i, ch in enumerate(channels):
+            if ch.get("id") == original_id:
+                channels[i] = entry
+                action = "update"
+                break
+        if action == "create":
+            channels.append(entry)
+    else:
+        channels.append(entry)
+    current["NOTIFICATION_CHANNELS"] = channels
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record(action, "notification_channel", entity_label=name)
+        return jsonify({"ok": True, "new_id": cid})
+    except Exception:
+        logger.exception("save_notification_channel failed")
+        return jsonify({"ok": False, "error": "Could not save notification channel."}), 500
+
+
+@bp.route("/config/delete-notification-channel", methods=["POST"])
+@rate_limited("config_delete_notification_channel", limit=30, window_s=60)
+def delete_notification_channel():
+    """Remove a notification channel by ID (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    channel_id = (data.get("channel_id") or "").strip()
+    if not channel_id:
+        return jsonify({"ok": False, "error": "channel_id required"}), 400
+    current = _read()
+    channels = current.get("NOTIFICATION_CHANNELS") or []
+    label = next((c.get("name", channel_id) for c in channels if c.get("id") == channel_id), channel_id)
+    current["NOTIFICATION_CHANNELS"] = [c for c in channels if c.get("id") != channel_id]
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("delete", "notification_channel", entity_label=label)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("delete_notification_channel failed")
+        return jsonify({"ok": False, "error": "Could not delete notification channel."}), 500
+
+
+@bp.route("/config/prompts", methods=["POST"])
+@rate_limited("config_save_prompts", limit=30, window_s=60)
+def save_prompts():
+    data, err = _json_object()
+    if err:
+        return err
+    prompts = data.get("prompts", [])
+    if not isinstance(prompts, list):
+        return jsonify({"ok": False, "error": "Invalid payload"}), 400
+    _PROMPTS_DIR.mkdir(exist_ok=True)
+    prompts_dir = _PROMPTS_DIR.resolve()
+    try:
+        for entry in prompts:
+            filename = (entry.get("filename") or "").strip()
+            content = entry.get("content") or ""
+            if not filename or not filename.endswith(".md"):
+                return jsonify({"ok": False, "error": f"Invalid filename: {filename!r}"}), 400
+            target = (prompts_dir / filename).resolve()
+            if target.parent != prompts_dir:
+                return jsonify({"ok": False, "error": f"Unsafe filename: {filename!r}"}), 400
+            target.write_text(content, encoding="utf-8")
+    except Exception:
+        logger.exception("save_prompts failed")
+        audit.record("update", "prompt_templates", details="failed")
+        return jsonify({"ok": False, "error": "Could not save prompt templates."}), 500
+    filenames = ", ".join(e.get("filename", "") for e in prompts if e.get("filename"))
+    audit.record("update", "prompt_templates", details=filenames or f"{len(prompts)} file(s)")
+    return jsonify({"ok": True})
+
+
+@bp.route("/config/save-ai-features", methods=["POST"])
+@rate_limited("config_save_ai_features", limit=20, window_s=60)
+def save_ai_features():
+    data, err = _json_object()
+    if err:
+        return err
+    features = data.get("features")
+    if not isinstance(features, dict):
+        return jsonify({"ok": False, "error": "Invalid payload"}), 400
+    try:
+        from core.ai_config import save as _ai_save, FEATURES
+        # Validate: only accept known feature IDs and safe field values
+        clean = {}
+        for fid, vals in features.items():
+            if fid not in FEATURES or not isinstance(vals, dict):
+                continue
+            model = (vals.get("model") or "").strip()
+            prompt = (vals.get("prompt") or "").strip()
+            if prompt and ("/" in prompt or "\\" in prompt):
+                return jsonify({"ok": False, "error": f"Invalid prompt filename: {prompt!r}"}), 400
+            clean[fid] = {"provider": "openai", "model": model, "prompt": prompt}
+        _ai_save(clean)
+
+        # Persist default model to config/__init__.py so it remains the fallback
+        default_model = (data.get("default_model") or "").strip()
+        if default_model:
+            current = _read()
+            current["OPENAI_MODEL"] = default_model
+            _write(current)
+            importlib.reload(_config)
+
+        audit.record("update", "ai_features", details=f"{len(clean)} feature(s) saved")
+        return jsonify({"ok": True})
+    except Exception as exc:
+        logger.exception("save_ai_features failed")
+        return jsonify({"ok": False, "error": "Could not save AI feature settings."}), 500

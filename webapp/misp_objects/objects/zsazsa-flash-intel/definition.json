@@ -1,0 +1,195 @@
+{
+  "name": "zsazsa-flash-intel",
+  "meta-category": "intelligence",
+  "description": "Flash Intel Alert (FIA) draft fields managed by the zsazsa CTI program",
+  "uuid": "9b1c2d3e-4f5a-4b6c-9d7e-8f9a0b1c2d3e",
+  "version": 1,
+  "attributes": {
+    "fia-id": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Unique FIA identifier (e.g. FIA-00042)",
+      "disable_correlation": true
+    },
+    "title": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "Short descriptive title of the alert",
+      "disable_correlation": true
+    },
+    "audience": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Primary audience (SOC, IR, VM, Executive, ...)",
+      "disable_correlation": true
+    },
+    "tlp": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "TLP classification (clear / green / amber / amber+strict / red)",
+      "disable_correlation": true
+    },
+    "summary": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "BLUF: what is happening, why it matters, what to do",
+      "disable_correlation": true
+    },
+    "action-required": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "One-sentence required action",
+      "disable_correlation": true
+    },
+    "what-happened": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "Observed facts (newline-separated)",
+      "disable_correlation": true
+    },
+    "source-description": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Free-text source description",
+      "disable_correlation": true
+    },
+    "source-reliability": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "Admiralty source reliability (A-F)",
+      "disable_correlation": true
+    },
+    "information-credibility": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "Admiralty information credibility (1-6)",
+      "disable_correlation": true
+    },
+    "likely-impact": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "Likely impact (availability, data loss, fraud, ...)",
+      "disable_correlation": true
+    },
+    "affected-assets": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "Affected systems, applications, teams, business processes",
+      "disable_correlation": true
+    },
+    "actor-context": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "Threat actor motivation or capability context",
+      "disable_correlation": true
+    },
+    "geographic-scope": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of geographic scope values",
+      "disable_correlation": true
+    },
+    "sectors": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of sector scope values",
+      "disable_correlation": true
+    },
+    "threat-actors": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of threat actor names",
+      "disable_correlation": true
+    },
+    "threat-types": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of threat type tags",
+      "disable_correlation": true
+    },
+    "technology": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of technology scope values",
+      "disable_correlation": true
+    },
+    "vendor": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of vendor scope values",
+      "disable_correlation": true
+    },
+    "incident": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of related incident identifiers",
+      "disable_correlation": true
+    },
+    "campaign": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of related campaign names",
+      "disable_correlation": true
+    },
+    "actions-immediate": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "Immediate (0-24h) actions, newline-separated",
+      "disable_correlation": true
+    },
+    "actions-near-term": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Near-term (1-7d) actions, newline-separated",
+      "disable_correlation": true
+    },
+    "mitre-techniques": {
+      "misp-attribute": "text",
+      "ui-priority": 15,
+      "description": "Relevant MITRE ATT&CK techniques (Txxxx: name) one per line",
+      "disable_correlation": true
+    },
+    "hunting-hypotheses": {
+      "misp-attribute": "text",
+      "ui-priority": 16,
+      "description": "Hunting hypotheses (log source: what to search for) one per line",
+      "disable_correlation": true
+    },
+    "external-references": {
+      "misp-attribute": "text",
+      "ui-priority": 17,
+      "description": "External resource URLs (one per line)",
+      "disable_correlation": true
+    },
+    "feedback-deadline": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "Date by which feedback should be returned (ISO 8601)",
+      "disable_correlation": true
+    },
+    "author": {
+      "misp-attribute": "text",
+      "ui-priority": 19,
+      "description": "Analyst who authored the alert",
+      "disable_correlation": true
+    },
+    "review-state": {
+      "misp-attribute": "text",
+      "ui-priority": 20,
+      "description": "Review state (draft / pending-review / approved / rejected)",
+      "disable_correlation": true
+    },
+    "rejection-reason": {
+      "misp-attribute": "text",
+      "ui-priority": 21,
+      "description": "If rejected, why",
+      "disable_correlation": true
+    },
+    "source-event-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 22,
+      "description": "JSON array of originating scraper event UUIDs",
+      "disable_correlation": true
+    }
+  }
+}

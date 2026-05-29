@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block misp_object_url %}{{ misp_url }}{% endblock %}
+
+{% block title %}Manual entry: {{ event.info }} | zsazsa CTI{% endblock %}
+{% block page_title %}Manual collection entry{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back to collection
+</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="row g-4">
+
+  <!-- Left column: event summary -->
+  <div class="col-lg-8">
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-circle-info me-2"></i>{{ event.info }}</span>
+        <span class="text-muted small font-monospace">{{ event.uuid }}</span>
+      </div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <span class="text-muted small"><i class="fas fa-calendar me-1"></i>{{ event.date }}</span>
+          {% if event.source_provider %}
+          <span class="text-muted small"><i class="fas fa-building me-1"></i>{{ event.source_provider }}</span>
+          {% endif %}
+          {% for t in event.tags %}
+            {% if t.startswith('tlp:') %}
+            <span class="badge" style="background:#0078f1;">{{ t | upper }}</span>
+            {% elif t.startswith('zsazsa:source=') %}
+            <span class="badge text-bg-secondary">{{ t }}</span>
+            {% elif t.startswith('zsazsa:source-type=') %}
+            <span class="badge text-bg-light text-muted border">{{ t }}</span>
+            {% else %}
+            <span class="badge text-bg-light text-muted border" style="font-size:.72rem;">{{ t }}</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {% if event.reports %}
+        <div class="mb-0">
+          {% for r in event.reports %}
+          <div class="mb-2">
+            <div class="fw-semibold small text-muted mb-1"><i class="fas fa-file-lines me-1"></i>{{ r.name }}</div>
+            <div class="report-md-body border rounded p-3" data-md="{{ r.content | e }}"
+                 style="font-size:.9rem;max-height:30rem;overflow-y:auto;"></div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+    {% set url_attrs = event.attributes | selectattr("type", "equalto", "url") | list %}
+    {% set file_attrs = event.attributes | selectattr("type", "equalto", "attachment") | list %}
+
+    {% if url_attrs %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-link me-2"></i>External references</div>
+      <div class="card-body">
+        <ul class="mb-0 small">
+          {% for a in url_attrs %}
+          <li><a href="{{ a.value | e }}" target="_blank" rel="noopener">{{ a.value }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if file_attrs %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-paperclip me-2"></i>Attachments</div>
+      <div class="card-body">
+        <ul class="mb-0 small">
+          {% for a in file_attrs %}
+          <li><i class="fas fa-file me-1 text-muted"></i>{{ a.value }}
+            <span class="text-muted ms-1 font-monospace" style="font-size:.7rem;">{{ a.uuid }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right column: add attachments -->
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-paperclip me-2"></i>Add attachment</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('data_collection.manual_attach', uuid=event.uuid) }}"
+              enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label">File</label>
+            <input type="file" name="attachment" class="form-control" required>
+            <div class="form-text">Stored as an attachment attribute on the MISP event.</div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="fas fa-upload me-1"></i> Upload
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-share-nodes me-2"></i>Use as source</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Add this event as a source to a new product.
+        </p>
+        <a href="{{ url_for('flash_intel.wizard_new') }}?source={{ event.uuid }}"
+           class="btn btn-outline-primary w-100 mb-2">
+          <i class="fas fa-bolt me-1"></i> New flash intel
+        </a>
+        <a href="{{ url_for('vea.wizard_new') }}?source={{ event.uuid }}"
+           class="btn btn-outline-secondary w-100">
+          <i class="fas fa-shield-halved me-1"></i> New VEA
+        </a>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('data_collection.manual_new') }}" class="btn btn-outline-secondary flex-fill">
+        <i class="fas fa-plus me-1"></i> Add another
+      </a>
+      <a href="{{ url_for('data_collection.index') }}" class="btn btn-secondary flex-fill">
+        <i class="fas fa-check me-1"></i> Done
+      </a>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+  document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+    var raw = el.getAttribute('data-md') || '';
+    el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+    el.removeAttribute('data-md');
+  });
+})();
+</script>
+{% endblock %}

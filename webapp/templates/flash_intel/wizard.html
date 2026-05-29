@@ -1,0 +1,828 @@
+{% extends "base.html" %}
+{% from "_macros.html" import galaxy_multiselect, tag_input %}
+
+{% set title_text = ('Edit ' + fia.fia_id) if is_edit else 'New flash intel alert' %}
+{% block title %}{{ title_text }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ title_text }}{% endblock %}
+
+{% macro lines(items) %}{{ (items or []) | join('\n') }}{% endmacro %}
+
+{% block content %}
+<form method="post" class="row g-4" id="fia-form">
+
+  <div class="col-lg-8">
+
+    {% if source_events %}
+    {% set any_reports = source_events | selectattr('reports') | list | length > 0 %}
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center"
+           id="source-events-header" style="cursor:pointer;" title="Click to expand/collapse">
+        <span><i class="fas fa-database me-2"></i>Source events ({{ source_events | length }})</span>
+        <div class="d-flex gap-2 align-items-center">
+          {% if not is_edit %}
+          <div class="btn-group" id="build-ai-group" role="group">
+            <button type="button" class="btn btn-sm btn-outline-success" id="build-ai-btn"
+                    data-source-uuids='{{ source_events | map(attribute="uuid") | list | tojson }}'
+                    {% if not any_reports %}disabled{% endif %}>
+              <i class="fas fa-wand-magic-sparkles me-1"></i>Build with AI
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle dropdown-toggle-split"
+                    id="build-ai-mode-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+                    {% if not any_reports %}disabled{% endif %}>
+              <span class="visually-hidden">Build options</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end p-1" style="min-width:270px;" id="build-ai-menu">
+              <li class="px-3 pt-2 pb-1">
+                <span style="font-size:.62rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;">Report source</span>
+              </li>
+              <li>
+                <a class="dropdown-item rounded-2 py-2 build-ai-option" href="#" data-mode="both">
+                  <div class="d-flex align-items-start gap-2">
+                    <span class="build-ai-check" style="width:13px;font-size:.75rem;color:#16a34a;visibility:visible;">&#10003;</span>
+                    <i class="fas fa-layer-group" style="color:#16a34a;margin-top:2px;width:13px;font-size:.8rem;"></i>
+                    <div>
+                      <div style="font-size:.78rem;font-weight:600;">AI summary + raw report</div>
+                      <div class="text-muted" style="font-size:.67rem;line-height:1.35;">Uses the AI summary when available, combined with the full article</div>
+                    </div>
+                  </div>
+                </a>
+              </li>
+              <li><hr class="dropdown-divider mx-2 my-1"></li>
+              <li>
+                <a class="dropdown-item rounded-2 py-2 build-ai-option" href="#" data-mode="raw_only">
+                  <div class="d-flex align-items-start gap-2">
+                    <span class="build-ai-check" style="width:13px;font-size:.75rem;color:#16a34a;visibility:hidden;">&#10003;</span>
+                    <i class="fas fa-file-lines" style="color:#64748b;margin-top:2px;width:13px;font-size:.8rem;"></i>
+                    <div>
+                      <div style="font-size:.78rem;font-weight:600;">Raw report only</div>
+                      <div class="text-muted" style="font-size:.67rem;line-height:1.35;">Ignores AI summaries; uses only the original scraped article</div>
+                    </div>
+                  </div>
+                </a>
+              </li>
+            </ul>
+          </div>
+          {% endif %}
+          <button type="button" class="btn btn-xs btn-link text-muted p-0" id="source-events-toggle">
+            <i class="fas fa-chevron-down me-1"></i>Show
+          </button>
+        </div>
+      </div>
+      {% if not any_reports %}
+      <div class="d-flex align-items-start gap-2 px-3 py-2"
+           style="background:linear-gradient(90deg,#fef3c7,#fffbeb);border-bottom:1px solid #fde68a;">
+        <i class="fas fa-circle-exclamation flex-shrink-0" style="color:#d97706;font-size:1rem;margin-top:2px;"></i>
+        <div style="font-size:.82rem;line-height:1.5;color:#78350f;">
+          <strong>No reports available in these events.</strong>
+          AI generation requires at least one event with a scraped report attached.
+          You can still compose <strong>Observed facts</strong> manually by using the
+          <i class="fas fa-plus" style="font-size:.7rem;"></i> buttons next to attributes below.
+        </div>
+      </div>
+      {% endif %}
+      <div id="source-events-accordion" style="display:none;">
+        <div class="accordion accordion-flush" id="src-acc">
+          {% for ev in source_events %}
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button {{ 'collapsed' if not loop.first }} py-2 small fw-semibold" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#src-acc-{{ loop.index }}"
+                      aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                <span class="font-monospace text-muted me-2" style="font-size:.72rem;">{{ ev.uuid[:8] }}…</span>
+                {{ ev.info or '(untitled)' }}
+                {% if ev.date %}<span class="text-muted ms-2 fw-normal" style="font-size:.75rem;">{{ ev.date }}</span>{% endif %}
+                {% if ev.orgc %}<span class="badge text-bg-secondary ms-2 fw-normal" style="font-size:.65rem;">{{ ev.orgc }}</span>{% endif %}
+                {% if ev.source_label %}<span class="badge text-bg-light text-muted ms-1 fw-normal" style="font-size:.62rem;">{{ ev.source_label }}</span>{% endif %}
+              </button>
+            </h2>
+            <div id="src-acc-{{ loop.index }}" class="accordion-collapse collapse {{ 'show' if loop.first }}" data-bs-parent="#src-acc">
+              <div class="accordion-body py-2 px-3"
+                   data-ev-id="{{ ev.uuid }}" data-ev-info="{{ ev.info | e }}">
+                {% if ev.tags %}
+                <div class="mb-2">
+                  {% for t in ev.tags %}
+                  <span class="badge me-1" style="background:#eef2f7;color:#455a7a;font-size:.7rem;">{{ t }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if ev.reports %}
+                <div class="mb-3">
+                  <div class="fw-semibold small mb-1"><i class="fas fa-file-lines me-1 text-muted"></i>Reports</div>
+                  {% for r in ev.reports %}
+                  <div class="border rounded p-2 mb-2 small">
+                    <div class="fw-semibold mb-1">{{ r.name }}</div>
+                    <div class="report-md-body text-muted" data-md="{{ r.content | truncate(2000, True) }}"
+                         style="font-size:.82rem;max-height:12rem;overflow-y:auto;"></div>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if ev.attributes %}
+                <div class="mb-3">
+                  <div class="fw-semibold small mb-1"><i class="fas fa-list me-1 text-muted"></i>Attributes ({{ ev.attributes | length }})</div>
+                  <div style="max-height:14rem;overflow-y:auto;">
+                    <table class="table table-sm table-borderless mb-0" style="font-size:.78rem;">
+                      <tbody>
+                        {% for a in ev.attributes %}
+                        <tr>
+                          <td style="width:1.5rem;padding-right:0;">
+                            <button type="button" class="btn btn-xs btn-outline-secondary add-fact-btn p-0"
+                                    style="font-size:.65rem;line-height:1.4;padding:.1rem .3rem!important;"
+                                    title="Add to observed facts"
+                                    data-value="{{ a.value | e }}" data-type="{{ a.type | e }}">
+                              <i class="fas fa-plus"></i>
+                            </button>
+                          </td>
+                          <td class="text-muted pe-2" style="white-space:nowrap;">{{ a.category }}</td>
+                          <td class="text-muted pe-2 font-monospace" style="white-space:nowrap;font-size:.72rem;">{{ a.type }}</td>
+                          <td class="font-monospace" style="word-break:break-all;">{{ a.value }}</td>
+                          {% if a.comment %}<td class="text-muted ps-2" style="font-size:.72rem;">{{ a.comment }}</td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                {% endif %}
+
+                {% if ev.objects %}
+                <div>
+                  <div class="fw-semibold small mb-1"><i class="fas fa-cube me-1 text-muted"></i>Objects ({{ ev.objects | length }})</div>
+                  {% for obj in ev.objects %}
+                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;">
+                    <div class="fw-semibold mb-1">{{ obj.name }}</div>
+                    <table class="table table-sm table-borderless mb-0" style="font-size:.75rem;">
+                      <tbody>
+                        {% for a in obj.attributes %}
+                        <tr>
+                          <td style="width:1.5rem;padding-right:0;">
+                            <button type="button" class="btn btn-xs btn-outline-secondary add-fact-btn p-0"
+                                    style="font-size:.65rem;line-height:1.4;padding:.1rem .3rem!important;"
+                                    title="Add to observed facts"
+                                    data-value="{{ a.value | e }}" data-type="{{ a.relation | e }}">
+                              <i class="fas fa-plus"></i>
+                            </button>
+                          </td>
+                          <td class="text-muted pe-2" style="white-space:nowrap;">{{ a.relation }}</td>
+                          <td class="font-monospace" style="word-break:break-all;">{{ a.value }}</td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-bullseye me-2"></i>Summary</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required-label">Summary (BLUF)</label>
+          <textarea name="summary" class="form-control" rows="3" required
+            placeholder="What is happening, why it matters, what to do - 2-4 sentences.">{{ fia.summary if fia else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Action required</label>
+          <input name="action_required" class="form-control"
+            placeholder="One sentence: what should the audience do right now?"
+            value="{{ fia.action_required if fia else '' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-magnifying-glass me-2"></i>What happened</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Observed facts</label>
+          <textarea name="what_happened" class="form-control" rows="4"
+            placeholder="One fact per line.">{{ lines(fia.what_happened) if fia else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Source description</label>
+          <textarea name="source_description" class="form-control" rows="2"
+            placeholder="Origin of the information (OSINT, partner, internal telemetry…).">{{ fia.source_description if fia else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-triangle-exclamation me-2"></i>Why it matters</div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label">Likely impact</label>
+            <input name="likely_impact" class="form-control"
+              value="{{ fia.likely_impact if fia else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Affected assets</label>
+            <input name="affected_assets" class="form-control"
+              value="{{ fia.affected_assets if fia else '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Threat actor context</label>
+            <textarea name="actor_context" class="form-control" rows="2">{{ fia.actor_context if fia else '' }}</textarea>
+          </div>
+        </div>
+
+        <hr class="my-3">
+        <p class="small text-muted mb-3"><i class="fas fa-crosshairs me-1"></i>Scope: which geography, sectors, and threat actors are relevant to this alert.</p>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Geographic scope</label>
+            <div class="gms-wrapper" style="max-height:180px;overflow-y:auto;border:1px solid var(--bs-border-color);border-radius:.375rem;padding:.5rem;">
+              {{ galaxy_multiselect("geographic_scope",
+                  values=(fia.geographic_scope if fia else []),
+                  items=geo_items) }}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Sector scope</label>
+            <div class="gms-wrapper" style="max-height:180px;overflow-y:auto;border:1px solid var(--bs-border-color);border-radius:.375rem;padding:.5rem;">
+              {{ galaxy_multiselect("sectors",
+                  values=(fia.sectors if fia else []),
+                  items=sector_items) }}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Threat actors</label>
+            <div class="gms-wrapper" style="max-height:180px;overflow-y:auto;border:1px solid var(--bs-border-color);border-radius:.375rem;padding:.5rem;">
+              {{ galaxy_multiselect("threat_actors",
+                  values=(fia.threat_actors if fia else []),
+                  items=threat_actor_items) }}
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Threat types</label>
+            {{ tag_input("threat_types", values=(fia.threat_types if fia else [])) }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Technology</label>
+            {{ tag_input("technology", values=(fia.technology if fia else [])) }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Vendor</label>
+            {{ tag_input("vendor", values=(fia.vendor if fia else [])) }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Incident</label>
+            {{ tag_input("incident", values=(fia.incident if fia else [])) }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Campaign</label>
+            {{ tag_input("campaign", values=(fia.campaign if fia else [])) }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-list-check me-2"></i>Recommended actions</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Immediate (0–24h)</label>
+            {% if action_presets_immediate %}
+            <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;">
+              <div class="small text-muted mb-1">Presets (click to append):</div>
+              {% for p in action_presets_immediate %}
+              <button type="button" class="btn btn-xs btn-outline-secondary me-1 mb-1 action-preset-btn"
+                      data-target="actions_immediate" data-text="{{ p | e }}">{{ p }}</button>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <textarea name="actions_immediate" id="actions_immediate" class="form-control" rows="4"
+              placeholder="One action per line.">{{ lines(fia.actions_immediate) if fia else '' }}</textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Near-term (1–7d)</label>
+            {% if action_presets_near_term %}
+            <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;">
+              <div class="small text-muted mb-1">Presets (click to append):</div>
+              {% for p in action_presets_near_term %}
+              <button type="button" class="btn btn-xs btn-outline-secondary me-1 mb-1 action-preset-btn"
+                      data-target="actions_near_term" data-text="{{ p | e }}">{{ p }}</button>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <textarea name="actions_near_term" id="actions_near_term" class="form-control" rows="4"
+              placeholder="One action per line.">{{ lines(fia.actions_near_term) if fia else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-radar me-2"></i>Detection guidance</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">MITRE ATT&amp;CK techniques</label>
+            <textarea name="mitre_techniques" class="form-control" rows="4"
+              placeholder="T1059: Command and Scripting Interpreter">{{ lines(fia.mitre_techniques) if fia else '' }}</textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Hunting hypotheses</label>
+            <textarea name="hunting_hypotheses" class="form-control" rows="4"
+              placeholder="EDR: process spawning powershell with -enc">{{ lines(fia.hunting_hypotheses) if fia else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-book me-2"></i>References &amp; feedback</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">External references</label>
+          <div id="ref-list">
+            {% for r in (fia.external_references if fia else []) %}
+            <div class="ref-row d-flex gap-2 mb-2">
+              <input type="text" name="external_reference_item" class="form-control form-control-sm font-monospace"
+                     value="{{ r }}">
+              <button type="button" class="btn btn-sm btn-outline-danger ref-remove">
+                <i class="fas fa-minus"></i>
+              </button>
+            </div>
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="ref-add">
+            <i class="fas fa-plus me-1"></i>Add reference
+          </button>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Source MISP event UUIDs <span class="text-muted small">(optional)</span></label>
+          <div id="uuid-list">
+            {% for u in (fia.source_event_uuids if fia else []) %}
+            <div class="uuid-row d-flex gap-2 mb-2">
+              <input type="text" name="source_event_uuid_item" class="form-control form-control-sm font-monospace"
+                     placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="{{ u }}">
+              <button type="button" class="btn btn-sm btn-outline-danger uuid-remove">
+                <i class="fas fa-minus"></i>
+              </button>
+            </div>
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="uuid-add">
+            <i class="fas fa-plus me-1"></i>Add UUID
+          </button>
+        </div>
+
+        {% set saved_ctx_tags = (fia.context_tags if fia else []) %}
+        {% set all_ctx_tags = (source_event_tags + saved_ctx_tags) | unique | sort | list %}
+        {% if all_ctx_tags %}
+        <div class="mb-3">
+          <label class="form-label">Context tags <span class="text-muted small fw-normal">select tags from source events to include in this alert</span></label>
+          <div class="d-flex flex-wrap gap-2 p-2 border rounded" style="background:#f8f9fa;">
+            {% for t in all_ctx_tags %}
+            <div class="form-check mb-0">
+              <input type="checkbox" name="context_tags" value="{{ t }}" class="form-check-input"
+                     id="ctx-tag-{{ loop.index }}"
+                     {{ 'checked' if t in saved_ctx_tags }}>
+              <label class="form-check-label small" for="ctx-tag-{{ loop.index }}">{{ t }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <div>
+          <label class="form-label">Feedback deadline</label>
+          <input type="date" name="feedback_deadline" class="form-control"
+            value="{{ fia.feedback_deadline.isoformat() if fia and fia.feedback_deadline else '' }}">
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-bolt me-2"></i>Alert</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required-label">Title</label>
+          <input name="title" class="form-control" required
+            placeholder="Short, decision-oriented headline."
+            value="{{ fia.title if fia else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Audience
+            <span class="text-muted small" data-bs-toggle="tooltip"
+              title="Audience corresponds to the stakeholder role, e.g. SOC, IR, VM, Executive.">
+              <i class="fas fa-circle-info ms-1"></i>
+            </span>
+          </label>
+          {% set current_audiences = (fia.audience or '').split(', ') if fia else [] %}
+          <div class="d-flex flex-wrap gap-2 mt-1">
+            {% for a in audiences %}
+            <div class="form-check form-check-inline me-0">
+              <input class="form-check-input" type="checkbox" name="audience" value="{{ a }}"
+                     id="aud-{{ loop.index }}"
+                     {{ 'checked' if a in current_audiences }}>
+              <label class="form-check-label small" for="aud-{{ loop.index }}">{{ a }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          <div id="fia-audience-warn" class="text-danger small mt-1" style="display:none;">
+            <i class="fas fa-triangle-exclamation me-1"></i>Select at least one audience.
+          </div>
+          <div class="form-text">Corresponds to the stakeholder <strong>role</strong>. Select all that apply.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">TLP</label>
+          <select name="tlp" class="form-select">
+            {% for t in tlp_levels %}
+            <option value="{{ t }}" {{ 'selected' if fia and fia.tlp == t else ('selected' if not fia and t == 'amber') }}>TLP:{{ t | upper }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Linked PIR</label>
+          <select name="linked_pir_uuid" class="form-select">
+            <option value="">(none)</option>
+            {% for p in pirs %}
+            <option value="{{ p.uuid }}" {{ 'selected' if fia and fia.linked_pir_uuid == p.uuid }}>{{ p.pir_id }}: {{ p.question | truncate(50) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Source assessment</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Source reliability
+            <span class="text-muted small">(Admiralty A–F)</span>
+          </label>
+          <select name="source_reliability" class="form-select">
+            <option value="">-</option>
+            {% for r in reliabilities %}
+            <option value="{{ r }}" {{ 'selected' if fia and fia.source_reliability == r }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Information credibility
+            <span class="text-muted small">(Admiralty 1–6)</span>
+          </label>
+          <select name="information_credibility" class="form-select">
+            <option value="">-</option>
+            {% for c in credibilities %}
+            <option value="{{ c }}" {{ 'selected' if fia and fia.information_credibility == c }}>{{ c }}</option>
+            {% endfor %}
+          </select>
+          <div id="credibility-justification" class="form-text mt-1" style="display:none;">
+            <i class="fas fa-circle-info fa-xs me-1 text-muted"></i><span id="credibility-justification-text"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user me-2"></i>Attribution</div>
+      <div class="card-body">
+        <label class="form-label">Author</label>
+        <input name="author" class="form-control" value="{{ fia.author if fia else '' }}">
+      </div>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button type="submit" name="action" value="submit" class="btn btn-primary" id="btn-fia-submit">
+        <i class="fas fa-paper-plane me-1"></i> Submit for review
+      </button>
+      <button type="submit" name="action" value="save" class="btn btn-outline-secondary" id="btn-fia-save">
+        <i class="fas fa-floppy-disk me-1"></i> Save draft
+      </button>
+      {% if is_edit %}
+      <button type="submit" name="action" value="publish" class="btn btn-success" id="btn-fia-publish">
+        <i class="fas fa-check-circle me-1"></i> Publish &amp; notify
+      </button>
+      {% endif %}
+      <a href="{{ url_for('flash_intel.review') }}" class="btn btn-link">Cancel</a>
+    </div>
+
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  // Render report markdown bodies
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+    document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+      var raw = el.getAttribute('data-md') || '';
+      el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '<em class="text-muted">No content.</em>';
+      el.removeAttribute('data-md');
+    });
+  }
+
+  // Dynamic external reference rows
+  var refList = document.getElementById('ref-list');
+  document.getElementById('ref-add').addEventListener('click', function() {
+    var row = document.createElement('div');
+    row.className = 'ref-row d-flex gap-2 mb-2';
+    row.innerHTML = '<input type="text" name="external_reference_item" class="form-control form-control-sm font-monospace" placeholder="https://">'
+      + '<button type="button" class="btn btn-sm btn-outline-danger ref-remove"><i class="fas fa-minus"></i></button>';
+    refList.appendChild(row);
+  });
+  refList.addEventListener('click', function(e) {
+    var btn = e.target.closest('.ref-remove');
+    if (btn) btn.closest('.ref-row').remove();
+  });
+
+  // Dynamic source UUID rows
+  var uuidList = document.getElementById('uuid-list');
+  document.getElementById('uuid-add').addEventListener('click', function() {
+    var row = document.createElement('div');
+    row.className = 'uuid-row d-flex gap-2 mb-2';
+    row.innerHTML = '<input type="text" name="source_event_uuid_item" class="form-control form-control-sm font-monospace" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">'
+      + '<button type="button" class="btn btn-sm btn-outline-danger uuid-remove"><i class="fas fa-minus"></i></button>';
+    uuidList.appendChild(row);
+  });
+  uuidList.addEventListener('click', function(e) {
+    var btn = e.target.closest('.uuid-remove');
+    if (btn) btn.closest('.uuid-row').remove();
+  });
+
+  // Bootstrap tooltips
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el);
+  });
+
+  // Source events accordion toggle (button + entire header)
+  var srcToggleBtn = document.getElementById('source-events-toggle');
+  var srcAccordion = document.getElementById('source-events-accordion');
+  var srcHeader = document.getElementById('source-events-header');
+  if (srcToggleBtn && srcAccordion) {
+    var srcOpen = false;
+    function toggleSrcAccordion() {
+      srcOpen = !srcOpen;
+      srcAccordion.style.display = srcOpen ? '' : 'none';
+      srcToggleBtn.innerHTML = srcOpen
+        ? '<i class="fas fa-chevron-up me-1"></i>Hide'
+        : '<i class="fas fa-chevron-down me-1"></i>Show';
+    }
+    srcToggleBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleSrcAccordion(); });
+    if (srcHeader) {
+      srcHeader.addEventListener('click', function(e) {
+        if (e.target.closest('#source-events-toggle')) return;
+        if (e.target.closest('#build-ai-btn')) return;
+        toggleSrcAccordion();
+      });
+    }
+  }
+
+  // Action preset buttons - append text to target textarea
+  document.querySelectorAll('.action-preset-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var targetId = btn.dataset.target;
+      var text = btn.dataset.text;
+      var ta = document.getElementById(targetId);
+      if (!ta) return;
+      var cur = ta.value.trimEnd();
+      ta.value = cur ? cur + '\n' + text : text;
+    });
+  });
+
+  // Add to observed facts - builds/updates a Markdown table
+  function escCell(s) { return String(s).replace(/\|/g, '\\|'); }
+  function insertTableRow(ta, cols) {
+    var newRow = '| ' + cols.map(escCell).join(' | ') + ' |';
+    var lines = ta.value.split('\n');
+    var lastTableLine = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trimStart().charAt(0) === '|') lastTableLine = i;
+    }
+    if (lastTableLine >= 0) {
+      lines.splice(lastTableLine + 1, 0, newRow);
+      ta.value = lines.join('\n');
+    } else {
+      var header = '| Type | Value | Source |';
+      var sep    = '| --- | --- | --- |';
+      var trimmed = ta.value.trimEnd();
+      ta.value = trimmed ? trimmed + '\n\n' + header + '\n' + sep + '\n' + newRow
+                         : header + '\n' + sep + '\n' + newRow;
+    }
+  }
+
+  document.querySelectorAll('.add-fact-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var body = btn.closest('[data-ev-id]');
+      var evId = body ? body.dataset.evId : '';
+      var evInfo = body ? body.dataset.evInfo : '';
+      var val = btn.dataset.value || '';
+      var type = btn.dataset.type || '';
+      var source = evId ? '[' + evId.slice(0, 8) + '] ' + evInfo : evInfo;
+      var ta = document.querySelector('[name="what_happened"]');
+      if (!ta) return;
+      insertTableRow(ta, [type, val, source]);
+      btn.classList.add('btn-secondary');
+      btn.classList.remove('btn-outline-secondary');
+    });
+  });
+
+  // tiRender / tiAdd for tag_input fields
+  function tiRender(field) {
+    var display = document.getElementById('ti-display-' + field);
+    var store = document.getElementById('ti-store-' + field);
+    if (!display || !store) return;
+    display.innerHTML = '';
+    store.querySelectorAll('input[type="hidden"]').forEach(function(inp) {
+      var pill = document.createElement('span');
+      pill.className = 'badge text-bg-secondary me-1 mb-1';
+      pill.style.fontSize = '.78rem';
+      var txt = document.createTextNode(inp.value + ' ');
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn-close btn-close-white ms-1'; btn.style.fontSize = '.5rem';
+      btn.onclick = function() { inp.remove(); tiRender(field); };
+      pill.appendChild(txt); pill.appendChild(btn);
+      display.appendChild(pill);
+    });
+  }
+  function tiAdd(field) {
+    var text = document.getElementById('ti-text-' + field);
+    var store = document.getElementById('ti-store-' + field);
+    if (!text || !store) return;
+    var val = text.value.trim();
+    if (!val) return;
+    var existing = Array.from(store.querySelectorAll('input')).map(function(i) { return i.value; });
+    if (!existing.includes(val)) {
+      var h = document.createElement('input');
+      h.type = 'hidden'; h.name = field; h.value = val;
+      store.appendChild(h);
+      tiRender(field);
+    }
+    text.value = ''; text.focus();
+  }
+  document.querySelectorAll('[data-ti-field]').forEach(function(w) {
+    var f = w.dataset.tiField;
+    tiRender(f);
+    var t = document.getElementById('ti-text-' + f);
+    if (t) t.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); tiAdd(f); } });
+  });
+
+  // ── Build with AI ──────────────────────────────────────────────
+  var buildAiBtn        = document.getElementById('build-ai-btn');
+  var buildAiModeToggle = document.getElementById('build-ai-mode-toggle');
+  var currentBuildMode  = 'both';
+
+  function updateBuildModeUI() {
+    document.querySelectorAll('.build-ai-option').forEach(function(opt) {
+      var check = opt.querySelector('.build-ai-check');
+      if (check) check.style.visibility = opt.dataset.mode === currentBuildMode ? 'visible' : 'hidden';
+    });
+  }
+
+  function runBuildAi(mode) {
+    var sourceUuids = JSON.parse(buildAiBtn.dataset.sourceUuids || '[]');
+    if (!sourceUuids.length) { alert('No source event UUIDs found.'); return; }
+
+    var originalHtml = buildAiBtn.innerHTML;
+    buildAiBtn.disabled = true;
+    if (buildAiModeToggle) buildAiModeToggle.disabled = true;
+    buildAiBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Building…';
+
+    var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+    function setField(name, val) {
+      var el = document.querySelector('[name="' + name + '"]');
+      if (el && val) el.value = val;
+    }
+    function setSelect(name, val) {
+      var el = document.querySelector('select[name="' + name + '"]');
+      if (!el || !val) return;
+      for (var i = 0; i < el.options.length; i++) {
+        if (el.options[i].value.toUpperCase() === val.toUpperCase()) { el.selectedIndex = i; break; }
+      }
+    }
+    function checkGalaxy(field, values) {
+      if (!values || !values.length) return;
+      var lower = values.map(function(v) { return v.toLowerCase(); });
+      document.querySelectorAll('[name="' + field + '"]').forEach(function(cb) {
+        if (lower.indexOf(cb.value.toLowerCase()) !== -1) cb.checked = true;
+      });
+    }
+    function setTi(field, values) {
+      if (!values || !values.length) return;
+      var store = document.getElementById('ti-store-' + field);
+      if (!store) return;
+      var existing = Array.from(store.querySelectorAll('input')).map(function(i) { return i.value; });
+      values.forEach(function(val) {
+        if (val && !existing.includes(val)) {
+          var h = document.createElement('input');
+          h.type = 'hidden'; h.name = field; h.value = val;
+          store.appendChild(h);
+        }
+      });
+      tiRender(field);
+    }
+
+    function resetBtn() {
+      buildAiBtn.disabled = false;
+      if (buildAiModeToggle) buildAiModeToggle.disabled = false;
+      buildAiBtn.innerHTML = originalHtml;
+    }
+
+    fetch('/api/build-fia', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+      body: JSON.stringify({source_uuids: sourceUuids, report_mode: mode}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      resetBtn();
+      if (data.error) { alert('AI build failed: ' + data.error); return; }
+      var f = data.fields || {};
+
+      setField('title', f.title);
+      setField('summary', f.summary);
+      setField('action_required', f.action_required);
+      setField('what_happened', f.what_happened);
+      setField('source_description', f.source_description);
+      setField('likely_impact', f.likely_impact);
+      setField('affected_assets', f.affected_assets);
+      setField('actor_context', f.actor_context);
+      setField('actions_immediate', f.actions_immediate);
+      setField('actions_near_term', f.actions_near_term);
+      setField('mitre_techniques', f.mitre_techniques);
+      setField('hunting_hypotheses', f.hunting_hypotheses);
+      setSelect('source_reliability', f.source_reliability);
+      setSelect('information_credibility', f.information_credibility);
+      var justEl   = document.getElementById('credibility-justification');
+      var justText = document.getElementById('credibility-justification-text');
+      if (justEl && justText) {
+        if (f.credibility_justification) {
+          justText.textContent = f.credibility_justification;
+          justEl.style.display = '';
+        } else {
+          justEl.style.display = 'none';
+        }
+      }
+      checkGalaxy('geographic_scope', f.geographic_scope);
+      checkGalaxy('sectors', f.sectors);
+      checkGalaxy('threat_actors', f.threat_actors);
+
+      buildAiBtn.innerHTML = '<i class="fas fa-check me-1"></i>Done';
+      buildAiBtn.classList.remove('btn-outline-success');
+      buildAiBtn.classList.add('btn-success');
+      setTimeout(function() {
+        buildAiBtn.innerHTML = originalHtml;
+        buildAiBtn.classList.remove('btn-success');
+        buildAiBtn.classList.add('btn-outline-success');
+      }, 3000);
+    })
+    .catch(function(err) { resetBtn(); alert('Request failed: ' + err); });
+  }
+
+  if (buildAiBtn) {
+    updateBuildModeUI();
+    buildAiBtn.addEventListener('click', function() { runBuildAi(currentBuildMode); });
+    document.querySelectorAll('.build-ai-option').forEach(function(opt) {
+      opt.addEventListener('click', function(e) {
+        e.preventDefault();
+        currentBuildMode = this.dataset.mode;
+        updateBuildModeUI();
+        runBuildAi(currentBuildMode);
+      });
+    });
+  }
+
+  // Audience validation
+  function _updateFiaAudienceBtns() {
+    var checked = document.querySelectorAll('input[name="audience"]:checked').length > 0;
+    ['btn-fia-submit', 'btn-fia-save', 'btn-fia-publish'].forEach(function(id) {
+      var b = document.getElementById(id);
+      if (b) b.disabled = !checked;
+    });
+    var warn = document.getElementById('fia-audience-warn');
+    if (warn) warn.style.display = checked ? 'none' : '';
+  }
+  document.querySelectorAll('input[name="audience"]').forEach(function(cb) {
+    cb.addEventListener('change', _updateFiaAudienceBtns);
+  });
+  _updateFiaAudienceBtns();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,244 @@
+<mxfile host="Electron" compressed="false" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.2.5 Chrome/138.0.7204.251 Electron/37.6.1 Safari/537.36" version="28.2.5" pages="3">
+  <diagram name="Overview" id="overview">
+    <mxGraphModel dx="3292" dy="1070" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="1000" background="#0a1220" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ov-bg" value="" style="rounded=0;fillColor=#0a1220;gradientColor=#0f1f35;gradientDirection=south;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry width="1600" height="1000" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-header" value="zsazsa CTI Platform&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#132742;gradientColor=#0f1f35;gradientDirection=east;strokeColor=#2a4d73;strokeWidth=2;fontColor=#e8f2ff;fontSize=28;fontStyle=1;spacing=16;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="36" width="1520" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-brand-icon" value="" style="shape=image;imageAspect=0;aspect=fixed;strokeColor=none;fillColor=none;image=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwMDk5ZjEiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMDA0NGYxIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cG9seWdvbiBwb2ludHM9IjE2LDEgMzEsOC43NSAzMSwyMy4yNSAxNiwzMSAxLDIzLjI1IDEsOC43NSIgZmlsbD0idXJsKCNiZykiLz4KICA8cGF0aCB0cmFuc2Zvcm09InRyYW5zbGF0ZSg3LDYpIHNjYWxlKDAuNzUpIgogICAgICAgIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiCiAgICAgICAgZmlsbD0id2hpdGUiLz4KPC9zdmc+Cg==;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="55" width="36" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-brand-name" value="zsazsa &lt;font color=&quot;#58a9ff&quot;&gt;CTI&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#e8f2ff;" vertex="1" parent="1">
+          <mxGeometry x="1364" y="59" width="150" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-accent-1" value="" style="ellipse;fillColor=#1a3d66;gradientColor=#1e5f9e;strokeColor=none;opacity=35;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="18" width="220" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-accent-2" value="" style="shape=mxgraph.basic.hexagon;fillColor=#113154;strokeColor=#2a4d73;opacity=45;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="190" width="70" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-sources" value="Intelligence Sources&#xa;MISP scraper feeds&#xa;External MISP servers&#xa;Manual collection entries" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;gradientDirection=south;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=16;fontStyle=1;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="80" y="220" width="300" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-requirements" value="Requirements Management&#xa;PIR lifecycle&#xa;GIR lifecycle&#xa;RFI intake, SLA and closure" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;gradientDirection=south;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=16;fontStyle=1;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="80" y="470" width="300" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-automation" value="Automation&#xa;Analyser pipeline actions&#xa;Progress tracking&#xa;Auto-relevance rejection&#xa;Title exclusions" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;gradientDirection=south;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=16;fontStyle=1;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="80" y="740" width="300" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-core" value="Core CTI Operations&#xa;Collection, triage and enrichment&#xa;AI summaries and drafting&#xa;Audit trail and governance" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#1b3f6a;gradientColor=#165287;gradientDirection=south;strokeColor=#56a1d8;strokeWidth=3;fontColor=#ffffff;fontSize=19;fontStyle=1;spacing=18;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="490" y="360" width="430" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-products" value="Product Generation&#xa;Flash intel alerts&#xa;Daily threat briefings&#xa;Vulnerability advisories&#xa;Threat landscape reports" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;gradientDirection=south;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=16;fontStyle=1;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="220" width="470" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-stakeholders" value="Stakeholder Management&#xa;Owner mapping and subscriptions&#xa;TLP-aware distribution&#xa;Notification channels" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;gradientDirection=south;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=16;fontStyle=1;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="470" width="470" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-feedback" value="Feedback Collection&#xa;Product feedback forms&#xa;Response quality loop&#xa;Program metrics and maturity signals" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;gradientDirection=south;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=16;fontStyle=1;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="710" width="470" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="ov-sources" target="ov-core">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="ov-requirements" target="ov-core">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="ov-automation" target="ov-core">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="ov-core" target="ov-products">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="ov-core" target="ov-stakeholders">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ov-e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="ov-core" target="ov-feedback">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="Intelligence Flow" id="intel-flow">
+    <mxGraphModel grid="0" page="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1600" pageHeight="1000" background="#0a1220" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="if-bg" value="" style="rounded=0;fillColor=#0a1220;gradientColor=#0f1f35;gradientDirection=south;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry width="1600" height="1000" as="geometry" />
+        </mxCell>
+        <mxCell id="if-title" value="Intelligence Flow&#xa;From collection to stakeholder value" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#132742;gradientColor=#0f1f35;gradientDirection=east;strokeColor=#2a4d73;strokeWidth=2;fontColor=#e8f2ff;fontSize=28;fontStyle=1;spacing=16;" vertex="1" parent="1">
+          <mxGeometry x="40" y="36" width="1520" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="if-brand-icon" value="" style="shape=image;imageAspect=0;aspect=fixed;strokeColor=none;fillColor=none;image=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwMDk5ZjEiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMDA0NGYxIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cG9seWdvbiBwb2ludHM9IjE2LDEgMzEsOC43NSAzMSwyMy4yNSAxNiwzMSAxLDIzLjI1IDEsOC43NSIgZmlsbD0idXJsKCNiZykiLz4KICA8cGF0aCB0cmFuc2Zvcm09InRyYW5zbGF0ZSg3LDYpIHNjYWxlKDAuNzUpIgogICAgICAgIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiCiAgICAgICAgZmlsbD0id2hpdGUiLz4KPC9zdmc+Cg==;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="56" width="34" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="if-brand-name" value="zsazsa &lt;font color=&quot;#58a9ff&quot;&gt;CTI&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#e8f2ff;" vertex="1" parent="1">
+          <mxGeometry x="1362" y="59" width="150" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="if-1" value="1. Collect&#xa;Scraper, external MISP, manual sources" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="260" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="if-2" value="2. Triage + Enrich&#xa;AI summaries, scope extraction, analyst review" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="260" width="270" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="if-3" value="3. Align with Needs&#xa;PIR, GIR and RFI context" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="710" y="260" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="if-4" value="4. Generate Products&#xa;Flash intel, daily briefing, VEA, TLR" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="260" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="if-5" value="5. Deliver + Notify&#xa;Stakeholder subscriptions, channels, TLP controls" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1310" y="260" width="220" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="if-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" parent="1" source="if-1" target="if-2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="if-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" parent="1" source="if-2" target="if-3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="if-a3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" parent="1" source="if-3" target="if-4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="if-a4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" parent="1" source="if-4" target="if-5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="if-auto" value="Automation Layer&#xa;Dashboard-run analyser actions&#xa;Pipeline progress + logs&#xa;Daily relevance review + rejection notes" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#1b3f6a;gradientColor=#165287;strokeColor=#56a1d8;strokeWidth=2;fontColor=#ffffff;fontSize=16;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="275" y="500" width="500" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="if-quality" value="Quality Controls&#xa;Title exclusion patterns&#xa;Story overlap detection&#xa;Human review states (draft, pending, approved)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#1b3f6a;gradientColor=#165287;strokeColor=#56a1d8;strokeWidth=2;fontColor=#ffffff;fontSize=16;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="885" y="500" width="500" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="if-feedback" value="Feedback Loop&#xa;Stakeholder feedback captured per product&#xa;Metrics and CTI program maturity signals feed back into priorities" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#23344f;gradientColor=#1a2840;strokeColor=#5f7ea5;strokeWidth=2;fontColor=#e9f2ff;fontSize=16;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="460" y="760" width="680" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="if-stats-note" value="Statistics and CTI-CMM signals" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#1c2f49;strokeColor=#5f7ea5;strokeWidth=1;fontColor=#9fbbe0;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="882" width="250" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="if-b1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="if-2" target="if-auto">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="if-b2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="if-4" target="if-quality">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="if-b3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fb8e0;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="if-5" target="if-feedback">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1420" y="840" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="if-b4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fb8e0;strokeWidth=2;dashed=1;endArrow=block;endFill=1;" edge="1" parent="1" source="if-feedback" target="if-3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="835" y="667" />
+              <mxPoint x="835" y="667" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="CTI Program" id="cti-program">
+    <mxGraphModel dx="2821" dy="917" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="1000" background="#0a1220" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="cp-bg" value="" style="rounded=0;fillColor=#0a1220;gradientColor=#0f1f35;gradientDirection=south;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry width="1600" height="1000" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-title" value="CTI Program Capability Map&#xa;Stakeholders, requirements, products and governance" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#132742;gradientColor=#0f1f35;gradientDirection=east;strokeColor=#2a4d73;strokeWidth=2;fontColor=#e8f2ff;fontSize=28;fontStyle=1;spacing=16;" vertex="1" parent="1">
+          <mxGeometry x="40" y="36" width="1520" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-brand-icon" value="" style="shape=image;imageAspect=0;aspect=fixed;strokeColor=none;fillColor=none;image=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwMDk5ZjEiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMDA0NGYxIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cG9seWdvbiBwb2ludHM9IjE2LDEgMzEsOC43NSAzMSwyMy4yNSAxNiwzMSAxLDIzLjI1IDEsOC43NSIgZmlsbD0idXJsKCNiZykiLz4KICA8cGF0aCB0cmFuc2Zvcm09InRyYW5zbGF0ZSg3LDYpIHNjYWxlKDAuNzUpIgogICAgICAgIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiCiAgICAgICAgZmlsbD0id2hpdGUiLz4KPC9zdmc+Cg==;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="56" width="34" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-brand-name" value="zsazsa &lt;font color=&quot;#58a9ff&quot;&gt;CTI&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#e8f2ff;" vertex="1" parent="1">
+          <mxGeometry x="1362" y="59" width="150" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-s0" value="Stakeholder Management&#xa;Profiles, roles, subscriptions, TLP clearance" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="120" y="230" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-s1" value="PIR Management&#xa;Decision-driven priority requirements" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="120" y="410" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-s2" value="GIR Management&#xa;General intelligence tracking and cadence" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="120" y="570" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-s3" value="RFI Workflow&#xa;Intake, SLA, ownership, completion" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#173053;gradientColor=#142744;strokeColor=#3b638d;strokeWidth=2;fontColor=#dcecff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="120" y="730" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-center" value="CTI Delivery Engine&#xa;Collection cache + analyst workflows&#xa;AI-assisted enrichment and drafting&#xa;Review and publish controls" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#1b3f6a;gradientColor=#165287;strokeColor=#56a1d8;strokeWidth=3;fontColor=#ffffff;fontSize=18;fontStyle=1;spacing=16;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="550" y="370" width="500" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-p1" value="Flash Intel Alert&#xa;Rapid tactical output" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="220" width="310" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-p2" value="Daily Threat Briefing&#xa;Story curation + overlap checks" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="380" width="310" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-p3" value="Vulnerability Advisory&#xa;CVE-centered risk and action guidance" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="540" width="310" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-p4" value="Feedback Collection&#xa;Per-product feedback and metrics" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#154f4a;gradientColor=#0f3f3b;strokeColor=#2e8f87;strokeWidth=2;fontColor=#ddfffb;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="700" width="310" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-gov" value="Governance and Automation&#xa;Pipeline jobs, audit trail, config-driven controls&#xa;Statistics and CTI-CMM monitoring" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#23344f;gradientColor=#1a2840;strokeColor=#5f7ea5;strokeWidth=2;fontColor=#e9f2ff;fontSize=15;fontStyle=1;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="550" y="833" width="500" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-s0" target="cp-center">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-s1" target="cp-center">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-s2" target="cp-center">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#59a3df;strokeWidth=2;endArrow=block;endFill=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cp-s3" target="cp-center">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="485" y="790" />
+              <mxPoint x="485" y="535" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cp-e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="cp-center" target="cp-p1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="535" />
+              <mxPoint x="1110" y="356" />
+              <mxPoint x="1325" y="356" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cp-e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-center" target="cp-p2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-center" target="cp-p3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#3fc7bc;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-center" target="cp-p4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fb8e0;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cp-center" target="cp-gov">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cp-e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fb8e0;strokeWidth=2;dashed=1;endArrow=block;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cp-p4" target="cp-s0">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1325" y="1002" />
+              <mxPoint x="92" y="1002" />
+              <mxPoint x="92" y="295" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

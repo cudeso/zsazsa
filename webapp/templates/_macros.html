@@ -1,0 +1,56 @@
+{% macro tag_input(field, values=[], datalist_id=None, placeholder="Type and press Enter to add") %}
+<div data-ti-field="{{ field }}">
+  <div class="input-group input-group-sm">
+    <input type="text" id="ti-text-{{ field }}" class="form-control form-control-sm"
+           {% if datalist_id %}list="{{ datalist_id }}"{% endif %}
+           placeholder="{{ placeholder }}" autocomplete="off">
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            onclick="tiAdd('{{ field }}')">
+      <i class="fas fa-plus"></i>
+    </button>
+  </div>
+  <div id="ti-display-{{ field }}" class="ti-display d-flex flex-wrap gap-1 mt-2"></div>
+  <div id="ti-store-{{ field }}" style="display:none;">
+    {% for v in values %}
+    <input type="hidden" name="{{ field }}" value="{{ v | e }}">
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+
+{% macro galaxy_multiselect(field, values=[], items=[], dom_id=None) %}
+{# Scrollable checkbox list for galaxy-backed fields.
+   Falls back to a tag input when MISP is unreachable and items is empty.
+   Selected values (and any custom values not present in items) are pinned
+   at the top so the user can see what is already selected.
+   ``dom_id`` makes the DOM ids unique when the macro is used multiple
+   times with the same form ``field`` name on one page. #}
+{% set dkey = dom_id or field %}
+{% if items %}
+<input type="text" class="form-control form-control-sm mb-1" data-gms-search="{{ dkey }}"
+       placeholder="Filter…" autocomplete="off">
+{# Build an ordered list with case-insensitive dedup.
+   Selected items come first, using the canonical galaxy casing where possible.
+   Then unmatched stored values (no canonical equivalent), then remaining items. #}
+{% set values_lower = values | map('lower') | list %}
+{% set ordered = [] %}
+{% set ordered_lower = [] %}
+{% for item in items %}{% if item | lower in values_lower and item | lower not in ordered_lower %}{% set _ = ordered.append(item) %}{% set _ = ordered_lower.append(item | lower) %}{% endif %}{% endfor %}
+{% for v in values %}{% if v | lower not in ordered_lower %}{% set _ = ordered.append(v) %}{% set _ = ordered_lower.append(v | lower) %}{% endif %}{% endfor %}
+{% for item in items %}{% if item | lower not in ordered_lower %}{% set _ = ordered.append(item) %}{% set _ = ordered_lower.append(item | lower) %}{% endif %}{% endfor %}
+<div class="gms-list" id="gms-{{ dkey }}">
+  {% for item in ordered %}
+  <label class="gms-item">
+    <input type="checkbox" name="{{ field }}" value="{{ item | e }}"
+           {% if item | lower in values_lower %}checked{% endif %}>
+    <span>{{ item }}</span>
+  </label>
+  {% endfor %}
+</div>
+<div class="gms-selected-display mt-1" id="gms-selected-{{ dkey }}"></div>
+{% else %}
+<div class="form-text text-warning mb-1"><i class="fas fa-triangle-exclamation me-1"></i>Galaxy data unavailable. Enter values manually.</div>
+{{ tag_input(field, values=values, placeholder="Type and press Enter to add") }}
+{% endif %}
+{% endmacro %}

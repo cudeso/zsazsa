@@ -1,0 +1,57 @@
+{
+  "name": "zsazsa-daily-briefing",
+  "meta-category": "intelligence",
+  "description": "Daily Threat Briefing metadata managed by the zsazsa CTI program",
+  "uuid": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "version": 2,
+  "attributes": {
+    "date": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Briefing date (ISO 8601)",
+      "disable_correlation": true
+    },
+    "title": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "Short title of the briefing",
+      "disable_correlation": true
+    },
+    "author": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Analyst who authored the briefing",
+      "disable_correlation": true
+    },
+    "tlp": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "TLP classification (clear / green / amber)",
+      "disable_correlation": true
+    },
+    "review-state": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "Review state (draft / pending-review / published)",
+      "disable_correlation": true
+    },
+    "story-count": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "Number of stories in the briefing",
+      "disable_correlation": true
+    },
+    "escalations": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "Items escalated to flash alert, or None",
+      "disable_correlation": true
+    },
+    "notes": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Analyst notes and follow-up items",
+      "disable_correlation": true
+    }
+  }
+}

@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.info or 'Event' }} | Data collection{% endblock %}
+{% block page_title %}{{ event.info or 'Event' }}{% endblock %}
+
+{% block misp_object_url %}{{ misp_url }}{% endblock %}
+{% block topbar_actions %}
+<div class="dropdown">
+  <button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+    <i class="fas fa-plus me-1"></i>Create product
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li>
+      <a class="dropdown-item" href="{{ url_for('flash_intel.wizard_new', source=event.uuid) }}">
+        <i class="fas fa-bolt me-2"></i>Flash intel
+      </a>
+    </li>
+    <li>
+      <a class="dropdown-item" href="{{ url_for('daily_briefing.compose', source=event.uuid) }}">
+        <i class="fas fa-newspaper me-2"></i>Add to daily briefing
+      </a>
+    </li>
+    <li>
+      <a class="dropdown-item" href="{{ url_for('vea.wizard_new', source=event.uuid) }}">
+        <i class="fas fa-shield-halved me-2"></i>Vuln advisories
+      </a>
+    </li>
+  </ul>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<div class="row g-4">
+
+  <!-- Left: reports + attributes + objects -->
+  <div class="col-lg-8">
+
+    <!-- Reports -->
+    {% if reports %}
+    {% if reports | length == 1 %}
+    <div class="card content-card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-file-lines me-2"></i>{{ reports[0].name }}</span>
+        {% if reports[0].tags %}
+        <span>
+          {% for t in reports[0].tags %}
+          <span class="badge" style="background:#eef2f7;color:#455a7a;font-weight:500;font-size:.7rem;">{{ t }}</span>
+          {% endfor %}
+        </span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="report-md-body" data-md="{{ reports[0].content }}"></div>
+      </div>
+    </div>
+    {% else %}
+    <div class="accordion content-card mb-3" id="reports-accordion">
+      {% for r in reports %}
+      <div class="accordion-item border-0 {% if not loop.first %}border-top{% endif %}">
+        <h2 class="accordion-header">
+          <button class="accordion-button {% if not loop.first %}collapsed{% endif %} py-2 small"
+                  type="button" data-bs-toggle="collapse"
+                  data-bs-target="#report-collapse-{{ loop.index }}"
+                  aria-expanded="{{ 'true' if loop.first else 'false' }}">
+            <i class="fas fa-file-lines me-2 text-muted"></i>
+            <span class="fw-semibold">{{ r.name }}</span>
+            {% if r.tags %}
+            <span class="ms-3 d-flex gap-1">
+              {% for t in r.tags %}
+              <span class="badge" style="background:#eef2f7;color:#455a7a;font-weight:500;font-size:.65rem;">{{ t }}</span>
+              {% endfor %}
+            </span>
+            {% endif %}
+          </button>
+        </h2>
+        <div id="report-collapse-{{ loop.index }}"
+             class="accordion-collapse collapse {% if loop.first %}show{% endif %}"
+             data-bs-parent="#reports-accordion">
+          <div class="accordion-body pt-2">
+            <div class="report-md-body" data-md="{{ r.content }}"></div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="card content-card mb-3">
+      <div class="card-body">
+        <p class="text-muted mb-0 small"><em>No MISP reports attached to this event.</em></p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Attributes -->
+    {% if event.attributes %}
+    <div class="card content-card mb-3">
+      <div class="card-header">
+        <i class="fas fa-crosshairs me-2"></i>Indicators / attributes
+        <span class="badge bg-secondary ms-2">{{ event.attributes | length }}</span>
+      </div>
+      <div class="card-body p-0">
+        <div style="overflow-x:auto;">
+          <table class="table table-sm zsazsa-table mb-0">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Type</th>
+                <th>Value</th>
+                <th>Comment</th>
+                <th class="text-center" title="IDS flag">IDS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in event.attributes %}
+              <tr>
+                <td class="text-muted small">{{ a.category }}</td>
+                <td><code class="small">{{ a.type }}</code></td>
+                <td style="word-break:break-all;max-width:28rem;font-size:.82rem;">{{ a.value }}</td>
+                <td class="text-muted small">{{ a.comment or '' }}</td>
+                <td class="text-center">
+                  {% if a.to_ids %}
+                  <i class="fas fa-check text-success small"></i>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Objects -->
+    {% if event.objects %}
+    <div class="card content-card mb-3">
+      <div class="card-header">
+        <i class="fas fa-layer-group me-2"></i>Objects
+        <span class="badge bg-secondary ms-2">{{ event.objects | length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% for obj in event.objects %}
+        <div class="border-bottom px-3 py-2 {% if not loop.last %}{% endif %}">
+          <div class="d-flex align-items-center gap-2 mb-2 mt-1">
+            <span class="badge bg-primary-subtle text-primary-emphasis">{{ obj.name }}</span>
+            {% if obj.meta_category %}
+            <span class="text-muted small">{{ obj.meta_category }}</span>
+            {% endif %}
+            {% if obj.comment %}
+            <span class="text-muted small fst-italic">{{ obj.comment }}</span>
+            {% endif %}
+          </div>
+          {% if obj.attributes %}
+          <table class="table table-sm mb-1" style="font-size:.82rem;">
+            <tbody>
+              {% for a in obj.attributes %}
+              <tr>
+                <td class="text-muted" style="width:25%;white-space:nowrap;">{{ a.relation or a.type }}</td>
+                <td style="word-break:break-all;">{{ a.value }}</td>
+                {% if a.comment %}
+                <td class="text-muted fst-italic">{{ a.comment }}</td>
+                {% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right: metadata -->
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-info-circle me-2"></i>Event details</div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">Date</dt>
+          <dd class="col-7">{{ event.date or '-' }}</dd>
+
+          <dt class="col-5">Threat level</dt>
+          <dd class="col-7">
+            {% set lvl = event.threat_level %}
+            <span class="badge {{ 'text-bg-danger' if lvl == 'High' else ('text-bg-warning' if lvl == 'Medium' else ('text-bg-secondary' if lvl == 'Low' else 'text-bg-light text-dark')) }}">
+              {{ lvl }}
+            </span>
+          </dd>
+
+          <dt class="col-5">Analysis</dt>
+          <dd class="col-7">{{ event.analysis }}</dd>
+
+          <dt class="col-5">Owner org</dt>
+          <dd class="col-7">{{ event.org or '-' }}</dd>
+
+          <dt class="col-5">Creator org</dt>
+          <dd class="col-7">{{ event.orgc or '-' }}</dd>
+
+          <dt class="col-5">Source</dt>
+          <dd class="col-7">{{ source_label }}</dd>
+
+          <dt class="col-5">UUID</dt>
+          <dd class="col-7"><code style="font-size:.72rem;word-break:break-all;">{{ event.uuid }}</code></dd>
+
+          {% if event.attribute_count %}
+          <dt class="col-5">Attributes</dt>
+          <dd class="col-7">{{ event.attribute_count }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+
+    <!-- Tags -->
+    {% if event.tags %}
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-tags me-2"></i>Tags</div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-1">
+          {% for t in event.tags %}
+          <a href="{{ url_for('data_collection.index') }}?tag={{ t.name | urlencode }}&source={{ source_id }}"
+             class="badge text-decoration-none"
+             style="background:{{ t.colour }};color:#fff;font-size:.72rem;">
+            {{ t.name }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Galaxies -->
+    {% if event.galaxies %}
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-star-and-crescent me-2"></i>Galaxy clusters</div>
+      <div class="card-body p-0">
+        {% for g in event.galaxies %}
+        <div class="px-3 py-2 {% if not loop.last %}border-bottom{% endif %}">
+          <div class="text-muted small fw-semibold mb-1">{{ g.name }}</div>
+          {% for cl in g.clusters %}
+          <div class="mb-1">
+            <span class="source-tag">{{ cl.value }}</span>
+            {% if cl.description %}
+            <span class="text-muted small d-block mt-1" style="font-size:.73rem;">{{ cl.description }}</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<style>
+.report-md-body { font-size: .92rem; line-height: 1.6; color: #2d3748; }
+.report-md-body h1, .report-md-body h2, .report-md-body h3,
+.report-md-body h4, .report-md-body h5 {
+  font-weight: 600; margin-top: 1.1em; margin-bottom: .4em; color: #1a2b42;
+}
+.report-md-body h1 { font-size: 1.15rem; }
+.report-md-body h2 { font-size: 1.05rem; }
+.report-md-body h3 { font-size: .97rem; }
+.report-md-body h4, .report-md-body h5 { font-size: .9rem; }
+.report-md-body p { margin-bottom: .6em; }
+.report-md-body ul, .report-md-body ol { padding-left: 1.4em; margin-bottom: .6em; }
+.report-md-body li { margin-bottom: .2em; }
+.report-md-body code {
+  font-family: var(--bs-font-monospace);
+  font-size: .82em;
+  background: #f0f4f8;
+  padding: .1em .35em;
+  border-radius: .2em;
+  color: #c0392b;
+}
+.report-md-body pre {
+  background: #f0f4f8;
+  border: 1px solid #dee2e6;
+  border-radius: .4em;
+  padding: .75rem 1rem;
+  overflow-x: auto;
+  margin-bottom: .7em;
+}
+.report-md-body pre code { background: none; padding: 0; color: inherit; font-size: .83rem; }
+.report-md-body blockquote {
+  border-left: 3px solid #0078f1;
+  padding-left: .75rem;
+  color: #6c757d;
+  margin: .5em 0;
+}
+.report-md-body table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-bottom: .7em; }
+.report-md-body th, .report-md-body td { border: 1px solid #dee2e6; padding: .3rem .6rem; text-align: left; }
+.report-md-body th { background: #f8f9fa; font-weight: 600; }
+.report-md-body a { color: #0078f1; }
+.report-md-body hr { border-color: #dee2e6; margin: .8em 0; }
+.report-md-body > *:last-child { margin-bottom: 0; }
+</style>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+  document.querySelectorAll('.report-md-body').forEach(function(el) {
+    var raw = el.getAttribute('data-md') || '';
+    el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '<em class="text-muted">No content.</em>';
+    el.removeAttribute('data-md');
+  });
+})();
+</script>
+{% endblock %}

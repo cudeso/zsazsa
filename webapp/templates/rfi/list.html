@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}RFIs | zsazsa CTI{% endblock %}
+{% block page_title %}Requests for Information{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('rfi.rfi_new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> New RFI
+</a>
+{% endblock %}
+
+{% block content %}
+{% set rfi_priority_class = {
+  'High': 'must-have',
+  'Medium': 'should-have',
+  'Low': 'could-have'
+} %}
+{% set rfi_status_class = {
+  'New': 'pending',
+  'Acknowledged': 'under-evaluation',
+  'In Progress': 'in-development',
+  'Delivered': 'implemented',
+  'Closed': 'retired'
+} %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Status</label>
+        <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All statuses</option>
+          {% for s in statuses %}
+          <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if status_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('rfi.rfi_list') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ rfis | length }} RFI{{ 's' if rfis|length != 1 }}</div>
+    </form>
+  </div>
+</div>
+
+<!-- Kanban board -->
+{% set kanban_statuses = ['New', 'Acknowledged', 'In Progress', 'Delivered', 'Closed'] %}
+<div class="card content-card mb-3">
+  <div class="card-header"><i class="fas fa-columns me-2"></i>Status board (drag to update status)</div>
+  <div class="card-body p-2">
+    <div class="kanban-board d-flex gap-2 overflow-auto pb-1">
+      {% for col_status in kanban_statuses %}
+      <div class="kanban-col flex-shrink-0" data-status="{{ col_status }}" style="min-width:160px;width:160px;">
+        <div class="kanban-col-header text-center fw-semibold small p-1 mb-1 rounded
+          {% if col_status == 'New' %}bg-secondary-subtle text-secondary-emphasis
+          {% elif col_status == 'Acknowledged' %}bg-info-subtle text-info-emphasis
+          {% elif col_status == 'In Progress' %}bg-primary-subtle text-primary-emphasis
+          {% elif col_status == 'Delivered' %}bg-success-subtle text-success-emphasis
+          {% else %}bg-light text-muted{% endif %}">
+          {{ col_status }}
+          <span class="badge bg-white text-dark ms-1" style="font-size:.65rem">{{ rfis | selectattr('status', 'equalto', col_status) | list | length }}</span>
+        </div>
+        <div class="kanban-cards" style="min-height:60px;">
+          {% for rfi in rfis %}
+          {% if rfi.status == col_status %}
+          <div class="kanban-card card mb-1 p-1 shadow-sm" draggable="true"
+               data-id="{{ rfi.id }}"
+               data-update-url="{{ url_for('rfi.rfi_status_update', id=rfi.id) }}"
+               style="cursor:grab;font-size:.75rem;">
+            <div class="fw-semibold"><a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="text-decoration-none">{{ rfi.rfi_id }}</a></div>
+            <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ rfi.question }}">{{ rfi.question | truncate(30) }}</div>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if rfis %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:90px">ID</th>
+          <th>Question</th>
+          <th>Requester</th>
+          <th>Owner</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>SLA</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rfi in rfis %}
+        {% set sla_state, days = sla_map.get(rfi.id, ('amber', None)) %}
+        <tr>
+          <td>
+            <a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="text-decoration-none">
+              <span class="req-id-badge">{{ rfi.rfi_id }}</span>
+            </a>
+          </td>
+          <td>
+            <a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="fw-semibold text-decoration-none">
+              {{ rfi.question | truncate(80) }}
+            </a>
+          </td>
+          <td class="text-muted small">
+            {{ rfi.requester_name or '-' }}
+            {% if rfi.requester_team %}<div class="text-muted">{{ rfi.requester_team }}</div>{% endif %}
+          </td>
+          <td class="text-muted small">{{ rfi.owner_name or '-' }}</td>
+          <td>
+            <span class="badge priority-badge priority-{{ rfi_priority_class.get(rfi.priority, 'should-have') }}">{{ rfi.priority }}</span>
+          </td>
+          <td><span class="badge status-badge status-{{ rfi_status_class.get(rfi.status, 'pending') }}">{{ rfi.status }}</span></td>
+          <td>
+            {% if sla_state == 'done' %}
+              <span class="badge text-bg-success">Done</span>
+            {% elif sla_state == 'red' %}
+              <span class="badge text-bg-danger" title="Overdue">{{ days }}d</span>
+            {% elif sla_state == 'amber' %}
+              <span class="badge text-bg-warning">{{ days if days is not none else '-' }}{% if days is not none %}d{% endif %}</span>
+            {% else %}
+              <span class="badge text-bg-success">{{ days }}d</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('rfi.rfi_edit', id=rfi.id) }}" class="btn btn-xs btn-outline-secondary me-1" title="Edit">
+              <i class="fas fa-pen"></i>
+            </a>
+            <form method="post" action="{{ url_for('rfi.rfi_delete', id=rfi.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ rfi.rfi_id }}?')">
+              <button class="btn btn-xs btn-outline-danger" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state py-5">
+      <i class="fas fa-circle-question fa-2x text-muted mb-3 d-block"></i>
+      <p class="text-muted mb-3">No RFIs yet. Capture a stakeholder question to get started.</p>
+      <a href="{{ url_for('rfi.rfi_new') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-plus me-1"></i> New RFI
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var dragging = null;
+  document.querySelectorAll('.kanban-card').forEach(function(card) {
+    card.addEventListener('dragstart', function(e) { dragging = card; card.style.opacity = '0.5'; });
+    card.addEventListener('dragend', function() { card.style.opacity = ''; dragging = null; });
+  });
+  document.querySelectorAll('.kanban-col').forEach(function(col) {
+    col.addEventListener('dragover', function(e) { e.preventDefault(); col.querySelector('.kanban-cards').style.background = '#f0f4ff'; });
+    col.addEventListener('dragleave', function() { col.querySelector('.kanban-cards').style.background = ''; });
+    col.addEventListener('drop', function(e) {
+      e.preventDefault();
+      col.querySelector('.kanban-cards').style.background = '';
+      if (!dragging) return;
+      var fd = new FormData();
+      fd.append('status', col.dataset.status);
+      var csrf = document.querySelector('meta[name="csrf-token"]');
+      fetch(dragging.dataset.updateUrl, {method: 'POST', body: fd, headers: csrf ? {'X-CSRF-Token': csrf.content} : {}})
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (d.ok) window.location.reload(); else alert('Could not update: ' + (d.error || '')); })
+        .catch(function() { alert('Status update failed.'); });
+    });
+  });
+})();
+</script>
+{% endblock %}

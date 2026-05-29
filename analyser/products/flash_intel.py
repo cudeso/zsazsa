@@ -1,0 +1,246 @@
+import json
+import logging
+from datetime import datetime
+
+from pymisp import MISPEvent, MISPEventReport
+
+import config
+from analyser import llm, tagger
+
+logger = logging.getLogger(__name__)
+
+_HTTP_ERROR_PREFIX = "misp-scraper:HTTP="
+_FEED_TAG_PREFIX = "scraper:data-collection-source:"
+_FLASH_INTEL_PRODUCT_NAME = "Flash intel"
+
+
+def _get_http_error(event) -> str | None:
+    for tag in event.tags:
+        if tag.name.startswith(_HTTP_ERROR_PREFIX):
+            return tag.name[len(_HTTP_ERROR_PREFIX):]
+    return None
+
+
+def _get_source_feed(event) -> str:
+    for tag in event.tags:
+        if tag.name.startswith(_FEED_TAG_PREFIX):
+            return tag.name[len(_FEED_TAG_PREFIX):]
+    return "unknown"
+
+
+def _get_source_reliability(event) -> str:
+    for tag in event.tags:
+        if tag.name.startswith("admiralty-scale:source-reliability="):
+            return tag.name.split("=")[1].strip('"')
+    return "f"
+
+
+def _get_report_content(misp, event) -> str | None:
+    reports = misp.get_event_reports(event.id, pythonify=True)
+    if not reports:
+        return None
+    return getattr(reports[0], "content", None)
+
+
+def _event_date(event) -> str:
+    if event.date:
+        return str(event.date)
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+
+def process(misp, event, focus_points: dict) -> dict:
+    source_feed = _get_source_feed(event)
+
+    http_error = _get_http_error(event)
+    if http_error:
+        logger.info("Event %s skipped: HTTP %s from feed %s", event.uuid, http_error, source_feed)
+        tagger.set_workflow_state(misp, event, "rejected")
+        return {"outcome": "http_error", "source_feed": source_feed, "detail": f"HTTP={http_error}"}
+
+    article_content = _get_report_content(misp, event)
+    if not article_content:
+        logger.warning("Event %s has no report content", event.uuid)
+        tagger.set_workflow_state(misp, event, "rejected")
+        return {"outcome": "no_content", "source_feed": source_feed, "detail": None}
+
+    source_reliability = _get_source_reliability(event)
+
+    relevance = llm.check_relevance(article_content, focus_points, source_reliability)
+    if not relevance.get("relevant"):
+        reason = relevance.get("reason", "")
+        logger.info("Event %s not relevant: %s", event.uuid, reason)
+        tagger.set_workflow_state(misp, event, "rejected")
+        return {"outcome": "not_relevant", "source_feed": source_feed, "detail": reason}
+
+    matched = relevance.get("matched_focus_points", [])
+    source_type = relevance.get("source_type", "blog-post")
+    logger.info("Event %s relevant, matched: %s", event.uuid, matched)
+
+    reports = misp.get_event_reports(event.id, pythonify=True)
+    if reports:
+        tagger.add_tag(misp, reports[0], f'osint:source-type="{source_type}"')
+
+    fia_content = llm.generate_flash_intel(
+        article_content,
+        focus_points,
+        matched,
+        source_reliability,
+        _event_date(event),
+    )
+
+    product_event = MISPEvent()
+    product_event.info = f"[zsazsa:fia] {event.info}"
+    product_event.distribution = 0
+    product_event.threat_level_id = 2
+    product_event.analysis = 2
+    product_event.extends_uuid = event.uuid
+    product_event.add_tag(config.TAG_FLASH_INTEL)
+    product_event.add_tag("tlp:amber")
+    product_event.add_tag("curation:source:OSINT")
+    product_event.add_tag('workflow:state="ongoing"')
+
+    product_event = misp.add_event(product_event, pythonify=True)
+    if isinstance(product_event, dict):
+        err = product_event.get("errors", "unknown error")
+        logger.error("Failed to create product event: %s", err)
+        return {"outcome": "error", "source_feed": source_feed, "detail": str(err)}
+
+    event_id = getattr(product_event, "id", None)
+    if not event_id:
+        logger.error("Created product event has no id")
+        return {"outcome": "error", "source_feed": source_feed, "detail": "missing event id"}
+    fia_id = f"FIA-{int(event_id):05d}"
+    fia_content = fia_content.replace("FIA-#####", fia_id)
+
+    # Store the LLM-rendered markdown as the primary report.
+    report = MISPEventReport()
+    report.name = fia_id
+    report.content = fia_content
+    report.distribution = 0
+    misp.add_event_report(product_event, report)
+
+    # Add a minimal zsazsa-flash-intel object so the webapp wizard can edit
+    # the draft. The summary seeds with the LLM body; analyst refines fields
+    # before approving and publishing.
+    _add_flash_intel_object(misp, product_event, fia_id, event, fia_content, matched)
+
+    # Mark the source event as routed for review (not yet complete).
+    tagger.set_workflow_state(misp, event, "ongoing")
+
+    auto = _has_automated_subscriber(misp, _FLASH_INTEL_PRODUCT_NAME)
+    if auto:
+        try:
+            _auto_publish(misp, product_event, fia_id, fia_content)
+            logger.info("%s auto-published (subscriber on automated mode)", fia_id)
+        except Exception as exc:
+            logger.warning("Auto-publish failed for %s: %s", fia_id, exc)
+            auto = False
+
+    logger.info(
+        "Created %s draft for source event %s (%s)",
+        fia_id, event.uuid,
+        "auto-published" if auto else "pending review",
+    )
+    return {
+        "outcome": "product_created",
+        "source_feed": source_feed,
+        "detail": fia_id,
+        "product": product_event,
+        "fia_id": fia_id,
+        "content": fia_content,
+        "auto_published": auto,
+    }
+
+
+def _has_automated_subscriber(misp, product_name: str) -> bool:
+    """True if at least one stakeholder is subscribed to ``product_name``
+    with delivery mode ``automated``."""
+    try:
+        events = misp.search(tags=[config.TAG_STAKEHOLDER], pythonify=True)
+    except Exception as exc:
+        logger.warning("Could not query stakeholders: %s", exc)
+        return False
+    if not events or isinstance(events, dict):
+        return False
+    for ev in events:
+        for obj in getattr(ev, "objects", []) or []:
+            if obj.name != "zsazsa-stakeholder":
+                continue
+            modes_attr = next(
+                (a for a in obj.attributes if a.object_relation == "product-modes"),
+                None,
+            )
+            if not modes_attr or not modes_attr.value:
+                continue
+            try:
+                modes = json.loads(modes_attr.value)
+            except Exception:
+                continue
+            if isinstance(modes, dict) and modes.get(product_name) == "automated":
+                return True
+    return False
+
+
+def _auto_publish(misp, product_event, fia_id, content):
+    """Mark the FIA approved, publish, and send a Mattermost alert."""
+    from notifier.mattermost import send_flash_intel_alert
+
+    # Re-fetch so newly attached objects are present with server IDs.
+    fresh = misp.get_event(product_event.uuid, pythonify=True)
+    if not isinstance(fresh, dict) and fresh is not None:
+        for obj in getattr(fresh, "objects", []) or []:
+            if obj.name != "zsazsa-flash-intel":
+                continue
+            for a in obj.attributes:
+                if a.object_relation == "review-state":
+                    a.value = "approved"
+                    misp.update_attribute(a)
+                    break
+            break
+
+    tagger.set_workflow_state(misp, product_event, "complete")
+    misp.publish(product_event.uuid)
+    send_flash_intel_alert(product_event, fia_id, content)
+
+
+def _add_flash_intel_object(misp, product_event, fia_id, source_event, content, matched):
+    """Attach a draft zsazsa-flash-intel object to the product event."""
+    from pymisp import MISPObject
+
+    obj = MISPObject("zsazsa-flash-intel", strict=False)
+
+    def add(rel, value):
+        if value:
+            obj.add_attribute(rel, type="text", value=str(value), disable_correlation=True)
+
+    add("fia-id", fia_id)
+    add("title", source_event.info)
+    add("tlp", "amber")
+    add("summary", _extract_section(content, "Summary"))
+    add("source-description", f"OSINT feed: {_get_source_feed(source_event)}")
+    add("source-reliability", _get_source_reliability(source_event).upper())
+    add("review-state", "pending-review")
+    add("source-event-uuid", source_event.uuid)
+    add("author", "analyser")
+    if matched:
+        add("affected-assets", ", ".join(matched))
+    misp.add_object(product_event, obj)
+
+
+def _extract_section(content, heading):
+    """Return the first paragraph under '## <heading>' from a markdown body."""
+    if not content:
+        return ""
+    target = f"## {heading}"
+    lines = content.splitlines()
+    collected = []
+    in_section = False
+    for line in lines:
+        if line.strip() == target:
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("##"):
+                break
+            collected.append(line)
+    return "\n".join(collected).strip()

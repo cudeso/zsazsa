@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Audit log | zsazsa CTI{% endblock %}
+{% block page_title %}Audit log{% endblock %}
+
+{% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label mb-1">Action</label>
+        <select name="action" class="form-select form-select-sm">
+          <option value="">All actions</option>
+          {% for a in actions %}
+          <option value="{{ a }}" {{ 'selected' if selected_action == a }}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label mb-1">Type</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">All types</option>
+          {% for t in types %}
+          <option value="{{ t }}" {{ 'selected' if selected_type == t }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4 d-flex gap-2">
+        <button class="btn btn-sm btn-primary" type="submit">
+          <i class="fas fa-filter me-1"></i> Filter
+        </button>
+        <a href="{{ url_for('logs.index') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if entries %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:160px">Timestamp</th>
+          <th style="width:160px">User</th>
+          <th style="width:100px">Action</th>
+          <th style="width:110px">Type</th>
+          <th>Item</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td class="text-muted small font-monospace">{{ e['timestamp'] }}</td>
+          <td class="small">{{ e['user'] }}</td>
+          <td>
+            <span class="badge
+              {% if e['action'] == 'create' %}bg-success
+              {% elif e['action'] == 'update' %}bg-primary
+              {% elif e['action'] == 'delete' %}bg-danger
+              {% else %}bg-secondary
+              {% endif %}">
+              {{ e['action'] }}
+            </span>
+          </td>
+          <td class="text-muted small">{{ e['entity_type'] }}</td>
+          <td class="small">{{ e['entity_label'] or e['entity_id'] or '-' }}</td>
+          <td class="text-muted small">{{ e['details'] or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state py-5">
+      <i class="fas fa-scroll fa-2x text-muted mb-3 d-block"></i>
+      <p class="text-muted mb-0">No log entries yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

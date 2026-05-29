@@ -1,0 +1,675 @@
+{% extends "base.html" %}
+{% from "_macros.html" import galaxy_multiselect %}
+
+{% block title %}{{ pir.pir_id }} | zsazsa CTI{% endblock %}
+{% block page_title %}<span class="req-id-badge me-2">{{ pir.pir_id }}</span>{% endblock %}
+
+{% block misp_object_url %}{{ pir.misp_url }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('requirements.pir_list') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% if pir.intake_status != 'rejected' %}
+<a href="{{ url_for('requirements.pir_edit', id=pir.id) }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-pen me-1"></i> Edit
+</a>
+{% endif %}
+{% if pir.intake_status in ('submitted', 'acknowledged', 'triaged', 'deferred') %}
+<a href="{{ url_for('requirements.pir_triage', id=pir.id) }}" class="btn btn-sm btn-outline-primary">
+  <i class="fas fa-gavel me-1"></i> Triage
+</a>
+{% endif %}
+<button class="btn btn-sm btn-outline-warning" id="notify-btn"
+        data-notify-url="{{ url_for('requirements.pir_notify', id=pir.id) }}">
+  <i class="fas fa-bell me-1"></i> Notify stakeholders
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Question banner -->
+<div class="question-banner mb-4">
+  <p class="question-banner-text">{{ pir.question }}</p>
+  {% if pir.context %}
+  <p class="question-banner-context">{{ pir.context }}</p>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+
+  <!-- Left column -->
+  <div class="col-lg-8">
+
+    <!-- Scope - primary placement -->
+    <div class="card content-card fp-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+          <i class="fas fa-crosshairs me-2"></i>Scope
+          {% if focus_points %}
+          <span class="badge bg-primary ms-1" style="font-size:.65rem">{{ focus_points | length }}</span>
+          {% endif %}
+        </span>
+        <button class="btn btn-xs btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#add-fp-form">
+          <i class="fas fa-plus me-1"></i> Add
+        </button>
+      </div>
+
+      <div class="fp-purpose-banner">
+        <i class="fas fa-info-circle me-1"></i>
+        Scope items define <strong>what the analyser looks for</strong> when evaluating scraped articles
+        for this PIR. Pick from the MISP galaxies for sectors, geographies and threat actors;
+        add custom values for technology and threat type.
+        <a href="{{ url_for('requirements.pir_scope_preview', id=pir.id) }}" class="btn btn-xs btn-outline-info ms-2">
+          <i class="fas fa-eye me-1"></i> Preview matches in collection
+        </a>
+      </div>
+
+      {% set _galaxy_map = {"Geography": galaxy_countries, "Sector": galaxy_sectors, "Threat Actor": galaxy_threat_actors} %}
+      <div class="collapse" id="add-fp-form">
+        <div class="fp-add-form border-bottom">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Category</label>
+            <select class="form-select form-select-sm" id="fp-category" style="max-width: 18rem;">
+              {% for c in categories %}
+              <option value="{{ c }}">{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# One sub-form per category. JS shows only the active one. #}
+          {% for c in categories %}
+          {% set is_galaxy = c in ["Geography", "Sector", "Threat Actor"] %}
+          {% set selected = fp_by_category.get(c, []) %}
+          <div class="fp-add-sub" data-category="{{ c }}" style="display:none;">
+            {% if is_galaxy %}
+            <form method="post" action="{{ url_for('requirements.pir_sync_scope', id=pir.id) }}">
+              <input type="hidden" name="category" value="{{ c }}">
+              <div class="small text-muted mb-1">
+                Tick the {{ c | lower }} values you want in scope. Selected items appear at the top.
+                Saving replaces all <strong>{{ c }}</strong> scope items.
+                {% if c == "Geography" %}
+                <span class="badge bg-info-subtle text-info-emphasis ms-1" title="Combined from the MISP Country galaxy (84668357…) and Target Information galaxy (709ed29c…). Both are matched at analysis time because event creators sometimes pick one over the other.">
+                  <i class="fas fa-layer-group fa-xs me-1"></i>Country + Target Information galaxies
+                </span>
+                {% endif %}
+              </div>
+              {% set items = _galaxy_map.get(c) or [] %}
+              {% if items %}
+                {{ galaxy_multiselect("value", values=selected, items=items, dom_id="fp-" ~ (c | slug)) }}
+              {% else %}
+                <div class="form-text text-warning"><i class="fas fa-triangle-exclamation me-1"></i>Galaxy data unavailable for {{ c }}.</div>
+                {% for v in selected %}
+                <input type="hidden" name="value" value="{{ v | e }}">
+                {% endfor %}
+              {% endif %}
+              <div class="mt-2">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="fas fa-check me-1"></i> Save {{ c }} selection
+                </button>
+              </div>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('requirements.pir_add_focus_point', id=pir.id) }}">
+              <input type="hidden" name="category" value="{{ c }}">
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Value</label>
+                  <input type="text" name="value" class="form-control form-control-sm" required
+                    placeholder="e.g. Fortinet, Ransomware, CVE-2025-…">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label small mb-1">Notes</label>
+                  <input type="text" name="notes" class="form-control form-control-sm" placeholder="Optional">
+                </div>
+                <div class="col-sm-2">
+                  <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="fas fa-plus me-1"></i> Add
+                  </button>
+                </div>
+              </div>
+              {% if selected %}
+              <div class="small text-muted mt-2">
+                Already in scope: {% for v in selected %}<span class="source-tag me-1">{{ v }}</span>{% endfor %}
+              </div>
+              {% endif %}
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        <script>
+        (function() {
+          var sel = document.getElementById('fp-category');
+          var subs = document.querySelectorAll('.fp-add-sub');
+          function refresh() {
+            subs.forEach(function(el) {
+              el.style.display = (el.dataset.category === sel.value) ? '' : 'none';
+            });
+          }
+          sel.addEventListener('change', refresh);
+          refresh();
+        })();
+        </script>
+      </div>
+
+      <div class="card-body p-0">
+        {% if focus_points %}
+        <div class="fp-grid">
+          {% for fp in focus_points %}
+          <div class="fp-item">
+            <span class="fp-category fp-cat-{{ fp.category | slug }}">{{ fp.category }}</span>
+            <span class="fp-value">{{ fp.value }}</span>
+            {% if fp.notes %}<span class="fp-notes">{{ fp.notes }}</span>{% endif %}
+            <form method="post" action="{{ url_for('requirements.pir_delete_focus_point', id=pir.id, fp_id=fp.id) }}" class="fp-delete">
+              <button class="btn btn-xs btn-outline-danger" title="Remove"><i class="fas fa-xmark"></i></button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state py-4">
+          <i class="fas fa-crosshairs text-muted d-block mb-2"></i>
+          <p class="text-muted mb-0 small">No scope items yet. Without them the analyser cannot evaluate articles against this PIR.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Decision support -->
+    {% if pir.decision_supported or pir.decision_maker or pir.consequence %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-bullseye me-2"></i>Decision support</div>
+      <div class="card-body">
+        <dl class="detail-list">
+          {% if pir.decision_supported %}
+          <dt>Decision supported</dt><dd>{{ pir.decision_supported }}</dd>
+          {% endif %}
+          {% if pir.decision_maker %}
+          <dt>Decision maker{{ 's' if pir.decision_maker | length > 1 }}</dt>
+          <dd>
+            {% if pir.decision_maker | length == 1 %}
+              {{ pir.decision_maker[0] }}
+            {% else %}
+              <ul class="mb-0 ps-3">
+                {% for dm in pir.decision_maker %}<li>{{ dm }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+          </dd>
+          {% endif %}
+          {% if pir.consequence %}
+          <dt>Consequence{{ 's' if pir.consequence | length > 1 }} if unanswered</dt>
+          <dd>
+            {% if pir.consequence | length == 1 %}
+              {{ pir.consequence[0] }}
+            {% else %}
+              <ul class="mb-0 ps-3">
+                {% for c in pir.consequence %}<li>{{ c }}</li>{% endfor %}
+              </ul>
+            {% endif %}
+          </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Scope is now folded into Scope above -->
+    {% if pir.time_frame or pir.out_of_scope %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-map me-2"></i>Boundaries</div>
+      <div class="card-body">
+        <dl class="detail-list">
+          {% if pir.time_frame %}
+          <dt>Time frame</dt><dd>{{ pir.time_frame }}</dd>
+          {% endif %}
+          {% if pir.out_of_scope %}
+          <dt>Out of scope</dt>
+          <dd><div class="d-flex flex-wrap gap-1">{% for v in pir.out_of_scope %}<span class="source-tag" style="background:#fdecea;border-color:#f5c6c6;color:#a93226;">{{ v }}</span>{% endfor %}</div></dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- MITRE ATT&CK techniques -->
+    {% if pir.mitre_attack_techniques %}
+    <div class="card content-card mb-4" style="border-color:#c0392b22;">
+      <div class="card-header" style="background:#fdecea;border-bottom-color:#c0392b22;">
+        <span style="color:#7b1a10;font-weight:600;">
+          <i class="fas fa-shield-halved me-2"></i>MITRE ATT&amp;CK techniques
+        </span>
+        <span class="badge ms-2" style="background:#c0392b;font-size:.65rem;">{{ pir.mitre_attack_techniques | length }}</span>
+      </div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+          {% for t in pir.mitre_attack_techniques %}
+            {% set parts = t.split(' - ', 1) %}
+            <span class="attack-technique-badge" title="{{ t }}">
+              <span class="attack-tid">{{ parts[0] }}</span>
+              {% if parts | length > 1 %}<span class="attack-tname">{{ parts[1] }}</span>{% endif %}
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Collection sources -->
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-satellite-dish me-2"></i>Collection mapping</div>
+      <div class="card-body">
+        <p class="form-label small fw-semibold mb-2">Sources that can address this requirement</p>
+        {% if pir.collection_sources %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for src in pir.collection_sources %}
+          <span class="source-tag">{{ src }}</span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">No sources mapped.</p>
+        {% endif %}
+        <div class="form-text mt-2">
+          <i class="fas fa-circle-info fa-xs me-1"></i>Informational only. Event matching and filtering runs across all configured sources regardless of this mapping.
+        </div>
+      </div>
+    </div>
+
+    <!-- Deliverable -->
+    {% if pir.output_format %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-file-lines me-2"></i>Deliverable</div>
+      <div class="card-body">
+        <dl class="detail-list">
+          {% if pir.output_format %}
+          <dt>Format</dt>
+          <dd>
+            <div class="d-flex flex-wrap gap-1">
+              {% for f in pir.output_format %}<span class="source-tag">{{ f }}</span>{% endfor %}
+            </div>
+          </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Distribution (read-only view) -->
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-share-nodes me-2"></i>Distribution</span>
+        <span class="d-flex align-items-center gap-2">
+          <span class="badge bg-secondary">
+            {{ selected_count }} recipient{{ '' if selected_count == 1 else 's' }}{% if distribution %} of {{ distribution | length }} stakeholders{% endif %}
+          </span>
+          <a href="{{ url_for('requirements.pir_edit', id=pir.uuid) }}" class="btn btn-xs btn-outline-primary"
+             title="Change recipients in the edit page">
+            <i class="fas fa-pen me-1"></i>Edit
+          </a>
+        </span>
+      </div>
+      <div class="card-body">
+        {% if not distribution %}
+        <div class="text-muted small mb-0">
+          No stakeholders registered.
+          <a href="{{ url_for('stakeholders.new') }}">Add a stakeholder</a> to set up distribution.
+        </div>
+        {% else %}
+        {% if selected_count == 0 %}
+        <div class="alert alert-warning small py-2 mb-3">
+          <i class="fas fa-triangle-exclamation me-1"></i>
+          No recipients selected for distribution.
+          <a href="{{ url_for('requirements.pir_edit', id=pir.uuid) }}" class="alert-link">Assign recipients</a>.
+          The list below shows all registered stakeholders for reference.
+        </div>
+        {% endif %}
+        <div class="row g-3">
+          {% for s in distribution %}
+          <div class="col-md-6">
+            <div class="dist-card dist-card-readonly h-100
+                        {% if not s.in_distribution %}dist-card-unselected{% endif %}"
+                 {% if not s.in_distribution %}title="Not selected for distribution"{% endif %}>
+              {% if s.in_distribution %}
+              <span class="dist-status-ribbon dist-status-recipient">
+                <i class="fas fa-paper-plane fa-xs me-1"></i>Recipient
+              </span>
+              {% else %}
+              <span class="dist-status-ribbon dist-status-excluded">Not selected</span>
+              {% endif %}
+              <div class="dist-card-avatar">{{ (s.name or '?')[0] | upper }}</div>
+              <div class="dist-card-body">
+                <div class="dist-card-name">
+                  {% if s.uuid %}
+                  <a href="{{ url_for('stakeholders.detail', id=s.uuid) }}">{{ s.name }}</a>
+                  {% else %}
+                  {{ s.name }}
+                  {% endif %}
+                </div>
+                {% if s.role or s.organization %}
+                <div class="dist-card-role">
+                  {{ s.role }}{% if s.role and s.organization %} &middot; {% endif %}{{ s.organization }}
+                </div>
+                {% endif %}
+                <div class="dist-card-meta">
+                  {% if s.email %}
+                  <a href="mailto:{{ s.email }}" class="text-muted small me-2"><i class="fas fa-envelope me-1"></i>{{ s.email }}</a>
+                  {% endif %}
+                  {% if s.tlp_clearance %}
+                  <span class="tlp-badge tlp-{{ s.tlp_clearance | slug }}">TLP:{{ s.tlp_clearance | upper }}</span>
+                  {% endif %}
+                </div>
+                {% if s.products %}
+                <div class="dist-card-products">
+                  {% for p in s.products %}
+                  {% set mode = (s.product_modes or {}).get(p) %}
+                  <span class="dist-prod-chip dist-prod-{{ 'auto' if mode == 'automated' else 'manual' }}" title="{{ 'Auto-publish' if mode == 'automated' else 'Review before send' }}">
+                    {% if mode == 'automated' %}<i class="fas fa-robot fa-xs me-1"></i>{% else %}<i class="fas fa-user-pen fa-xs me-1"></i>{% endif %}{{ p }}
+                  </span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                {% if not s.uuid %}
+                <div class="text-warning small mt-1"><i class="fas fa-triangle-exclamation me-1"></i>Not in stakeholder registry</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if pir.resolution_note %}
+    <div class="card content-card border-success">
+      <div class="card-header text-success"><i class="fas fa-circle-check me-2"></i>Resolution</div>
+      <div class="card-body"><p class="mb-0">{{ pir.resolution_note }}</p></div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right: metadata -->
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-sliders me-2"></i>Classification</div>
+      <div class="card-body">
+        <dl class="detail-list">
+          <dt>Priority</dt>
+          <dd><span class="badge priority-badge priority-{{ pir.priority | slug }}">{{ pir.priority }}</span></dd>
+          {% if pir.priority_justification %}
+          <dt>Priority justification</dt>
+          <dd>{{ pir.priority_justification }}</dd>
+          {% endif %}
+          {% if pir.intel_level %}
+          <dt>Intelligence level</dt>
+          <dd>
+            <div class="d-flex flex-wrap gap-1">
+              {% for lvl in pir.intel_level %}
+              <span class="badge text-bg-secondary">{{ lvl }}</span>
+              {% endfor %}
+            </div>
+          </dd>
+          {% endif %}
+          <dt>Status</dt>
+          <dd><span class="badge status-badge status-{{ pir.status | slug }}">{{ pir.status }}</span></dd>
+          <dt>Time sensitivity</dt>
+          <dd>{{ pir.time_sensitivity or '-' }}</dd>
+          <dt>Created</dt>
+          <dd>{{ pir.created_at.strftime('%d-%m-%Y') if pir.created_at else '-' }}</dd>
+          <dt>Next review</dt>
+          <dd>{{ pir.next_review.strftime('%d-%m-%Y') if pir.next_review else '-' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center">
+        <i class="fas fa-clipboard-list me-2"></i>Intake
+        {% if pir.intake_status in ('submitted', 'acknowledged', 'triaged') %}
+        <a href="{{ url_for('requirements.pir_triage', id=pir.id) }}"
+           class="btn btn-xs btn-outline-primary ms-auto">Triage</a>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <dl class="detail-list mb-0">
+          <dt>Status</dt>
+          <dd>
+            {% if pir.intake_status == 'approved' %}<span class="badge bg-success">approved</span>
+            {% elif pir.intake_status == 'rejected' %}<span class="badge bg-danger">rejected</span>
+            {% elif pir.intake_status == 'deferred' %}<span class="badge bg-secondary">deferred</span>
+            {% elif pir.intake_status == 'merged' %}<span class="badge bg-secondary">merged</span>
+            {% elif pir.intake_status == 'triaged' %}<span class="badge bg-info text-dark">triaged</span>
+            {% elif pir.intake_status == 'acknowledged' %}<span class="badge bg-info text-dark">acknowledged</span>
+            {% else %}<span class="badge bg-warning text-dark">submitted</span>
+            {% endif %}
+          </dd>
+          {% if pir.acknowledged_at %}
+          <dt>Acknowledged</dt><dd>{{ pir.acknowledged_at }}</dd>
+          {% endif %}
+          {% if pir.triaged_at %}
+          <dt>Triaged</dt><dd>{{ pir.triaged_at }}</dd>
+          {% endif %}
+          {% if pir.decision_at %}
+          <dt>Decision</dt><dd>{{ pir.decision_at }}</dd>
+          {% endif %}
+          {% if pir.rejection_reason %}
+          <dt>Rejection reason</dt><dd>{{ pir.rejection_reason }}</dd>
+          {% endif %}
+          {% if pir.deferral_reason %}
+          <dt>Deferral reason</dt><dd>{{ pir.deferral_reason }}</dd>
+          {% endif %}
+          {% if pir.triage_checklist %}
+          <dt class="mt-2">Triage checklist</dt>
+          <dd>
+            {% set checklist_labels = {
+              'clear_question':       'Intelligence question clearly stated and answerable',
+              'requester_identified': 'Requester and decision it supports identified',
+              'not_duplicate':        'Not already answered by an existing active PIR or GIR',
+              'priority_realistic':   'Priority and time sensitivity realistic given team capacity',
+              'sources_available':    'Collection sources available or identifiable'
+            } %}
+            <ul class="list-unstyled mb-0">
+              {% for key, label in checklist_labels.items() %}
+              <li class="{{ 'text-success' if key in pir.triage_checklist else 'text-muted' }}" style="font-size:.8rem;">
+                <i class="fas {{ 'fa-check-circle' if key in pir.triage_checklist else 'fa-circle' }} me-1" style="font-size:.7rem;"></i>{{ label }}
+              </li>
+              {% endfor %}
+            </ul>
+          </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user-tie me-2"></i>Ownership</div>
+      <div class="card-body">
+        {% if pir.owner_stakeholder %}
+        <a href="{{ url_for('stakeholders.detail', id=pir.owner_stakeholder.id) }}" class="d-flex align-items-center gap-2 text-decoration-none">
+          <span class="owner-avatar">{{ pir.owner_stakeholder.name[0:1] | upper }}</span>
+          <span>
+            <div class="fw-semibold">{{ pir.owner_stakeholder.name }}</div>
+            <div class="text-muted small">{{ pir.owner_stakeholder.role or '' }}</div>
+          </span>
+        </a>
+        {% elif pir.owner_name %}
+        <div class="d-flex align-items-center gap-2">
+          <span class="owner-avatar owner-avatar-muted">{{ pir.owner_name[0:1] | upper }}</span>
+          <div class="fw-semibold">{{ pir.owner_name }}</div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0 small">No owner assigned.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-satellite-dish me-2"></i>Collection coverage</div>
+      <div class="card-body small">
+        {% if not pir.focus_points %}
+        <p class="text-muted mb-0">No scope items. Add scope items to see collection coverage.</p>
+        {% elif coverage and coverage.recent_matches > 0 %}
+        <p class="mb-1">
+          <strong>{{ coverage.recent_matches }}</strong> matching event{{ 's' if coverage.recent_matches != 1 }} in recent collection
+        </p>
+        {% if coverage.last_match_date %}
+        <p class="mb-2 text-muted">Last match: {{ coverage.last_match_date }}</p>
+        {% endif %}
+        {% if coverage.sample %}
+        <div class="text-muted mb-1" style="font-size:.75rem;">Recent matches:</div>
+        {% for row in coverage.sample %}
+        <div class="mb-1" style="font-size:.78rem;">
+          <a href="{{ url_for('data_collection.detail', uuid=row.uuid) }}" target="_blank"
+             class="text-decoration-none text-truncate d-block" style="max-width:100%;">
+            <span class="text-muted me-1">{{ row.date }}</span>{{ row.info | truncate(60) }}
+          </a>
+        </div>
+        {% endfor %}
+        {% endif %}
+        <a href="{{ url_for('requirements.pir_scope_preview', id=pir.id) }}" class="btn btn-xs btn-outline-info mt-2">
+          <i class="fas fa-eye me-1"></i> Full preview
+        </a>
+        {% else %}
+        <p class="text-warning mb-1"><i class="fas fa-triangle-exclamation me-1"></i>No matching events in recent collection.</p>
+        <p class="text-muted mb-2" style="font-size:.78rem;">This may indicate a collection gap for this PIR.</p>
+        <a href="{{ url_for('requirements.pir_scope_preview', id=pir.id) }}" class="btn btn-xs btn-outline-info">
+          <i class="fas fa-eye me-1"></i> Preview scope
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('requirements.pir_delete', id=pir.id) }}"
+          onsubmit="return confirm('Delete {{ pir.pir_id }}?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-danger btn-sm w-100">
+        <i class="fas fa-trash me-1"></i> Delete PIR
+      </button>
+    </form>
+
+  </div>
+
+</div>
+
+<!-- Notify stakeholders modal -->
+<div class="modal fade" id="notify-modal" tabindex="-1" aria-labelledby="notify-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="notify-modal-label"><i class="fas fa-bell me-2"></i>Notify stakeholders</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Preview the notification that will be sent. You can edit it before sending.</p>
+        <textarea class="form-control font-monospace" id="notify-markdown" rows="20" style="font-size:.8rem;"></textarea>
+        <div id="notify-diagnostics" class="small text-muted mt-2"></div>
+        <div id="notify-status" class="mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="notify-send-btn">
+          <i class="fas fa-paper-plane me-1"></i> Send notification
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.attack-technique-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .25rem .55rem;
+  background: #fdecea;
+  border: 1.5px solid #e8b4b0;
+  border-radius: .4rem;
+  font-size: .78rem;
+  line-height: 1.3;
+  max-width: 22rem;
+}
+.attack-tid {
+  font-family: monospace;
+  font-weight: 700;
+  color: #c0392b;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.attack-tname {
+  color: #5a1f1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>
+<script>
+(function() {
+  var btn = document.getElementById('notify-btn');
+  var modal = new bootstrap.Modal(document.getElementById('notify-modal'));
+  var textarea = document.getElementById('notify-markdown');
+  var diagnosticsEl = document.getElementById('notify-diagnostics');
+  var statusEl = document.getElementById('notify-status');
+  var sendBtn = document.getElementById('notify-send-btn');
+  var notifyUrl = btn.dataset.notifyUrl;
+
+  btn.addEventListener('click', function() {
+    textarea.value = 'Loading…';
+    statusEl.innerHTML = '';
+    if (diagnosticsEl) diagnosticsEl.textContent = '';
+    modal.show();
+    fetch(notifyUrl, {headers: {'Accept': 'application/json'}})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        textarea.value = data.markdown || '';
+        if (diagnosticsEl) {
+          var names = (data.recipient_names || []).slice(0, 6).join(', ');
+          var extra = (data.recipient_names || []).length > 6 ? ' +' + ((data.recipient_names || []).length - 6) + ' more' : '';
+          var channels = Object.entries(data.channels_by_type || {}).map(function(entry) {
+            return entry[0] + ': ' + entry[1];
+          }).join(', ');
+          diagnosticsEl.textContent =
+            'Eligible recipients: ' + (data.recipient_count || 0) +
+            (names ? ' (' + names + extra + ')' : '') +
+            (channels ? ' | Channels: ' + channels : ' | Channels: none configured');
+        }
+      })
+      .catch(function(e) { textarea.value = 'Error loading preview: ' + e; });
+  });
+
+  sendBtn.addEventListener('click', function() {
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
+    if (csrf) headers['X-CSRF-Token'] = csrf.content;
+    statusEl.innerHTML = '<span class="text-muted small">Sending…</span>';
+    sendBtn.disabled = true;
+    fetch(notifyUrl, {
+      method: 'POST',
+      headers: headers,
+      body: 'markdown=' + encodeURIComponent(textarea.value)
+    }).then(function(r) {
+      if (r.redirected || r.ok) {
+        modal.hide();
+        window.location.reload();
+      } else {
+        return r.text().then(function(t) {
+          var sp = document.createElement('span');
+          sp.className = 'text-danger small';
+          sp.textContent = 'Error: ' + t;
+          statusEl.replaceChildren(sp);
+          sendBtn.disabled = false;
+        });
+      }
+    }).catch(function(e) {
+      var sp = document.createElement('span');
+      sp.className = 'text-danger small';
+      sp.textContent = 'Error: ' + e;
+      statusEl.replaceChildren(sp);
+      sendBtn.disabled = false;
+    });
+  });
+})();
+</script>
+{% endblock %}

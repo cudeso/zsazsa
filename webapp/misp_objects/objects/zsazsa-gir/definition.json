@@ -1,0 +1,165 @@
+{
+  "name": "zsazsa-gir",
+  "meta-category": "intelligence",
+  "description": "General Intelligence Requirement (GIR) managed by the zsazsa CTI program",
+  "uuid": "6e7d8c9b-0a1b-4c3d-8e5f-6a7b8c9d0e1f",
+  "version": 5,
+  "attributes": {
+    "gir-id": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Unique GIR identifier (e.g. GIR-001)",
+      "disable_correlation": true
+    },
+    "topic": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "Short descriptive title for this ongoing monitoring area",
+      "disable_correlation": true
+    },
+    "description": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Detailed description of the monitoring requirement",
+      "disable_correlation": true
+    },
+    "status": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "Lifecycle status (Active / Paused / Retired)",
+      "disable_correlation": true
+    },
+    "review-cycle": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "How frequently this GIR is reviewed (Monthly / Quarterly / etc.)",
+      "disable_correlation": true
+    },
+    "owner-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "UUID of the owning stakeholder MISP event",
+      "disable_correlation": true
+    },
+    "owner-name": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "Denormalised owner display name",
+      "disable_correlation": true
+    },
+    "owner-role": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Denormalised owner role",
+      "disable_correlation": true
+    },
+    "collection-sources": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "JSON array of collection source names",
+      "disable_correlation": true
+    },
+    "geographic-scope": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "JSON array of countries/regions to monitor (from MISP Country galaxy)",
+      "disable_correlation": true
+    },
+    "sectors": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "JSON array of industry sectors to monitor (from MISP Sector galaxy)",
+      "disable_correlation": true
+    },
+    "threat-types": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "JSON array of threat categories to monitor (free text)",
+      "disable_correlation": true
+    },
+    "threat-actors": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of specific threat actors to track (from MISP Threat Actor galaxy)",
+      "disable_correlation": true
+    },
+    "out-of-scope": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "JSON array of explicitly excluded topics (free text)",
+      "disable_correlation": true
+    },
+    "technology": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of technology scope values",
+      "disable_correlation": true
+    },
+    "vendor": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of vendor scope values",
+      "disable_correlation": true
+    },
+    "incident": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of related incident identifiers",
+      "disable_correlation": true
+    },
+    "campaign": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of related campaign names",
+      "disable_correlation": true
+    },
+    "output-format": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of expected deliverable formats",
+      "disable_correlation": true
+    },
+    "distribution": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of stakeholder UUIDs for the deliverable recipients (legacy records may still contain stakeholder names)",
+      "disable_correlation": true
+    },
+    "deadline": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Hard deadline for this GIR (ISO 8601)",
+      "disable_correlation": true
+    },
+    "priority-justification": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Justification for the assigned priority",
+      "disable_correlation": true
+    },
+    "sub-questions": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of sub-questions",
+      "disable_correlation": true
+    },
+    "next-review": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Date of the next scheduled review (ISO 8601)",
+      "disable_correlation": true
+    },
+    "intel-level": {
+      "misp-attribute": "text",
+      "ui-priority": 15,
+      "description": "Intelligence level (Strategic / Operational / Tactical)",
+      "disable_correlation": true
+    },
+    "mitre-attack-techniques": {
+      "misp-attribute": "text",
+      "ui-priority": 35,
+      "description": "JSON array of MITRE ATT\\&CK technique strings (from misp-galaxy:mitre-attack-pattern)",
+      "disable_correlation": true
+    }
+  }
+}

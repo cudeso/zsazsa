@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+
+{% block title %}{{ rfi.rfi_id }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ rfi.rfi_id }}{% endblock %}
+
+{% block misp_object_url %}{{ rfi.misp_url }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('rfi.rfi_edit', id=rfi.id) }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-pen me-1"></i> Edit
+</a>
+<button class="btn btn-sm btn-outline-warning" id="notify-btn"
+        data-notify-url="{{ url_for('rfi.rfi_notify', id=rfi.id) }}">
+  <i class="fas fa-bell me-1"></i> Notify stakeholders
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-8">
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center">
+        <i class="fas fa-question-circle me-2"></i>Question
+        <span class="ms-auto">
+          <span class="badge priority-badge priority-{{ rfi.priority | slug }}">{{ rfi.priority }}</span>
+          <span class="badge status-badge status-{{ rfi.status | slug }} ms-1">{{ rfi.status }}</span>
+          {% if auto_acknowledged %}
+          <span class="badge bg-info text-dark ms-1" title="RFI was automatically acknowledged after stakeholder notification">
+            Auto-acknowledged
+          </span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+        <p class="lead mb-3">{{ rfi.question }}</p>
+        {% if rfi.context %}
+        <div class="text-muted small" style="white-space: pre-wrap;">
+          <strong>Context:</strong> {{ rfi.context }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-paper-plane me-2"></i>Response</div>
+      <div class="card-body">
+        {% if rfi.response %}
+        <div style="white-space: pre-wrap;">{{ rfi.response }}</div>
+        {% else %}
+        <p class="text-muted mb-0"><em>No response recorded yet.</em></p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center">
+        <i class="fas fa-paperclip me-2"></i>Attachments
+        <button class="btn btn-sm btn-outline-secondary ms-auto" type="button"
+                data-bs-toggle="collapse" data-bs-target="#attach-add-form">
+          <i class="fas fa-plus me-1"></i>Add
+        </button>
+      </div>
+      <div class="collapse" id="attach-add-form">
+        <div class="card-body border-bottom">
+          <form method="post" action="{{ url_for('rfi.rfi_attachment_add', id=rfi.id) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-end">
+            <div class="flex-grow-1">
+              <label class="form-label small mb-1">File</label>
+              <input type="file" name="attachment" class="form-control form-control-sm" required>
+            </div>
+            <button class="btn btn-sm btn-primary" type="submit">Upload</button>
+          </form>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        {% if rfi.attachments %}
+        <table class="table table-sm mb-0">
+          <tbody>
+            {% for att in rfi.attachments %}
+            <tr>
+              <td><i class="fas fa-file me-2 text-muted"></i>{{ att.filename }}</td>
+              <td class="text-end">
+                <a href="{{ url_for('rfi.rfi_attachment_download', id=rfi.id, attr_uuid=att.uuid) }}"
+                   class="btn btn-xs btn-outline-secondary me-1" title="Download">
+                  <i class="fas fa-download"></i>
+                </a>
+                <form method="post" action="{{ url_for('rfi.rfi_attachment_delete', id=rfi.id, attr_uuid=att.uuid) }}"
+                      class="d-inline" onsubmit="return confirm('Delete attachment?')">
+                  <button class="btn btn-xs btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="px-3 py-2 text-muted small"><em>No attachments.</em></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center">
+        <i class="fas fa-sticky-note me-2"></i>Notes
+        <button class="btn btn-sm btn-outline-secondary ms-auto" type="button"
+                data-bs-toggle="collapse" data-bs-target="#note-add-form">
+          <i class="fas fa-plus me-1"></i>Add
+        </button>
+      </div>
+      <div class="collapse" id="note-add-form">
+        <div class="card-body border-bottom">
+          <form method="post" action="{{ url_for('rfi.rfi_note_add', id=rfi.id) }}">
+            <div class="mb-2">
+              <label class="form-label small mb-1">Title</label>
+              <input type="text" name="note_title" class="form-control form-control-sm" required placeholder="Note title">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small mb-1">Content (Markdown)</label>
+              <textarea name="note_content" class="form-control form-control-sm" rows="6"
+                        placeholder="Markdown content…"></textarea>
+            </div>
+            <button class="btn btn-sm btn-primary" type="submit">Add note</button>
+          </form>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        {% if rfi.notes %}
+        {% for note in rfi.notes %}
+        <div class="border-bottom px-3 py-2">
+          <div class="d-flex align-items-start">
+            <strong class="small">{{ note.title }}</strong>
+            <form method="post" action="{{ url_for('rfi.rfi_note_delete', id=rfi.id, report_id=note.id) }}"
+                  class="ms-auto d-inline" onsubmit="return confirm('Delete note?')">
+              <button class="btn btn-xs btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+            </form>
+          </div>
+          {% if note.content %}
+          <div class="text-muted small mt-1" style="white-space:pre-wrap;">{{ note.content }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="px-3 py-2 text-muted small"><em>No notes.</em></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-comment-dots me-2"></i>Feedback</span>
+        {% if rfi.status == 'Closed' %}
+        <button class="btn btn-sm btn-outline-primary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#feedback-form-collapse">
+          <i class="fas fa-pen me-1"></i> Submit feedback
+        </button>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <th style="width:40%">Met the requirement?</th>
+              <td>{{ rfi.feedback_requirement_met or '-' }}</td>
+            </tr>
+            <tr>
+              <th>Delivered on time?</th>
+              <td>{{ rfi.feedback_on_time or '-' }}</td>
+            </tr>
+            <tr>
+              <th>Usefulness</th>
+              <td>{{ rfi.feedback_usefulness or '-' }}</td>
+            </tr>
+            <tr>
+              <th>Suggestions</th>
+              <td>{{ rfi.feedback_suggestions or '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {% if rfi.status == 'Closed' %}
+        <div class="collapse mt-3" id="feedback-form-collapse">
+          <hr>
+          <form method="post" action="{{ url_for('rfi.rfi_feedback', id=rfi.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Met the requirement?</label>
+              <select name="feedback_requirement_met" class="form-select form-select-sm">
+                <option value="">- select -</option>
+                {% for v in feedback_requirement %}
+                <option value="{{ v }}" {% if rfi.feedback_requirement_met == v %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Delivered on time?</label>
+              <select name="feedback_on_time" class="form-select form-select-sm">
+                <option value="">- select -</option>
+                {% for v in feedback_on_time %}
+                <option value="{{ v }}" {% if rfi.feedback_on_time == v %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Usefulness</label>
+              <select name="feedback_usefulness" class="form-select form-select-sm">
+                <option value="">- select -</option>
+                {% for v in feedback_usefulness %}
+                <option value="{{ v }}" {% if rfi.feedback_usefulness == v %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Suggestions</label>
+              <textarea name="feedback_suggestions" class="form-control form-control-sm" rows="3">{{ rfi.feedback_suggestions or '' }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm w-100">
+              <i class="fas fa-save me-1"></i> Save feedback
+            </button>
+          </form>
+        </div>
+        {% endif %}
+
+        {% if feedback %}
+        <hr>
+        <p class="small fw-semibold text-muted mb-2"><i class="fas fa-message me-1"></i>Analyst feedback notes</p>
+        {% for f in feedback %}
+        <div class="border rounded p-2 mb-2 small">
+          <div class="text-muted mb-1">{{ f.name }}</div>
+          <div class="report-md-body" data-md="{{ f.content | e }}"></div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-info-circle me-2"></i>Details</div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">Requester</dt>
+          <dd class="col-7">{{ rfi.requester_name or '-' }}{% if rfi.requester_team %}<br><span class="text-muted">{{ rfi.requester_team }}</span>{% endif %}</dd>
+
+          <dt class="col-5">Stakeholder</dt>
+          <dd class="col-7">{{ rfi.owner_name or '-' }}</dd>
+
+          <dt class="col-5">Assigned to</dt>
+          <dd class="col-7">{{ rfi.assigned_analyst or '-' }}</dd>
+
+          <dt class="col-5">Due date</dt>
+          <dd class="col-7">
+            {{ rfi.due_date.strftime('%d-%m-%Y') if rfi.due_date else '-' }}
+            {% if days_remaining is not none and sla_state != 'done' %}
+              {% if sla_state == 'red' %}
+                <span class="badge text-bg-danger ms-1">Overdue {{ -days_remaining }}d</span>
+              {% elif sla_state == 'amber' %}
+                <span class="badge text-bg-warning ms-1">{{ days_remaining }}d left</span>
+              {% else %}
+                <span class="badge text-bg-success ms-1">{{ days_remaining }}d left</span>
+              {% endif %}
+            {% endif %}
+          </dd>
+
+          <dt class="col-5">Output formats</dt>
+          <dd class="col-7">
+            {% if rfi.output_format_list %}
+            {% for item in rfi.output_format_list %}
+            <div>{{ item.format }} <span class="tlp-badge tlp-{{ item.tlp | slug }} ms-1">TLP:{{ item.tlp | upper }}</span></div>
+            {% endfor %}
+            {% else %}
+            -
+            {% endif %}
+          </dd>
+
+          <dt class="col-5">Created</dt>
+          <dd class="col-7">{{ rfi.created_at.strftime('%d-%m-%Y') if rfi.created_at else '-' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-link me-2"></i>Linked requirements</div>
+      <div class="card-body">
+        {% if linked_pir %}
+        <p class="mb-2">
+          <span class="text-muted small">PIR:</span>
+          <a href="{{ url_for('requirements.pir_detail', id=linked_pir.id) }}" class="text-decoration-none">
+            <span class="req-id-badge">{{ linked_pir.pir_id }}</span> {{ linked_pir.question | truncate(60) }}
+          </a>
+        </p>
+        {% endif %}
+        {% if linked_gir %}
+        <p class="mb-2">
+          <span class="text-muted small">GIR:</span>
+          <a href="{{ url_for('requirements.gir_detail', id=linked_gir.id) }}" class="text-decoration-none">
+            <span class="req-id-badge">{{ linked_gir.gir_id }}</span> {{ linked_gir.topic | truncate(60) }}
+          </a>
+        </p>
+        {% endif %}
+        {% if not linked_pir and not linked_gir %}
+        <p class="text-muted small mb-0"><em>No PIR or GIR linked. Recurring RFIs may indicate a missing standing requirement.</em></p>
+        {% endif %}
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('rfi.rfi_delete', id=rfi.id) }}"
+      onsubmit="return confirm('Delete {{ rfi.rfi_id }}?')">
+      <button class="btn btn-outline-danger w-100">
+        <i class="fas fa-trash me-1"></i> Delete RFI
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Notify stakeholders modal -->
+<div class="modal fade" id="notify-modal" tabindex="-1" aria-labelledby="notify-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="notify-modal-label"><i class="fas fa-bell me-2"></i>Notify stakeholders</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Preview the notification that will be sent. You can edit it before sending.</p>
+        <textarea class="form-control font-monospace" id="notify-markdown" rows="20" style="font-size:.8rem;"></textarea>
+        <div id="notify-diagnostics" class="small text-muted mt-2"></div>
+        <div id="notify-status" class="mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="notify-send-btn">
+          <i class="fas fa-paper-plane me-1"></i> Send notification
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+  document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+    var raw = el.getAttribute('data-md') || '';
+    el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+    el.removeAttribute('data-md');
+  });
+})();
+(function() {
+  var btn = document.getElementById('notify-btn');
+  var modal = new bootstrap.Modal(document.getElementById('notify-modal'));
+  var textarea = document.getElementById('notify-markdown');
+  var diagnosticsEl = document.getElementById('notify-diagnostics');
+  var statusEl = document.getElementById('notify-status');
+  var sendBtn = document.getElementById('notify-send-btn');
+  var notifyUrl = btn.dataset.notifyUrl;
+
+  btn.addEventListener('click', function() {
+    textarea.value = 'Loading…';
+    statusEl.innerHTML = '';
+    if (diagnosticsEl) diagnosticsEl.textContent = '';
+    modal.show();
+    fetch(notifyUrl, {headers: {'Accept': 'application/json'}})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        textarea.value = data.markdown || '';
+        if (diagnosticsEl) {
+          var names = (data.recipient_names || []).slice(0, 6).join(', ');
+          var extra = (data.recipient_names || []).length > 6 ? ' +' + ((data.recipient_names || []).length - 6) + ' more' : '';
+          var channels = Object.entries(data.channels_by_type || {}).map(function(entry) {
+            return entry[0] + ': ' + entry[1];
+          }).join(', ');
+          diagnosticsEl.textContent =
+            'Eligible recipients: ' + (data.recipient_count || 0) +
+            (names ? ' (' + names + extra + ')' : '') +
+            (channels ? ' | Channels: ' + channels : ' | Channels: none configured');
+        }
+      })
+      .catch(function(e) { textarea.value = 'Error loading preview: ' + e; });
+  });
+
+  sendBtn.addEventListener('click', function() {
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
+    if (csrf) headers['X-CSRF-Token'] = csrf.content;
+    statusEl.innerHTML = '<span class="text-muted small">Sending…</span>';
+    sendBtn.disabled = true;
+    fetch(notifyUrl, {
+      method: 'POST',
+      headers: headers,
+      body: 'markdown=' + encodeURIComponent(textarea.value)
+    }).then(function(r) {
+      if (r.redirected || r.ok) {
+        modal.hide();
+        window.location.reload();
+      } else {
+        return r.text().then(function(t) {
+          var sp = document.createElement('span');
+          sp.className = 'text-danger small';
+          sp.textContent = 'Error: ' + t;
+          statusEl.replaceChildren(sp);
+          sendBtn.disabled = false;
+        });
+      }
+    }).catch(function(e) {
+      var sp = document.createElement('span');
+      sp.className = 'text-danger small';
+      sp.textContent = 'Error: ' + e;
+      statusEl.replaceChildren(sp);
+      sendBtn.disabled = false;
+    });
+  });
+})();
+</script>
+{% endblock %}

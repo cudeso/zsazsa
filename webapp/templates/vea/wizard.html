@@ -1,0 +1,809 @@
+{% extends "base.html" %}
+
+{% set title_text = ('Edit ' + vea.vea_id) if is_edit else 'New vulnerability advisory' %}
+{% block title %}{{ title_text }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ title_text }}{% endblock %}
+{% block page_subtitle %}
+{% if not is_edit and source_events %}
+<p class="text-muted mb-0" style="font-size:.82rem;margin-top:2px;">
+  {% if vea and vea.cve_id %}
+  <span class="me-2">{{ vea.cve_id | replace('\n', ' · ') }}</span>
+  <span class="text-muted" style="opacity:.6;">·</span>
+  {% endif %}
+  <span class="ms-2">from {{ source_events | length }} source event{{ '' if source_events | length == 1 else 's' }}</span>
+  {% set orgs = source_events | map(attribute='orgc') | select | unique | list %}
+  {% if orgs %}
+  <span class="text-muted ms-1" style="opacity:.6;">·</span>
+  {% for org in orgs %}<span class="ms-1">{{ org }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}
+</p>
+{% endif %}
+{% endblock %}
+
+{% macro lines(items) %}{{ (items or []) | join('\n') }}{% endmacro %}
+
+{% block content %}
+<form method="post" class="row g-4" id="vea-form">
+
+  <div class="col-lg-8">
+
+    {% if source_events %}
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center"
+           id="vea-source-events-header" style="cursor:pointer;" title="Click to expand/collapse">
+        <span><i class="fas fa-database me-2"></i>Source events ({{ source_events | length }})</span>
+        <button type="button" class="btn btn-xs btn-link text-muted p-0" id="vea-source-events-toggle">
+          <i class="fas fa-chevron-down me-1"></i>Show
+        </button>
+      </div>
+      <div id="vea-source-events-accordion" style="display:none;">
+        <div class="accordion accordion-flush" id="vea-src-acc">
+          {% for ev in source_events %}
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button {{ 'collapsed' if not loop.first }} py-2 small fw-semibold" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#vea-src-acc-{{ loop.index }}"
+                      aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                <span class="font-monospace text-muted me-2" style="font-size:.72rem;">{{ ev.uuid[:8] }}…</span>
+                {{ ev.info or '(untitled)' }}
+                {% if ev.date %}<span class="text-muted ms-2 fw-normal" style="font-size:.75rem;">{{ ev.date }}</span>{% endif %}
+                {% if ev.orgc %}<span class="badge text-bg-secondary ms-2 fw-normal" style="font-size:.65rem;">{{ ev.orgc }}</span>{% endif %}
+                {% if ev.source_label %}<span class="badge text-bg-light text-muted ms-1 fw-normal" style="font-size:.62rem;">{{ ev.source_label }}</span>{% endif %}
+              </button>
+            </h2>
+            <div id="vea-src-acc-{{ loop.index }}" class="accordion-collapse collapse {{ 'show' if loop.first }}" data-bs-parent="#vea-src-acc">
+              <div class="accordion-body py-2 px-3"
+                   data-ev-id="{{ ev.uuid }}" data-ev-info="{{ ev.info | e }}">
+                {% if ev.tags %}
+                <div class="mb-2">
+                  {% for t in ev.tags %}
+                  <span class="badge me-1" style="background:#eef2f7;color:#455a7a;font-size:.7rem;">{{ t }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                {% if ev.reports %}
+                <div class="mb-3">
+                  <div class="fw-semibold small mb-1"><i class="fas fa-file-lines me-1 text-muted"></i>Reports</div>
+                  {% for r in ev.reports %}
+                  <div class="border rounded p-2 mb-2 small">
+                    <div class="fw-semibold mb-1">{{ r.name }}</div>
+                    <div class="report-md-body text-muted" data-md="{{ r.content | truncate(2000, True) }}"
+                         style="font-size:.82rem;max-height:12rem;overflow-y:auto;"></div>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                {% if ev.attributes %}
+                <div class="mb-3">
+                  <div class="fw-semibold small mb-1"><i class="fas fa-list me-1 text-muted"></i>Attributes ({{ ev.attributes | length }})</div>
+                  <div style="max-height:14rem;overflow-y:auto;">
+                    <table class="table table-sm table-borderless mb-0" style="font-size:.78rem;">
+                      <tbody>
+                        {% for a in ev.attributes %}
+                        <tr>
+                          <td style="width:1.5rem;padding-right:0;">
+                            <button type="button" class="btn btn-xs btn-outline-secondary vea-add-indicator-btn p-0"
+                                    style="font-size:.65rem;line-height:1.4;padding:.1rem .3rem!important;"
+                                    title="Add to exploitation indicators"
+                                    data-value="{{ a.value | e }}" data-type="{{ a.type | e }}">
+                              <i class="fas fa-plus"></i>
+                            </button>
+                          </td>
+                          <td class="text-muted pe-2" style="white-space:nowrap;">{{ a.category }}</td>
+                          <td class="text-muted pe-2 font-monospace" style="white-space:nowrap;font-size:.72rem;">{{ a.type }}</td>
+                          <td class="font-monospace" style="word-break:break-all;">{{ a.value }}</td>
+                          {% if a.comment %}<td class="text-muted ps-2" style="font-size:.72rem;">{{ a.comment }}</td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                {% endif %}
+                {% if ev.objects %}
+                <div>
+                  <div class="fw-semibold small mb-1"><i class="fas fa-cube me-1 text-muted"></i>Objects ({{ ev.objects | length }})</div>
+                  {% for obj in ev.objects %}
+                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;">
+                    <div class="fw-semibold mb-1">{{ obj.name }}</div>
+                    <table class="table table-sm table-borderless mb-0" style="font-size:.75rem;">
+                      <tbody>
+                        {% for a in obj.attributes %}
+                        <tr>
+                          <td style="width:1.5rem;padding-right:0;">
+                            <button type="button" class="btn btn-xs btn-outline-secondary vea-add-indicator-btn p-0"
+                                    style="font-size:.65rem;line-height:1.4;padding:.1rem .3rem!important;"
+                                    title="Add to exploitation indicators"
+                                    data-value="{{ a.value | e }}" data-type="{{ a.relation | e }}">
+                              <i class="fas fa-plus"></i>
+                            </button>
+                          </td>
+                          <td class="text-muted pe-2" style="white-space:nowrap;">{{ a.relation }}</td>
+                          <td class="font-monospace" style="word-break:break-all;">{{ a.value }}</td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-fingerprint me-2"></i>Identification</div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          {# ── CVE input + lookup ── #}
+          <div class="col-md-5">
+            <label class="form-label">CVE ID(s)</label>
+            <div class="input-group">
+              <textarea name="cve_id" id="cve_id" class="form-control font-monospace"
+                        placeholder="CVE-YYYY-NNNNN" rows="3"
+                        style="font-size:.88rem;">{{ vea.cve_id if vea else '' }}</textarea>
+              <button type="button" class="btn btn-outline-primary" id="btn-vl-lookup"
+                      title="Query vulnerability.circl.lu for CVE details"
+                      style="height:auto;white-space:nowrap;">
+                <img src="https://vulnerability.circl.lu/static/img/VL-hori-coul.png"
+                     alt="" style="height:14px;vertical-align:middle;margin-right:4px;">
+                Lookup
+              </button>
+            </div>
+            <div id="vl-status" class="form-text" style="display:none;"></div>
+            <div class="form-text mt-1">One per line.</div>
+          </div>
+
+          {# ── Summary ── #}
+          <div class="col-md-7">
+            <label class="form-label">Summary</label>
+            <textarea name="summary" id="summary" class="form-control" rows="3"
+                      placeholder="Brief description of the vulnerability (populated from Vulnerability Lookup)."
+                      style="font-size:.88rem;">{{ vea.summary if vea else '' }}</textarea>
+          </div>
+
+          {# ── CVSS + CWE ── #}
+          <div class="col-md-4">
+            <label class="form-label">CVSS</label>
+            <div class="d-flex align-items-center gap-2">
+              <input name="cvss" id="cvss" class="form-control form-control-sm font-monospace"
+                     placeholder="e.g. 9.8 (CRITICAL)"
+                     value="{{ vea.cvss if vea else '' }}">
+              <span id="cvss-badge" class="badge rounded-pill flex-shrink-0" style="display:none;font-size:.75rem;"></span>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">CWE</label>
+            <input name="cwe" id="cwe" class="form-control form-control-sm font-monospace"
+                   placeholder="e.g. CWE-77"
+                   value="{{ vea.cwe if vea else '' }}">
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <button type="button" class="btn btn-outline-secondary w-100" id="btn-draft-vea"
+                    title="Draft sections with AI (run Vulnerability Lookup first)"
+                    {{ '' if (vea and vea.cve_id) else 'disabled' }}>
+              <i class="fas fa-wand-magic-sparkles me-1"></i>Draft sections with AI
+            </button>
+          </div>
+
+          <div class="col-12">
+            <div id="ai-draft-status" class="form-text" style="display:none;"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-microchip me-2"></i>Affected technology</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Product</label>
+            <input name="affected_product" id="affected_product" class="form-control"
+                   value="{{ vea.affected_product if vea else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Affected versions</label>
+            <input name="affected_versions" class="form-control"
+                   value="{{ vea.affected_versions if vea else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Fixed version</label>
+            <input name="fixed_version" class="form-control"
+                   value="{{ vea.fixed_version if vea else '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Our exposure</label>
+            <input name="exposure" class="form-control"
+                   placeholder="Number of assets, criticality, internet-facing status"
+                   value="{{ vea.exposure if vea else '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-triangle-exclamation me-2 text-danger"></i>Exploitation status</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Observed exploitation</label>
+            <input name="observed_exploitation" id="observed_exploitation" class="form-control"
+                   placeholder="Yes: describe / No / Unknown"
+                   value="{{ vea.observed_exploitation if vea else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Exploit availability</label>
+            <select name="exploit_availability" id="exploit_availability" class="form-select">
+              <option value="">(select)</option>
+              {% for o in exploit_availability_options %}
+              <option value="{{ o }}" {{ 'selected' if vea and vea.exploit_availability == o }}>{{ o }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Exploitation complexity</label>
+            <select name="exploitation_complexity" id="exploitation_complexity" class="form-select">
+              <option value="">(select)</option>
+              {% for o in exploit_complexity_options %}
+              <option value="{{ o }}" {{ 'selected' if vea and vea.exploitation_complexity == o }}>{{ o }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Threat actor interest</label>
+            <select name="threat_actor_interest" id="threat_actor_interest" class="form-select">
+              <option value="">(select)</option>
+              {% for o in actor_interest_options %}
+              <option value="{{ o }}" {{ 'selected' if vea and vea.threat_actor_interest == o }}>{{ o }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">CISA KEV listed</label>
+            <select name="cisa_kev" id="cisa_kev" class="form-select">
+              <option value="">(select)</option>
+              {% for o in cisa_kev_options %}
+              <option value="{{ o }}" {{ 'selected' if vea and vea.cisa_kev == o }}>{{ o }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Source description</label>
+            <input name="source_description" class="form-control"
+                   value="{{ vea.source_description if vea else '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-scale-balanced me-2"></i>Risk assessment</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Worst case</label>
+            <input name="worst_case" id="worst_case" class="form-control"
+                   value="{{ vea.worst_case if vea else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Most likely</label>
+            <input name="most_likely" id="most_likely" class="form-control"
+                   value="{{ vea.most_likely if vea else '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-list-check me-2"></i>Recommended actions</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Immediate actions</label>
+          {% if action_presets %}
+          <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;">
+            <div class="small text-muted mb-1">Presets (click to append):</div>
+            {% for p in action_presets %}
+            <button type="button" class="btn btn-xs btn-outline-secondary me-1 mb-1 vea-action-preset-btn"
+                    data-target="immediate_actions" data-text="{{ p | e }}">{{ p }}</button>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <textarea name="immediate_actions" id="immediate_actions" class="form-control" rows="4"
+            placeholder="One action per line.">{{ lines(vea.immediate_actions) if vea else '' }}</textarea>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Internet-facing SLA</label>
+            <input name="patch_sla_internet" class="form-control" placeholder="e.g. 24 hours"
+                   value="{{ vea.patch_sla_internet if vea else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Internal production SLA</label>
+            <input name="patch_sla_internal" class="form-control" placeholder="e.g. 7 days"
+                   value="{{ vea.patch_sla_internal if vea else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Target patch version</label>
+            <input name="target_patch_version" class="form-control"
+                   value="{{ vea.target_patch_version if vea else '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-radar me-2"></i>Detection guidance</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Exploitation indicators</label>
+            <textarea name="exploitation_indicators" id="exploitation_indicators" class="form-control" rows="4"
+                      placeholder="[Log source]: what to look for">{{ lines(vea.exploitation_indicators) if vea else '' }}</textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Detection rules</label>
+            <textarea name="detection_rules" class="form-control" rows="4"
+                      placeholder="Sigma/EDR rule reference">{{ lines(vea.detection_rules) if vea else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-book me-2"></i>References</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">External references</label>
+          <textarea name="references" id="references" class="form-control" rows="4">{{ lines(vea.references) if vea else '' }}</textarea>
+          <div class="form-text">Include CISA KEV, GCVE.eu, vendor advisory, NVD entry. One URL per line.</div>
+        </div>
+
+        {% set saved_ctx_tags = (vea.context_tags if vea else []) %}
+        {% set all_ctx_tags = (source_event_tags + saved_ctx_tags) | unique | sort | list %}
+        {% if all_ctx_tags %}
+        <div class="mb-3">
+          <label class="form-label">Context tags <span class="text-muted small fw-normal">select tags from source events to include</span></label>
+          <div class="d-flex flex-wrap gap-2 p-2 border rounded" style="background:#f8f9fa;">
+            {% for t in all_ctx_tags %}
+            <div class="form-check mb-0">
+              <input type="checkbox" name="context_tags" value="{{ t }}" class="form-check-input"
+                     id="vea-ctx-tag-{{ loop.index }}"
+                     {{ 'checked' if t in saved_ctx_tags }}>
+              <label class="form-check-label small" for="vea-ctx-tag-{{ loop.index }}">{{ t }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <div>
+          <label class="form-label">Source MISP event UUID <span class="text-muted small">(optional)</span></label>
+          <input name="source_event_uuid" class="form-control font-monospace"
+                 value="{{ vea.source_event_uuid if vea else '' }}">
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-file-shield me-2"></i>Advisory</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required-label">Title</label>
+          <input name="title" class="form-control" required
+                 placeholder="Remote code execution in Product X"
+                 value="{{ vea.title if vea else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Audience
+            <span class="text-muted small" data-bs-toggle="tooltip"
+              title="Audience corresponds to the stakeholder role, e.g. SOC, IR, VM, Executive.">
+              <i class="fas fa-circle-info ms-1"></i>
+            </span>
+          </label>
+          {% set current_audiences = (vea.audience or '').split(', ') if vea else [] %}
+          <div class="d-flex flex-wrap gap-2 mt-1">
+            {% for a in audiences %}
+            <div class="form-check form-check-inline me-0">
+              <input class="form-check-input vea-audience-cb" type="checkbox" name="audience" value="{{ a }}"
+                     id="vea-aud-{{ loop.index }}"
+                     {{ 'checked' if a in current_audiences }}>
+              <label class="form-check-label small" for="vea-aud-{{ loop.index }}">{{ a }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          <div id="vea-audience-warn" class="text-danger small mt-1" style="display:none;">
+            <i class="fas fa-triangle-exclamation me-1"></i>Select at least one audience.
+          </div>
+          <div class="form-text">Corresponds to the stakeholder <strong>role</strong>. Select all that apply.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">TLP</label>
+          <select name="tlp" class="form-select">
+            {% for t in tlp_levels %}
+            <option value="{{ t }}" {{ 'selected' if vea and vea.tlp == t else ('selected' if not vea and t == 'amber') }}>TLP:{{ t | upper }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Linked PIR</label>
+          <select name="linked_pir_uuid" class="form-select">
+            <option value="">(none)</option>
+            {% for p in pirs %}
+            <option value="{{ p.uuid }}" {{ 'selected' if vea and vea.linked_pir_uuid == p.uuid }}>{{ p.pir_id }}: {{ p.question | truncate(50) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Source assessment</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Source reliability <span class="text-muted small">(Admiralty A–F)</span></label>
+          <select name="source_reliability" class="form-select">
+            <option value="">-</option>
+            {% for r in reliabilities %}
+            <option value="{{ r }}" {{ 'selected' if vea and vea.source_reliability == r }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Information credibility <span class="text-muted small">(Admiralty 1–6)</span></label>
+          <select name="information_credibility" class="form-select">
+            <option value="">-</option>
+            {% for c in credibilities %}
+            <option value="{{ c }}" {{ 'selected' if vea and vea.information_credibility == c }}>{{ c }}</option>
+            {% endfor %}
+          </select>
+          <div id="credibility-justification" class="form-text mt-1" style="display:none;">
+            <i class="fas fa-circle-info fa-xs me-1 text-muted"></i><span id="credibility-justification-text"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user me-2"></i>Attribution</div>
+      <div class="card-body">
+        <label class="form-label">Author</label>
+        <input name="author" class="form-control" value="{{ vea.author if vea else '' }}">
+      </div>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button type="submit" name="action" value="submit" class="btn btn-primary" id="btn-vea-submit">
+        <i class="fas fa-paper-plane me-1"></i> Submit for review
+      </button>
+      <button type="submit" name="action" value="save" class="btn btn-outline-secondary" id="btn-vea-save">
+        <i class="fas fa-floppy-disk me-1"></i> Save draft
+      </button>
+      {% if is_edit %}
+      <button type="submit" name="action" value="publish" class="btn btn-success" id="btn-vea-publish">
+        <i class="fas fa-check-circle me-1"></i> Publish &amp; notify
+      </button>
+      {% endif %}
+      <a href="{{ url_for('vea.review') }}" class="btn btn-link">Cancel</a>
+    </div>
+
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  // Render report markdown bodies
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+    document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+      var raw = el.getAttribute('data-md') || '';
+      el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '<em class="text-muted">No content.</em>';
+      el.removeAttribute('data-md');
+    });
+  }
+
+  // Source events accordion toggle
+  var veaSrcToggle = document.getElementById('vea-source-events-toggle');
+  var veaSrcAcc = document.getElementById('vea-source-events-accordion');
+  var veaSrcHeader = document.getElementById('vea-source-events-header');
+  if (veaSrcToggle && veaSrcAcc) {
+    var veaSrcOpen = false;
+    function toggleVeaSrc() {
+      veaSrcOpen = !veaSrcOpen;
+      veaSrcAcc.style.display = veaSrcOpen ? '' : 'none';
+      veaSrcToggle.innerHTML = veaSrcOpen
+        ? '<i class="fas fa-chevron-up me-1"></i>Hide'
+        : '<i class="fas fa-chevron-down me-1"></i>Show';
+    }
+    veaSrcToggle.addEventListener('click', function(e) { e.stopPropagation(); toggleVeaSrc(); });
+    if (veaSrcHeader) {
+      veaSrcHeader.addEventListener('click', function(e) {
+        if (e.target.closest('#vea-source-events-toggle')) return;
+        toggleVeaSrc();
+      });
+    }
+  }
+
+  // Action preset buttons
+  document.querySelectorAll('.vea-action-preset-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var ta = document.getElementById(btn.dataset.target);
+      if (!ta) return;
+      var cur = ta.value.trimEnd();
+      ta.value = cur ? cur + '\n' + btn.dataset.text : btn.dataset.text;
+    });
+  });
+
+  // Add to exploitation indicators - builds/updates a Markdown table
+  function escCell(s) { return String(s).replace(/\|/g, '\\|'); }
+  function insertTableRow(ta, cols) {
+    var newRow = '| ' + cols.map(escCell).join(' | ') + ' |';
+    var lines = ta.value.split('\n');
+    var lastTableLine = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trimStart().charAt(0) === '|') lastTableLine = i;
+    }
+    if (lastTableLine >= 0) {
+      lines.splice(lastTableLine + 1, 0, newRow);
+      ta.value = lines.join('\n');
+    } else {
+      var header = '| Type | Value | Source |';
+      var sep    = '| --- | --- | --- |';
+      var trimmed = ta.value.trimEnd();
+      ta.value = trimmed ? trimmed + '\n\n' + header + '\n' + sep + '\n' + newRow
+                         : header + '\n' + sep + '\n' + newRow;
+    }
+  }
+
+  document.querySelectorAll('.vea-add-indicator-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var body = btn.closest('[data-ev-id]');
+      var evId = body ? body.dataset.evId : '';
+      var evInfo = body ? body.dataset.evInfo : '';
+      var val = btn.dataset.value || '';
+      var type = btn.dataset.type || '';
+      var source = evId ? '[' + evId.slice(0, 8) + '] ' + evInfo : evInfo;
+      var ta = document.getElementById('exploitation_indicators');
+      if (!ta) return;
+      insertTableRow(ta, [type, val, source]);
+      btn.classList.add('btn-secondary');
+      btn.classList.remove('btn-outline-secondary');
+    });
+  });
+
+  // Audience validation
+  function _updateVeaAudienceBtns() {
+    var checked = document.querySelectorAll('.vea-audience-cb:checked').length > 0;
+    ['btn-vea-submit', 'btn-vea-save', 'btn-vea-publish'].forEach(function(id) {
+      var b = document.getElementById(id);
+      if (b) b.disabled = !checked;
+    });
+    var warn = document.getElementById('vea-audience-warn');
+    if (warn) warn.style.display = checked ? 'none' : '';
+  }
+  document.querySelectorAll('.vea-audience-cb').forEach(function(cb) {
+    cb.addEventListener('change', _updateVeaAudienceBtns);
+  });
+  _updateVeaAudienceBtns();
+
+  // Bootstrap tooltips
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el);
+  });
+})();
+
+/* ── CVSS badge renderer ── */
+function _renderCvssBadge(cvssVal) {
+  var badge = document.getElementById('cvss-badge');
+  if (!badge || !cvssVal) return;
+  var colors = {CRITICAL: ['#dc3545','#fff'], HIGH: ['#fd7e14','#fff'], MEDIUM: ['#ffc107','#212529'], LOW: ['#0dcaf0','#212529'], NONE: ['#6c757d','#fff']};
+  var upper = cvssVal.toUpperCase();
+  var sev = Object.keys(colors).find(function(k) { return upper.indexOf(k) !== -1; }) || '';
+  if (sev) {
+    var c = colors[sev];
+    badge.textContent = sev;
+    badge.style.background = c[0];
+    badge.style.color = c[1];
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+// Render badge for existing value on page load (edit mode)
+(function() { _renderCvssBadge((document.getElementById('cvss') || {}).value || ''); })();
+
+/* ── Vulnerability lookup (vulnerability.circl.lu) ── */
+(function() {
+  var btn = document.getElementById('btn-vl-lookup');
+  var status = document.getElementById('vl-status');
+  var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  if (!btn) return;
+
+  btn.addEventListener('click', function() {
+    var raw = (document.getElementById('cve_id').value || '').trim();
+    var cveIds = raw.split(/[\n,]+/).map(s => s.trim().toUpperCase()).filter(s => s.startsWith('CVE-'));
+    if (!cveIds.length) {
+      status.textContent = 'Enter at least one CVE ID first.';
+      status.style.display = '';
+      return;
+    }
+
+    var origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Looking up…';
+    status.textContent = '';
+    status.style.display = 'none';
+
+    fetch('/api/cve-lookup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+      body: JSON.stringify({cve_ids: cveIds}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) { status.textContent = 'Lookup failed: ' + (data.error || 'unknown error'); status.style.display = ''; return; }
+
+      function _fillInput(id, val) {
+        if (!val) return;
+        var el = document.getElementById(id) || document.querySelector('[name=' + id + ']');
+        if (el && !el.value.trim()) el.value = val;
+      }
+      function _fillSelect(id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (!el) return;
+        for (var i = 0; i < el.options.length; i++) {
+          if (el.options[i].value === val) { el.selectedIndex = i; return; }
+        }
+      }
+
+      var allProducts = [], allVersions = [], allCwes = [], allRefs = [], errors = [];
+      var exploitAvail = '', cisaKev = '', firstDesc = '', firstScore = '', firstSeverity = '';
+      (data.results || []).forEach(function(r) {
+        if (!r.ok) { errors.push(r.cve_id + ': ' + (r.error || 'not found')); return; }
+        (r.products || []).forEach(function(p) { if (!allProducts.includes(p)) allProducts.push(p); });
+        (r.versions || []).forEach(function(v) { if (!allVersions.includes(v)) allVersions.push(v); });
+        (r.cwes || []).forEach(function(c) { if (!allCwes.includes(c)) allCwes.push(c); });
+        (r.references || []).forEach(function(u) { if (!allRefs.includes(u)) allRefs.push(u); });
+        if (!exploitAvail && r.exploit_availability) exploitAvail = r.exploit_availability;
+        if (r.cisa_kev === 'Yes') cisaKev = 'Yes';
+        if (!firstDesc && r.description) firstDesc = r.description;
+        if (!firstScore && r.cvss_score) { firstScore = r.cvss_score; firstSeverity = r.cvss_severity || ''; }
+      });
+      if (!cisaKev && (data.results || []).some(function(r) { return r.ok; })) cisaKev = 'No';
+
+      _fillInput('affected_product', allProducts.join(', '));
+      _fillInput('affected_versions', allVersions.join(', '));
+      _fillInput('summary', firstDesc);
+      if (allCwes.length) _fillInput('cwe', allCwes.join(', '));
+      if (firstScore) {
+        var cvssDisplay = firstScore + (firstSeverity ? ' (' + firstSeverity + ')' : '');
+        _fillInput('cvss', cvssDisplay);
+        _renderCvssBadge(cvssDisplay);
+      }
+      _fillSelect('exploit_availability', exploitAvail);
+      _fillSelect('cisa_kev', cisaKev);
+
+      // Append VL references to the references textarea (skip duplicates)
+      if (allRefs.length) {
+        var refsEl = document.getElementById('references');
+        if (refsEl) {
+          var existing = refsEl.value.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+          allRefs.forEach(function(u) { if (!existing.includes(u)) existing.push(u); });
+          refsEl.value = existing.join('\n');
+        }
+      }
+
+      var ok = (data.results || []).filter(function(r) { return r.ok; }).length;
+      status.textContent = ok + ' of ' + cveIds.length + ' CVE(s) resolved.'
+        + (errors.length ? ' Errors: ' + errors.join('; ') : '');
+      status.style.display = '';
+
+      if (ok > 0) {
+        var draftBtn = document.getElementById('btn-draft-vea');
+        if (draftBtn) draftBtn.disabled = false;
+      }
+    })
+    .catch(function(err) {
+      status.textContent = 'Request failed: ' + err;
+      status.style.display = '';
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.innerHTML = origHTML;
+    });
+  });
+})();
+
+document.getElementById('btn-draft-vea').addEventListener('click', function() {
+  var cveIdEl = document.getElementById('cve_id');
+  var cveId = cveIdEl ? cveIdEl.value.split('\n')[0].trim() : '';
+  var product = document.querySelector('[name=affected_product]').value.trim();
+  var status = document.getElementById('ai-draft-status');
+  var btn = this;
+  var origHTML = btn.innerHTML;
+
+  if (!cveId) {
+    alert('Enter a CVE ID on the first line first.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  status.textContent = 'Drafting with AI…';
+  status.style.display = '';
+
+  fetch('/api/draft-vea', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+    },
+    body: JSON.stringify({cve_id: cveId, product_info: product}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      status.textContent = 'AI draft failed: ' + data.error;
+      return;
+    }
+    var s = data.sections || {};
+    function fill(id, val) {
+      var el = document.getElementById(id);
+      if (el && val && !el.value.trim()) el.value = val;
+    }
+    function fillSelect(id, val) {
+      var el = document.getElementById(id);
+      if (el && val) {
+        for (var i = 0; i < el.options.length; i++) {
+          if (el.options[i].value === val) { el.selectedIndex = i; break; }
+        }
+      }
+    }
+    fill('affected_product', s.affected_product);
+    fill('observed_exploitation', s.observed_exploitation);
+    fillSelect('exploit_availability', s.exploit_availability);
+    fillSelect('exploitation_complexity', s.exploitation_complexity);
+    fillSelect('threat_actor_interest', s.threat_actor_interest);
+    fillSelect('cisa_kev', s.cisa_kev);
+    fill('worst_case', s.worst_case);
+    fill('most_likely', s.most_likely);
+    var ta = document.getElementById('immediate_actions');
+    if (ta && !ta.value.trim() && s.immediate_actions && s.immediate_actions.length) {
+      ta.value = s.immediate_actions.join('\n');
+    }
+    var ind = document.getElementById('exploitation_indicators');
+    if (ind && !ind.value.trim() && s.exploitation_indicators && s.exploitation_indicators.length) {
+      ind.value = s.exploitation_indicators.join('\n');
+    }
+    status.textContent = 'Draft applied. Review and adjust before saving.';
+    status.style.color = '';
+  })
+  .catch(err => {
+    status.textContent = 'Request failed: ' + err;
+    status.style.color = 'var(--bs-danger)';
+  })
+  .finally(() => {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  });
+});
+</script>
+{% endblock %}

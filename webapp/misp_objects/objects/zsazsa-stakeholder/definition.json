@@ -1,0 +1,81 @@
+{
+  "name": "zsazsa-stakeholder",
+  "meta-category": "intelligence",
+  "description": "CTI program stakeholder managed by the zsazsa CTI program",
+  "uuid": "7f8e9d0c-1b2a-4d4c-8e6f-7a8b9c0d1e2f",
+  "version": 4,
+  "attributes": {
+    "name": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Full name of the stakeholder",
+      "disable_correlation": true
+    },
+    "role": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "Job title or role",
+      "disable_correlation": true
+    },
+    "organization": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Organisation or business unit",
+      "disable_correlation": true
+    },
+    "stakeholder-type": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "Internal or External stakeholder classification",
+      "disable_correlation": true
+    },
+    "contacts": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "JSON array of contact objects: [{type, value, preferred}]. Types: Email, Phone, Teams, Mattermost.",
+      "disable_correlation": true
+    },
+    "email": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "Legacy single email address (superseded by contacts)",
+      "disable_correlation": true
+    },
+    "contact": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "Legacy other contact details (superseded by contacts)",
+      "disable_correlation": true
+    },
+    "tlp-clearance": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Maximum TLP level this stakeholder may receive",
+      "disable_correlation": true
+    },
+    "products": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "JSON array of CTI product types subscribed to",
+      "disable_correlation": true
+    },
+    "product-modes": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "JSON object mapping each subscribed product to delivery mode (automated|after-approval)",
+      "disable_correlation": true
+    },
+    "notification-channels": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "JSON array of notification channel IDs enabled for this stakeholder",
+      "disable_correlation": true
+    },
+    "notes": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "Free-text notes about this stakeholder",
+      "disable_correlation": true
+    }
+  }
+}

@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | zsazsa CTI{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block topbar_actions %}{% endblock %}
+
+{% block content %}
+
+{# Onboarding helper: appears until both a stakeholder and a PIR exist #}
+{% if stakeholder_count == 0 or pir_count == 0 %}
+<div class="card content-card mb-4 border-primary">
+  <div class="card-header bg-primary text-white">
+    <i class="fas fa-rocket me-2"></i>Get started
+  </div>
+  <div class="card-body">
+    <ol class="onboarding-steps mb-0" style="list-style:none;padding:0;display:flex;gap:1.5rem;flex-wrap:wrap;margin:0;">
+      <li class="d-flex align-items-start gap-3" style="flex:1 1 280px;">
+        <div style="font-size:1.5rem;color:{{ '#22a06b' if stakeholder_count > 0 else '#0078f1' }};">
+          {% if stakeholder_count > 0 %}
+            <i class="fas fa-circle-check"></i>
+          {% else %}
+            <span class="badge rounded-circle bg-primary" style="width:2rem;height:2rem;line-height:1.5rem;font-size:1rem;">1</span>
+          {% endif %}
+        </div>
+        <div>
+          <div class="fw-semibold">{{ 'Have you not forgotten someone?' if stakeholder_count > 0 else 'Create your first stakeholder' }}</div>
+          <p class="text-muted small mb-2">Stakeholders are the people who consume your CTI output and who own intelligence requirements.</p>
+          {% if stakeholder_count == 0 %}
+          <a href="{{ url_for('stakeholders.new') }}" class="btn btn-sm btn-primary">
+            <i class="fas fa-plus me-1"></i> New stakeholder
+          </a>
+          {% else %}
+          <a href="{{ url_for('stakeholders.list') }}" class="text-success small"><i class="fas fa-check me-1"></i>{{ stakeholder_count }} stakeholder{{ 's' if stakeholder_count != 1 }} registered</a>
+          {% endif %}
+        </div>
+      </li>
+      <li class="d-flex align-items-start gap-3" style="flex:1 1 280px;">
+        <div style="font-size:1.5rem;color:{{ '#22a06b' if pir_count > 0 else ('#0078f1' if stakeholder_count > 0 else '#bbb') }};">
+          {% if pir_count > 0 %}
+            <i class="fas fa-circle-check"></i>
+          {% else %}
+            <span class="badge rounded-circle {{ 'bg-primary' if stakeholder_count > 0 else 'bg-secondary' }}" style="width:2rem;height:2rem;line-height:1.5rem;font-size:1rem;">2</span>
+          {% endif %}
+        </div>
+        <div>
+          <div class="fw-semibold">Define one or more PIRs for those stakeholders</div>
+          <p class="text-muted small mb-2">A Priority Intelligence Requirement frames a specific intelligence question tied to a stakeholder decision.</p>
+          {% if pir_count == 0 %}
+            {% if stakeholder_count > 0 %}
+            <a href="{{ url_for('requirements.pir_new') }}" class="btn btn-sm btn-primary">
+              <i class="fas fa-plus me-1"></i> New PIR
+            </a>
+            {% else %}
+            <span class="text-muted small">Add a stakeholder first.</span>
+            {% endif %}
+          {% else %}
+          <a href="{{ url_for('requirements.pir_list') }}" class="text-success small"><i class="fas fa-check me-1"></i>{{ pir_count }} PIR{{ 's' if pir_count != 1 }} defined</a>
+          {% endif %}
+        </div>
+      </li>
+    </ol>
+  </div>
+</div>
+{% endif %}
+
+{% if pipeline %}
+<!-- Collection pipeline status -->
+<div class="card content-card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-arrows-rotate me-2"></i>Collection pipeline</span>
+    <div class="d-flex align-items-center gap-2">
+      <div class="btn-group">
+        <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fas fa-play me-1"></i>Start analyser
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="daily-briefing">Daily briefing</button></li>
+          <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="flash-intel">Flash intel alert</button></li>
+          <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="vea">Vuln advisory</button></li>
+        </ul>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" id="pipeline-progress-open" type="button" data-bs-toggle="modal" data-bs-target="#pipelineProgressModal" disabled>
+        <i class="fas fa-list-check me-1"></i>Progress
+      </button>
+      {% if pipeline.last_run %}
+        {% if pipeline.stale %}
+          <span class="badge text-bg-warning" title="Stale: the automation pipeline has not run in over 90 minutes. Check that the analyser process is running."><i class="fas fa-triangle-exclamation me-1"></i>Stale</span>
+        {% else %}
+          <span class="badge text-bg-success"><i class="fas fa-circle-check me-1"></i>Healthy</span>
+        {% endif %}
+      {% else %}
+        <span class="badge text-bg-secondary">No runs yet</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="pipeline-action-status" class="alert alert-info py-2 px-3 mb-3 d-none" role="status"></div>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="text-muted small">Last automation run</div>
+        <div class="h5 mb-0">
+          {% if pipeline.last_run %}
+            {{ pipeline.minutes_since }} min ago
+          {% else %}
+            -
+          {% endif %}
+        </div>
+        <div class="text-muted small">
+          {{ pipeline.last_run.strftime('%d-%m-%Y %H:%M UTC') if pipeline.last_run else 'never' }}
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">Pending scraper events</div>
+        <div class="h5 mb-0">{{ pipeline.pending if pipeline.pending is not none else '-' }}</div>
+        <div class="text-muted small">workflow:state="incomplete"</div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">Processed (24h)</div>
+        <div class="h5 mb-0">{{ pipeline.total_24h }}</div>
+        <div class="text-muted small">
+          {% set p = pipeline.processed_24h %}
+          {{ p.get('product_created', 0) }} product,
+          {{ p.get('not_relevant', 0) }} skipped,
+          {{ (p.get('http_error', 0) + p.get('no_content', 0) + p.get('error', 0)) }} errors
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-muted small">Quick links</div>
+        <div class="d-flex gap-2 mt-1">
+          <a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary" title="Browse collection">
+            <i class="fas fa-database"></i>
+          </a>
+          <a href="{{ url_for('logs.index') }}" class="btn btn-sm btn-outline-secondary" title="View logs">
+            <i class="fas fa-scroll"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="pipelineProgressModal" tabindex="-1" aria-labelledby="pipelineProgressModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pipelineProgressModalLabel">Analyser progress</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <div class="text-muted small">Current action</div>
+            <div id="pipeline-progress-action" class="fw-semibold">-</div>
+          </div>
+          <div class="text-end">
+            <div class="text-muted small">Remaining steps</div>
+            <div id="pipeline-progress-remaining" class="fw-semibold">-</div>
+          </div>
+        </div>
+        <div id="pipeline-progress-message" class="alert alert-info py-2 px-3 mb-3">No active run.</div>
+        <div class="mb-3">
+          <div class="text-muted small mb-1">Steps</div>
+          <ul id="pipeline-progress-steps" class="list-group"></ul>
+        </div>
+        <div>
+          <div class="text-muted small mb-1">Log</div>
+          <div id="pipeline-progress-log" class="border rounded p-2" style="font-size:.85rem;max-height:220px;overflow:auto;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex align-items-center justify-content-between rounded border px-3 py-2 mb-4">
+  <span class="text-muted small"><i class="fas fa-newspaper me-2"></i>Found an interesting news story?</span>
+  <a href="{{ url_for('data_collection.manual_new') }}" class="btn btn-sm btn-outline-primary">
+    <i class="fas fa-plus me-1"></i>Add it to the data collection
+  </a>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-sm-4">
+    <div class="stat-card">
+      <div class="stat-icon" style="--icon-color: #0078f1;">
+        <i class="fas fa-star"></i>
+      </div>
+      <div class="stat-body">
+        <div class="stat-number">{{ pir_count }}</div>
+        <div class="stat-label">Priority Intelligence Requirements</div>
+      </div>
+      <a href="{{ url_for('requirements.pir_list') }}" class="stat-link">View all <i class="fas fa-arrow-right fa-xs"></i></a>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="stat-card">
+      <div class="stat-icon" style="--icon-color: #22a06b;">
+        <i class="fas fa-list-check"></i>
+      </div>
+      <div class="stat-body">
+        <div class="stat-number">{{ gir_count }}</div>
+        <div class="stat-label">General Intelligence Requirements</div>
+      </div>
+      <a href="{{ url_for('requirements.gir_list') }}" class="stat-link">View all <i class="fas fa-arrow-right fa-xs"></i></a>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="stat-card">
+      <div class="stat-icon" style="--icon-color: #e07c1e;">
+        <i class="fas fa-users"></i>
+      </div>
+      <div class="stat-body">
+        <div class="stat-number">{{ stakeholder_count }}</div>
+        <div class="stat-label">Stakeholders</div>
+      </div>
+      <a href="{{ url_for('stakeholders.list') }}" class="stat-link">View all <i class="fas fa-arrow-right fa-xs"></i></a>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- Active PIRs -->
+  <div class="col-lg-6">
+    <div class="card content-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-star me-2 text-primary"></i>Active PIRs</span>
+        <a href="{{ url_for('requirements.pir_new') }}" class="btn btn-xs btn-outline-primary">
+          <i class="fas fa-plus"></i>
+        </a>
+      </div>
+      <div class="card-body p-0">
+        {% if active_pirs %}
+        <ul class="req-list">
+          {% for pir in active_pirs %}
+          <li class="req-item">
+            <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="req-link">
+              <span class="req-id">{{ pir.pir_id }}</span>
+              <span class="req-text">{{ pir.question | truncate(80) }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="badge priority-badge priority-{{ pir.priority | slug }}">{{ pir.priority }}</span>
+              <span class="badge status-badge status-{{ pir.status | slug }}">{{ pir.status }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state p-4">
+          <i class="fas fa-star-half-stroke text-muted"></i>
+          <p class="text-muted mb-0">No active PIRs yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Active GIRs -->
+  <div class="col-lg-6">
+    <div class="card content-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list-check me-2 text-success"></i>Active GIRs</span>
+        <a href="{{ url_for('requirements.gir_new') }}" class="btn btn-xs btn-outline-success">
+          <i class="fas fa-plus"></i>
+        </a>
+      </div>
+      <div class="card-body p-0">
+        {% if active_girs %}
+        <ul class="req-list">
+          {% for gir in active_girs %}
+          <li class="req-item">
+            <a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="req-link">
+              <span class="req-id">{{ gir.gir_id }}</span>
+              <span class="req-text">{{ gir.topic | truncate(80) }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="badge status-badge status-active">{{ gir.status }}</span>
+              <span class="text-muted small">{{ gir.review_cycle }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state p-4">
+          <i class="fas fa-list text-muted"></i>
+          <p class="text-muted mb-0">No active GIRs yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% if misp_servers %}
+<div class="row g-3 mt-2">
+  <div class="col-12">
+    <div class="card content-card">
+      <div class="card-header">
+        <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:16px;width:auto;vertical-align:middle;margin-right:6px;opacity:.8;">Other MISP servers
+      </div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+          {% for srv in misp_servers %}
+          <a href="{{ srv.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+            <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:13px;width:auto;vertical-align:middle;margin-right:5px;opacity:.75;">{{ srv.label }}
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var csrfToken = csrfMeta ? csrfMeta.content : '';
+  var statusEl = document.getElementById('pipeline-action-status');
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.pipeline-action-btn'));
+  var openProgressBtn = document.getElementById('pipeline-progress-open');
+  var progressActionEl = document.getElementById('pipeline-progress-action');
+  var progressRemainingEl = document.getElementById('pipeline-progress-remaining');
+  var progressMessageEl = document.getElementById('pipeline-progress-message');
+  var progressStepsEl = document.getElementById('pipeline-progress-steps');
+  var progressLogEl = document.getElementById('pipeline-progress-log');
+  var activeJobId = null;
+  var pollTimer = null;
+
+  function actionLabel(action) {
+    if (action === 'daily-briefing') return 'Daily briefing';
+    if (action === 'flash-intel') return 'Flash intel alert';
+    if (action === 'vea') return 'Vuln advisory';
+    return action || '-';
+  }
+
+  function setStatus(kind, text) {
+    if (!statusEl) return;
+    statusEl.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+    statusEl.classList.add('alert-' + kind);
+    statusEl.textContent = text;
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderProgress(job) {
+    if (!job) return;
+    if (progressActionEl) progressActionEl.textContent = actionLabel(job.action);
+
+    var steps = Array.isArray(job.steps) ? job.steps : [];
+    var remaining = steps.filter(function(s) { return s.state === 'pending'; }).length;
+    if (progressRemainingEl) progressRemainingEl.textContent = String(remaining);
+
+    if (progressMessageEl) {
+      progressMessageEl.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+      var tone = 'alert-info';
+      if (job.status === 'completed') tone = 'alert-success';
+      else if (job.status === 'failed') tone = 'alert-danger';
+      else if (job.status === 'queued') tone = 'alert-warning';
+      progressMessageEl.classList.add(tone);
+      progressMessageEl.textContent = job.message || job.status || 'Running...';
+    }
+
+    if (progressStepsEl) {
+      progressStepsEl.innerHTML = steps.map(function(step) {
+        var icon = 'fa-clock text-muted';
+        if (step.state === 'in_progress') icon = 'fa-spinner fa-spin text-primary';
+        else if (step.state === 'completed') icon = 'fa-check-circle text-success';
+        else if (step.state === 'failed') icon = 'fa-circle-xmark text-danger';
+        return '<li class="list-group-item d-flex align-items-center justify-content-between">'
+          + '<span><i class="fas ' + icon + ' me-2"></i>' + esc(step.label || step.id) + '</span>'
+          + '<span class="text-muted small">' + esc(step.state || 'pending') + '</span>'
+          + '</li>';
+      }).join('');
+    }
+
+    if (progressLogEl) {
+      var lines = Array.isArray(job.log) ? job.log : [];
+      progressLogEl.innerHTML = lines.map(function(row) {
+        var ts = row.timestamp ? new Date(row.timestamp * 1000).toLocaleTimeString() : '';
+        return '<div><span class="text-muted small">[' + esc(ts) + ']</span> ' + esc(row.message || '') + '</div>';
+      }).join('');
+      progressLogEl.scrollTop = progressLogEl.scrollHeight;
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function pollJob(jobId) {
+    if (!jobId) return;
+    fetch('/pipeline/run/' + encodeURIComponent(jobId))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok || !data.job) {
+          return;
+        }
+        renderProgress(data.job);
+        if (data.job.status === 'completed') {
+          var result = data.job.result || {};
+          var detail = result.message || 'Action completed.';
+          detail += ' Incomplete today: ' + (result.total_incomplete_today || 0);
+          detail += ', hard rejected: ' + (result.hard_rejected || 0);
+          detail += ', summaries created: ' + (result.summary_created || 0);
+          if (typeof result.excluded_by_title === 'number') {
+            detail += ', excluded by title: ' + result.excluded_by_title;
+          }
+          if (typeof result.rejected_by_relevance === 'number') {
+            detail += ', rejected by relevance review: ' + result.rejected_by_relevance;
+          }
+          detail += '.';
+          setStatus('success', detail);
+          setBusy(false);
+          stopPolling();
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 1200);
+        } else if (data.job.status === 'failed') {
+          setStatus('danger', 'Pipeline action failed: ' + (data.job.error || 'unknown error'));
+          setBusy(false);
+          stopPolling();
+        }
+      })
+      .catch(function(err) {
+        setStatus('danger', 'Pipeline status polling failed: ' + err);
+        setBusy(false);
+        stopPolling();
+      });
+  }
+
+  function setBusy(busy) {
+    buttons.forEach(function(btn) {
+      btn.disabled = busy;
+    });
+    if (openProgressBtn) {
+      openProgressBtn.disabled = !activeJobId;
+    }
+  }
+
+  buttons.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var action = btn.dataset.action || '';
+      if (!action) return;
+      setBusy(true);
+      setStatus('info', 'Running analyser action: ' + action + '...');
+      fetch('/pipeline/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({action: action}),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) {
+          setStatus('danger', 'Pipeline action failed: ' + (data.error || 'unknown error'));
+          setBusy(false);
+          return;
+        }
+        activeJobId = data.job_id;
+        if (openProgressBtn) {
+          openProgressBtn.disabled = false;
+        }
+        setStatus('info', 'Running analyser action: ' + action + '. Open Progress to view current and remaining steps.');
+        stopPolling();
+        pollJob(activeJobId);
+        pollTimer = setInterval(function() { pollJob(activeJobId); }, 1200);
+      })
+      .catch(function(err) {
+        setStatus('danger', 'Pipeline request failed: ' + err);
+        setBusy(false);
+      });
+    });
+  });
+
+  if (openProgressBtn) {
+    openProgressBtn.addEventListener('click', function() {
+      if (activeJobId) {
+        pollJob(activeJobId);
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

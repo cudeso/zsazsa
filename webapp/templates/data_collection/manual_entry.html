@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% from "_macros.html" import galaxy_multiselect, tag_input %}
+
+{% block title %}Add manual entry | zsazsa CTI{% endblock %}
+{% block page_title %}Add manual collection entry{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back to collection
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="post">
+
+  <div class="row g-4">
+
+    <!-- Left column: main fields -->
+    <div class="col-lg-8">
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-circle-info me-2"></i>Basic information</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label required-label">Source</label>
+            <select name="source" class="form-select" required>
+              <option value="">- select source -</option>
+              {% for s in manual_sources %}
+              <option value="{{ s | e }}">{{ s }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Which manual source category did this intelligence come from?</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Source provider</label>
+            <input type="text" name="source_provider" class="form-control"
+                   placeholder="e.g. CTI Robot by ETDA Cyber Threat Intelligence">
+            <div class="form-text">The specific provider within the source category, e.g. the newsletter or publication name.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Source reference</label>
+            <div class="input-group">
+              <input type="url" name="source_reference" id="source_reference" class="form-control font-monospace"
+                     placeholder="https://…">
+              <button type="button" class="btn btn-outline-secondary" id="btn-fetch-url">
+                <i class="fas fa-download me-1"></i>Fetch &amp; convert to Markdown
+              </button>
+            </div>
+            <div id="fetch-url-status" class="form-text" style="display:none"></div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required-label">Title</label>
+            <input type="text" name="title" class="form-control" required
+                   placeholder="Brief descriptive title for this event">
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Date</label>
+              <input type="date" name="date" class="form-control" value="{{ today }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">TLP</label>
+              <select name="tlp" class="form-select">
+                {% for t in tlp_levels %}
+                <option value="{{ t }}" {{ 'selected' if t == 'green' }}>TLP:{{ t | upper }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-file-lines me-2"></i>Content</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <label class="form-label mb-0">Summary</label>
+              <button type="button" class="btn btn-xs btn-outline-info" id="btn-llm-summary">
+                <i class="fas fa-wand-magic-sparkles me-1"></i>Generate LLM summary
+              </button>
+            </div>
+            <textarea name="summary" id="summary" class="form-control" rows="4"
+                      placeholder="AI-generated or manually written summary of the intelligence."></textarea>
+            <div id="llm-summary-status" class="form-text" style="display:none"></div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Content (Markdown)</label>
+            <div class="d-flex gap-2 mb-2">
+              <button type="button" class="btn btn-xs btn-secondary" id="md-tab-edit">Edit</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary" id="md-tab-preview">Preview</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary" id="md-tab-split">Split</button>
+            </div>
+            <div id="md-panes" class="d-flex gap-2">
+              <div id="md-editor-pane" style="flex:1;">
+                <textarea name="description" id="description" class="form-control font-monospace" rows="16"
+                          placeholder="Article content in Markdown. Use 'Fetch &amp; convert to Markdown' to populate this automatically."></textarea>
+              </div>
+              <div id="md-preview-pane" class="border rounded p-3 report-md-body"
+                   style="flex:1;display:none;min-height:10rem;overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-link me-2"></i>External references</div>
+        <div class="card-body">
+          <div id="ref-list">
+            <div class="ref-row d-flex gap-2 mb-2">
+              <input type="text" name="reference" class="form-control form-control-sm font-monospace"
+                     placeholder="https://">
+              <button type="button" class="btn btn-sm btn-outline-danger ref-remove">
+                <i class="fas fa-minus"></i>
+              </button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="ref-add">
+            <i class="fas fa-plus me-1"></i> Add reference
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right column: scope & metadata -->
+    <div class="col-lg-4">
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-globe me-2"></i>Scope</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label">Geographic scope</label>
+            {{ galaxy_multiselect("geographic_scope", values=[], items=galaxy_countries) }}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Sectors</label>
+            {{ galaxy_multiselect("sectors", values=[], items=galaxy_sectors) }}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Threat actors</label>
+            {{ galaxy_multiselect("threat_actors", values=[], items=galaxy_threat_actors) }}
+          </div>
+
+          <div>
+            <label class="form-label">Threat types</label>
+            {{ tag_input("threat_types", values=[],
+                         placeholder="e.g. Ransomware, Phishing, APT") }}
+          </div>
+
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-floppy-disk me-2"></i>Save</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Creates a MISP event on the webapp server. After saving you can add file attachments.
+          </p>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="fas fa-floppy-disk me-1"></i> Create event
+          </button>
+          <a href="{{ url_for('data_collection.index') }}" class="btn btn-outline-secondary w-100 mt-2">
+            Cancel
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+function tiRender(field) {
+  var display = document.getElementById('ti-display-' + field);
+  var store   = document.getElementById('ti-store-' + field);
+  if (!display || !store) return;
+  display.innerHTML = '';
+  store.querySelectorAll('input[type="hidden"]').forEach(function(inp) {
+    var pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    var txt = document.createTextNode(inp.value);
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'tag-pill-remove'; btn.textContent = '×'; btn.title = 'Remove';
+    btn.onclick = function() { inp.remove(); tiRender(field); };
+    pill.appendChild(txt); pill.appendChild(btn);
+    display.appendChild(pill);
+  });
+}
+function tiAdd(field) {
+  var text  = document.getElementById('ti-text-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!text || !store) return;
+  var val = text.value.trim();
+  if (!val) return;
+  var existing = Array.from(store.querySelectorAll('input[type="hidden"]')).map(function(i){ return i.value; });
+  if (!existing.includes(val)) {
+    var h = document.createElement('input');
+    h.type = 'hidden'; h.name = field; h.value = val;
+    store.appendChild(h);
+    tiRender(field);
+  }
+  text.value = ''; text.focus();
+}
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-ti-field]').forEach(function(w) {
+    var f = w.dataset.tiField;
+    tiRender(f);
+    var t = document.getElementById('ti-text-' + f);
+    if (t) t.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); tiAdd(f); }
+    });
+  });
+});
+</script>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+
+  // Markdown editor tabs
+  var editTab     = document.getElementById('md-tab-edit');
+  var previewTab  = document.getElementById('md-tab-preview');
+  var splitTab    = document.getElementById('md-tab-split');
+  var editorPane  = document.getElementById('md-editor-pane');
+  var previewPane = document.getElementById('md-preview-pane');
+  var descTA      = document.getElementById('description');
+  var currentMode = 'edit';
+
+  function renderPreview() {
+    var raw = descTA.value;
+    previewPane.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '<em class="text-muted">Nothing to preview.</em>';
+  }
+
+  function setTab(mode) {
+    currentMode = mode;
+    [editTab, previewTab, splitTab].forEach(function(b) {
+      b.classList.remove('btn-secondary');
+      b.classList.add('btn-outline-secondary');
+    });
+    var active = mode === 'edit' ? editTab : mode === 'preview' ? previewTab : splitTab;
+    active.classList.remove('btn-outline-secondary');
+    active.classList.add('btn-secondary');
+
+    if (mode === 'edit') {
+      editorPane.style.display  = '';
+      previewPane.style.display = 'none';
+    } else if (mode === 'preview') {
+      editorPane.style.display  = 'none';
+      previewPane.style.display = '';
+      renderPreview();
+    } else {
+      editorPane.style.display  = '';
+      previewPane.style.display = '';
+      renderPreview();
+    }
+  }
+
+  editTab.addEventListener('click', function() { setTab('edit'); });
+  previewTab.addEventListener('click', function() { setTab('preview'); });
+  splitTab.addEventListener('click', function() { setTab('split'); });
+  setTab('edit');
+
+  // Live preview update when in preview/split mode
+  descTA.addEventListener('input', function() {
+    if (currentMode === 'preview' || currentMode === 'split') renderPreview();
+  });
+
+  // External references
+  var refList = document.getElementById('ref-list');
+  document.getElementById('ref-add').addEventListener('click', function() {
+    var row = document.createElement('div');
+    row.className = 'ref-row d-flex gap-2 mb-2';
+    row.innerHTML = '<input type="text" name="reference" class="form-control form-control-sm font-monospace" placeholder="https://">'
+      + '<button type="button" class="btn btn-sm btn-outline-danger ref-remove"><i class="fas fa-minus"></i></button>';
+    refList.appendChild(row);
+  });
+  refList.addEventListener('click', function(e) {
+    var btn = e.target.closest('.ref-remove');
+    if (btn) btn.closest('.ref-row').remove();
+  });
+
+  // Bootstrap tooltips
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el);
+  });
+})();
+</script>
+<script>
+(function() {
+  var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+  document.getElementById('btn-fetch-url').addEventListener('click', function() {
+    var url = document.getElementById('source_reference').value.trim();
+    if (!url) return;
+    var status = document.getElementById('fetch-url-status');
+    var btn = this;
+    status.textContent = 'Fetching…';
+    status.className = 'form-text';
+    status.style.display = '';
+    btn.disabled = true;
+    fetch('/api/fetch-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ url: url })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        status.textContent = 'Error: ' + data.error;
+        status.className = 'form-text text-danger';
+      } else {
+        document.getElementById('description').value = data.content || '';
+        document.getElementById('description').dispatchEvent(new Event('input'));
+        var titleInput = document.querySelector('input[name="title"]');
+        if (titleInput && !titleInput.value.trim() && data.title) {
+          titleInput.value = data.title;
+        }
+        status.textContent = 'Content loaded.';
+        status.className = 'form-text text-success';
+      }
+      btn.disabled = false;
+    })
+    .catch(function(err) {
+      status.textContent = 'Error: ' + err;
+      status.className = 'form-text text-danger';
+      btn.disabled = false;
+    });
+  });
+
+  document.getElementById('btn-llm-summary').addEventListener('click', function() {
+    var content = document.getElementById('description').value.trim();
+    var status = document.getElementById('llm-summary-status');
+    var btn = this;
+    if (!content) {
+      status.textContent = 'Add content first.';
+      status.className = 'form-text text-warning';
+      status.style.display = '';
+      return;
+    }
+    var titleInput = document.querySelector('input[name="title"]');
+    var title = titleInput ? titleInput.value.trim() : '';
+    status.textContent = 'Generating summary…';
+    status.className = 'form-text';
+    status.style.display = '';
+    btn.disabled = true;
+    fetch('/api/summarise-content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ content: content, title: title })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        status.textContent = 'Error: ' + data.error;
+        status.className = 'form-text text-danger';
+      } else {
+        document.getElementById('summary').value = data.summary || '';
+        status.textContent = 'Summary generated.';
+        status.className = 'form-text text-success';
+      }
+      btn.disabled = false;
+    })
+    .catch(function(err) {
+      status.textContent = 'Error: ' + err;
+      status.className = 'form-text text-danger';
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+{% endblock %}

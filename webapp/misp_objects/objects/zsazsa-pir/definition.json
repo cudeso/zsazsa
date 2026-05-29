@@ -1,0 +1,243 @@
+{
+  "name": "zsazsa-pir",
+  "meta-category": "intelligence",
+  "description": "Priority Intelligence Requirement (PIR) managed by the zsazsa CTI program",
+  "uuid": "5f8a1b2c-3d4e-4f5a-8b9c-0d1e2f3a4b5c",
+  "version": 7,
+  "attributes": {
+    "pir-id": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Unique PIR identifier (e.g. PIR-001)",
+      "disable_correlation": true
+    },
+    "question": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "The intelligence question this PIR aims to answer",
+      "disable_correlation": true
+    },
+    "context": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "Why this question is being asked and what triggered the request",
+      "disable_correlation": true
+    },
+    "intel-level": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "Intelligence level (Strategic / Operational / Tactical)",
+      "disable_correlation": true
+    },
+    "priority": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "MoSCoW priority (Must have / Should have / Could have / Won't have)",
+      "disable_correlation": true
+    },
+    "status": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "Lifecycle status (Pending / Active / Answered / Retired)",
+      "disable_correlation": true
+    },
+    "time-sensitivity": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "How urgently the PIR must be answered",
+      "disable_correlation": true
+    },
+    "owner-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "UUID of the owning stakeholder MISP event",
+      "disable_correlation": true
+    },
+    "owner-name": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Denormalised owner display name",
+      "disable_correlation": true
+    },
+    "owner-role": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "Denormalised owner role",
+      "disable_correlation": true
+    },
+    "deadline": {
+      "misp-attribute": "text",
+      "ui-priority": 24,
+      "description": "Hard deadline for answering this PIR (ISO 8601)",
+      "disable_correlation": true
+    },
+    "priority-justification": {
+      "misp-attribute": "text",
+      "ui-priority": 25,
+      "description": "Justification for the assigned priority",
+      "disable_correlation": true
+    },
+    "sub-questions": {
+      "misp-attribute": "text",
+      "ui-priority": 26,
+      "description": "JSON array of sub-questions that make up this PIR",
+      "disable_correlation": true
+    },
+    "decision-supported": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "The decision this PIR is intended to support",
+      "disable_correlation": true
+    },
+    "decision-maker": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "Person or role responsible for the decision",
+      "disable_correlation": true
+    },
+    "consequence": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "Risk or consequence if the PIR is not answered",
+      "disable_correlation": true
+    },
+    "geographic-scope": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "JSON array of countries/regions in scope (from MISP Country galaxy)",
+      "disable_correlation": true
+    },
+    "time-frame": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "Time period in scope for collection (free text)",
+      "disable_correlation": true
+    },
+    "threat-types": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "JSON array of threat type strings in scope (free text, e.g. Ransomware, APT)",
+      "disable_correlation": true
+    },
+    "threat-actors": {
+      "misp-attribute": "text",
+      "ui-priority": 15,
+      "description": "JSON array of threat actor names in scope (from MISP Threat Actor galaxy)",
+      "disable_correlation": true
+    },
+    "sectors": {
+      "misp-attribute": "text",
+      "ui-priority": 16,
+      "description": "JSON array of industry sectors in scope (from MISP Sector galaxy)",
+      "disable_correlation": true
+    },
+    "out-of-scope": {
+      "misp-attribute": "text",
+      "ui-priority": 17,
+      "description": "JSON array of explicitly excluded topics or areas (free text)",
+      "disable_correlation": true
+    },
+    "technology": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "JSON array of technology scope values",
+      "disable_correlation": true
+    },
+    "vendor": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "JSON array of vendor scope values",
+      "disable_correlation": true
+    },
+    "incident": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "JSON array of related incident identifiers",
+      "disable_correlation": true
+    },
+    "campaign": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "JSON array of related campaign names",
+      "disable_correlation": true
+    },
+    "collection-sources": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "JSON array of collection source names",
+      "disable_correlation": true
+    },
+    "output-format": {
+      "misp-attribute": "text",
+      "ui-priority": 19,
+      "description": "JSON array of expected deliverable formats (Flash report, Threat brief, etc.)",
+      "disable_correlation": true
+    },
+    "distribution": {
+      "misp-attribute": "text",
+      "ui-priority": 21,
+      "description": "JSON array of stakeholder UUIDs for the deliverable recipients (legacy records may still contain stakeholder names)",
+      "disable_correlation": true
+    },
+    "resolution-note": {
+      "misp-attribute": "text",
+      "ui-priority": 22,
+      "description": "Summary of how the PIR was answered when closing or retiring",
+      "disable_correlation": true
+    },
+    "next-review": {
+      "misp-attribute": "text",
+      "ui-priority": 23,
+      "description": "Date of the next scheduled review (ISO 8601)",
+      "disable_correlation": true
+    },
+    "intake-status": {
+      "misp-attribute": "text",
+      "ui-priority": 27,
+      "description": "Intake workflow state: submitted, acknowledged, triaged, approved, rejected, deferred, merged",
+      "disable_correlation": true
+    },
+    "acknowledged-at": {
+      "misp-attribute": "text",
+      "ui-priority": 28,
+      "description": "Date the PIR was acknowledged (ISO 8601)",
+      "disable_correlation": true
+    },
+    "triaged-at": {
+      "misp-attribute": "text",
+      "ui-priority": 29,
+      "description": "Date the PIR triage was completed (ISO 8601)",
+      "disable_correlation": true
+    },
+    "decision-at": {
+      "misp-attribute": "text",
+      "ui-priority": 30,
+      "description": "Date the intake decision was recorded (ISO 8601)",
+      "disable_correlation": true
+    },
+    "rejection-reason": {
+      "misp-attribute": "text",
+      "ui-priority": 31,
+      "description": "Reason for rejecting the PIR at intake",
+      "disable_correlation": true
+    },
+    "deferral-reason": {
+      "misp-attribute": "text",
+      "ui-priority": 32,
+      "description": "Reason for deferring the PIR at intake",
+      "disable_correlation": true
+    },
+    "linked-pir-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 33,
+      "description": "UUID of the PIR this one was merged into",
+      "disable_correlation": true
+    },
+    "mitre-attack-techniques": {
+      "misp-attribute": "text",
+      "ui-priority": 35,
+      "description": "JSON array of MITRE ATT\\&CK technique strings (from misp-galaxy:mitre-attack-pattern)",
+      "disable_correlation": true
+    }
+  }
+}

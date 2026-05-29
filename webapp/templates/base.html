@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}zsazsa CTI{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+
+<div class="layout-wrapper">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <a href="{{ url_for('dashboard.index') }}" class="sidebar-brand">
+      <span class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+        </svg>
+      </span>
+      <span class="brand-name">zsazsa <span class="brand-sub">CTI</span></span>
+    </a>
+
+    <div class="sidebar-section-label">Overview</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint == 'dashboard.index' }}">
+          <i class="fas fa-gauge-high fa-fw"></i> Dashboard
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-section-label">Stakeholders</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="{{ url_for('stakeholders.list') }}" class="{{ 'active' if request.blueprint == 'stakeholders' }}">
+          <span class="misp-nav-icon"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M8 8.25A4.25 4.25 0 0 1 12.25 4h15.5A4.25 4.25 0 0 1 32 8.25V19h3.75A4.25 4.25 0 0 1 40 23.25v19.5c0 .69-.56 1.25-1.25 1.25H34v-6.75A2.25 2.25 0 0 0 31.75 35h-15.5A2.25 2.25 0 0 0 14 37.25V44H9.25C8.56 44 8 43.44 8 42.75zM16.5 44h6.25v-6.5H16.5zm8.75 0h6.25v-6.5h-6.25zM18 14a2 2 0 1 0-4 0a2 2 0 0 0 4 0m-2 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4m2 5a2 2 0 1 0-4 0a2 2 0 0 0 4 0m6-12a2 2 0 1 0 0-4a2 2 0 0 0 0 4m2 5a2 2 0 1 0-4 0a2 2 0 0 0 4 0m-2 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4m10-2a2 2 0 1 0-4 0a2 2 0 0 0 4 0"/></svg></span> Stakeholders
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('community.organisations') }}" class="{{ 'active' if request.endpoint == 'community.organisations' }}">
+          <span class="misp-nav-icon"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M8 8.25A4.25 4.25 0 0 1 12.25 4h15.5A4.25 4.25 0 0 1 32 8.25V19h3.75A4.25 4.25 0 0 1 40 23.25v19.5c0 .69-.56 1.25-1.25 1.25H34v-6.75A2.25 2.25 0 0 0 31.75 35h-15.5A2.25 2.25 0 0 0 14 37.25V44H9.25C8.56 44 8 43.44 8 42.75zM16.5 44h6.25v-6.5H16.5zm8.75 0h6.25v-6.5h-6.25zM18 14a2 2 0 1 0-4 0a2 2 0 0 0 4 0m-2 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4m2 5a2 2 0 1 0-4 0a2 2 0 0 0 4 0m6-12a2 2 0 1 0 0-4a2 2 0 0 0 0 4m2 5a2 2 0 1 0-4 0a2 2 0 0 0 4 0m-2 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4m10-2a2 2 0 1 0-4 0a2 2 0 0 0 4 0"/></svg></span> Organisations
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('community.users') }}" class="{{ 'active' if request.endpoint == 'community.users' }}">
+          <span class="misp-nav-icon"><svg viewBox="0 0 640 640" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M320 312c66.3 0 120-53.7 120-120S386.3 72 320 72s-120 53.7-120 120s53.7 120 120 120m-29.7 56C191.8 368 112 447.8 112 546.3c0 16.4 13.3 29.7 29.7 29.7h356.6c16.4 0 29.7-13.3 29.7-29.7c0-98.5-79.8-178.3-178.3-178.3z"/></svg></span> Users
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('community.roles') }}" class="{{ 'active' if request.endpoint == 'community.roles' }}">
+          <i class="fas fa-shield-halved fa-fw"></i> Roles
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-section-label">Intelligence Requirements</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="{{ url_for('requirements.pir_list') }}" class="{{ 'active' if request.endpoint and 'pir' in request.endpoint and 'triage' not in request.endpoint }}">
+          <i class="fas fa-star fa-fw"></i> PIRs
+          <span class="sidebar-hint">Priority</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('requirements.pir_triage_queue') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('requirements.') and 'triage' in request.endpoint }}">
+          <i class="fas fa-gavel fa-fw"></i> PIR Triage
+          <span class="sidebar-hint">Queue</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('requirements.gir_list') }}" class="{{ 'active' if request.endpoint and 'gir' in request.endpoint }}">
+          <i class="fas fa-list-check fa-fw"></i> GIRs
+          <span class="sidebar-hint">General</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('rfi.rfi_list') }}" class="{{ 'active' if request.blueprint == 'rfi' }}">
+          <i class="fas fa-circle-question fa-fw"></i> RFIs
+          <span class="sidebar-hint">Requests</span>
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-section-label">Reporting</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="{{ url_for('data_collection.index') }}" class="{{ 'active' if request.blueprint == 'data_collection' }}">
+          <span class="misp-nav-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 9a3 3 0 0 0-3 3a3 3 0 0 0 3 3a3 3 0 0 0 3-3a3 3 0 0 0-3-3m0 8a5 5 0 0 1-5-5a5 5 0 0 1 5-5a5 5 0 0 1 5 5a5 5 0 0 1-5 5m0-12.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5"/></svg></span> Data collection
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('daily_briefing.list_briefings') }}" class="{{ 'active' if request.blueprint == 'daily_briefing' }}">
+          <i class="fas fa-newspaper fa-fw"></i> Daily briefing
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('threat_landscape.review') }}" class="{{ 'active' if request.blueprint == 'threat_landscape' }}">
+          <i class="fas fa-globe fa-fw"></i> Threat landscape
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('flash_intel.review') }}" class="{{ 'active' if request.blueprint == 'flash_intel' }}">
+          <i class="fas fa-bolt fa-fw"></i> Flash intel
+          <span class="sidebar-hint">Review queue</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('vea.review') }}" class="{{ 'active' if request.blueprint == 'vea' }}">
+          <i class="fas fa-bug fa-fw"></i> Vuln advisories
+          <span class="sidebar-hint">VEA</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('products.index') }}" class="{{ 'active' if request.blueprint == 'products' }}">
+          <span class="misp-nav-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g fill="currentColor"><path d="m12 2 .117.007a1 1 0 0 1 .876.876L13 3v4l.005.15a2 2 0 0 0 1.838 1.844L15 9h4l.117.007a1 1 0 0 1 .876.876L20 10v9a3 3 0 0 1-2.824 2.995L17 22H7a3 3 0 0 1-2.995-2.824L4 19V5a3 3 0 0 1 2.824-2.995L7 2zm3 14H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2m0-4H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2m-5-4H9a1 1 0 1 0 0 2h1a1 1 0 0 0 0-2"/><path d="M19 7h-4l-.001-4.001z"/></g></svg></span> All products
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('stats.index') }}" class="{{ 'active' if request.endpoint == 'stats.index' }}">
+          <i class="fas fa-chart-bar fa-fw"></i> Statistics
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('logs.index') }}" class="{{ 'active' if request.endpoint == 'logs.index' }}">
+          <i class="fas fa-scroll fa-fw"></i> Logs
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-section-label">Settings</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="{{ url_for('config_page.index') }}" class="{{ 'active' if request.endpoint == 'config_page.index' }}">
+          <i class="fas fa-sliders fa-fw"></i> Configuration
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('collection_sources.index') }}" class="{{ 'active' if request.blueprint == 'collection_sources' }}">
+          <i class="fas fa-satellite-dish fa-fw"></i> Collection sources
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <span class="text-muted small"><i class="fas fa-circle-info fa-fw"></i> zsazsa v0.1</span>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <div id="main-wrapper">
+
+    <!-- Top bar -->
+    <div id="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title">{% block page_title %}{% endblock %}</h1>
+        {% block page_subtitle %}{% endblock %}
+        {% if breadcrumb is defined %}
+        <nav aria-label="breadcrumb" class="topbar-breadcrumb">
+          <ol class="breadcrumb mb-0">
+            {% for crumb in breadcrumb %}
+            {% if loop.last %}
+            <li class="breadcrumb-item active">{{ crumb.label }}</li>
+            {% else %}
+            <li class="breadcrumb-item"><a href="{{ crumb.url }}">{{ crumb.label }}</a></li>
+            {% endif %}
+            {% endfor %}
+          </ol>
+        </nav>
+        {% endif %}
+      </div>
+      <div class="topbar-right">
+        <a id="misp-status-badge" class="misp-status-badge me-1" title="Checking MISP connection…"
+           href="{% block misp_object_url %}{{ misp_webapp_url }}{% endblock %}" target="_blank" rel="noopener">
+          <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" class="misp-status-logo">
+          <span id="misp-status-icon" class="misp-status-icon misp-status-checking">
+            <i class="fas fa-circle-notch fa-spin"></i>
+          </span>
+        </a>
+        <button type="button" id="global-refresh-btn" class="btn btn-xs btn-link text-muted me-3 p-0"
+                title="Reload page - re-fetches all data from MISP"
+                style="font-size:.78rem;line-height:1;opacity:.65;"
+                onclick="this.disabled=true;this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i>';window.location.reload();">
+          <i class="fas fa-arrows-rotate"></i>
+        </button>
+        <button type="button" class="btn btn-xs btn-link p-0 me-3 admiralty-ref-btn"
+                data-bs-toggle="modal" data-bs-target="#admiralty-modal"
+                title="Intelligence Reference">
+          <i class="fas fa-star-half-stroke"></i>
+        </button>
+        <span class="topbar-user me-2"><i class="fas fa-circle-user fa-fw"></i> admin@admin.test</span>
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </div>
+
+    <!-- Flash messages -->
+    <div id="flash-container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+      <div class="alert alert-{{ 'success' if category == 'success' else 'info' if category == 'info' else 'warning' }} alert-dismissible fade show alert-flash" role="alert">
+        <i class="fas fa-{{ 'check-circle' if category == 'success' else 'circle-info' }} me-2"></i>{{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
+      {% endwith %}
+    </div>
+
+    <!-- Page content -->
+    <div id="page-content">
+      {% block content %}{% endblock %}
+    </div>
+
+  </div>
+</div>
+
+<!-- Intelligence reference modal (Admiralty + TLP) -->
+<div class="modal fade" id="admiralty-modal" tabindex="-1" aria-labelledby="admiralty-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content admiralty-modal-content">
+      <div class="admiralty-modal-header">
+        <div class="admiralty-modal-title-wrap">
+          <span class="admiralty-modal-icon"><i class="fas fa-book-open"></i></span>
+          <div>
+            <h5 class="admiralty-modal-title" id="admiralty-modal-label">Intelligence Reference</h5>
+            <p class="admiralty-modal-subtitle">Admiralty Scale · TLP · CTI Evaluation</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+
+        <!-- Tab navigation -->
+        <ul class="nav nav-tabs ps-3 pt-2" id="intel-ref-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ir-admiralty-tab" data-bs-toggle="tab"
+                    data-bs-target="#ir-admiralty" type="button" role="tab" aria-selected="true">
+              <i class="fas fa-star-half-stroke me-1"></i>Admiralty Scale
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="ir-tlp-tab" data-bs-toggle="tab"
+                    data-bs-target="#ir-tlp" type="button" role="tab" aria-selected="false">
+              <i class="fas fa-tag me-1"></i>TLP
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="ir-ctiev-tab" data-bs-toggle="tab"
+                    data-bs-target="#ir-ctiev" type="button" role="tab" aria-selected="false">
+              <i class="fas fa-microscope me-1"></i>CTI Evaluation
+            </button>
+          </li>
+        </ul>
+
+        <div class="tab-content p-3" id="intel-ref-tab-content">
+
+          <!-- Tab 1: Admiralty Scale -->
+          <div class="tab-pane fade show active" id="ir-admiralty" role="tabpanel" aria-labelledby="ir-admiralty-tab">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="admiralty-section-label">
+                  <i class="fas fa-star-half-stroke me-2"></i>Source Reliability
+                </div>
+                <div class="admiralty-scale-list">
+                  <div class="adm-row adm-a">
+                    <span class="adm-code">A</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Completely reliable</span>
+                      <span class="adm-desc">No doubt of authenticity or competency; history of complete reliability</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-b">
+                    <span class="adm-code">B</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Usually reliable</span>
+                      <span class="adm-desc">Minor doubt; history of valid information most of the time</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-c">
+                    <span class="adm-code">C</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Fairly reliable</span>
+                      <span class="adm-desc">Doubt of competency but has provided valid information in the past</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-d">
+                    <span class="adm-code">D</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Not usually reliable</span>
+                      <span class="adm-desc">Significant doubt but has provided valid information in the past</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-e">
+                    <span class="adm-code">E</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Unreliable</span>
+                      <span class="adm-desc">Lacking in trustworthiness and competency; history of invalid information</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-f">
+                    <span class="adm-code">F</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Cannot be judged</span>
+                      <span class="adm-desc">No basis exists for evaluating the reliability of the source</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="admiralty-section-label">
+                  <i class="fas fa-check-double me-2"></i>Information Credibility
+                </div>
+                <div class="admiralty-scale-list">
+                  <div class="adm-row adm-1">
+                    <span class="adm-code">1</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Confirmed</span>
+                      <span class="adm-desc">Confirmed by other independent sources; consistent with other information</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-2">
+                    <span class="adm-code">2</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Probably true</span>
+                      <span class="adm-desc">Not confirmed; logical in itself; consistent with other information</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-3">
+                    <span class="adm-code">3</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Possibly true</span>
+                      <span class="adm-desc">Not confirmed; reasonably logical; agrees with some other information</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-4">
+                    <span class="adm-code">4</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Doubtful</span>
+                      <span class="adm-desc">Not confirmed; possible but not logical; no other information on subject</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-5">
+                    <span class="adm-code">5</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Improbable</span>
+                      <span class="adm-desc">Not confirmed; not logical in itself; contradicted by other information</span>
+                    </div>
+                  </div>
+                  <div class="adm-row adm-6">
+                    <span class="adm-code">6</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Cannot be judged</span>
+                      <span class="adm-desc">No basis exists for evaluating the validity of the information</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="admiralty-footer-note">A lower letter and a lower number indicate higher confidence. Scores are independent: a reliable source can still produce unconfirmed information.</p>
+          </div>
+
+          <!-- Tab 2: TLP -->
+          <div class="tab-pane fade" id="ir-tlp" role="tabpanel" aria-labelledby="ir-tlp-tab">
+            <div class="admiralty-section-label">
+              <i class="fas fa-tag me-2"></i>Traffic Light Protocol (TLP)
+            </div>
+            <div class="admiralty-scale-list">
+              <div class="adm-row adm-tlp-red">
+                <span class="adm-tlp-pill">TLP:<strong>RED</strong></span>
+                <div class="adm-body">
+                  <span class="adm-name">Individual recipients only - no further disclosure</span>
+                  <span class="adm-desc">Cannot be effectively acted upon without significant risk. Recipients may not share with anyone else.</span>
+                </div>
+              </div>
+              <div class="adm-row adm-tlp-amber">
+                <span class="adm-tlp-pill">TLP:<strong>AMBER</strong></span>
+                <div class="adm-body">
+                  <span class="adm-name">Organization and its clients, need-to-know basis</span>
+                  <span class="adm-desc">Requires support to act upon but carries risk if shared more widely. Add <code class="adm-strict">+STRICT</code> to limit sharing to the organization only.</span>
+                </div>
+              </div>
+              <div class="adm-row adm-tlp-green">
+                <span class="adm-tlp-pill">TLP:<strong>GREEN</strong></span>
+                <div class="adm-body">
+                  <span class="adm-name">Community - not for public channels</span>
+                  <span class="adm-desc">Useful for awareness within the wider community. May be shared with peers and partners but not via publicly accessible channels.</span>
+                </div>
+              </div>
+              <div class="adm-row adm-tlp-clear">
+                <span class="adm-tlp-pill">TLP:<strong>CLEAR</strong></span>
+                <div class="adm-body">
+                  <span class="adm-name">No restrictions - may be shared publicly</span>
+                  <span class="adm-desc">Carries minimal or no foreseeable risk of misuse. Subject to standard copyright rules, may be shared without restriction.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: CTI Evaluation -->
+          <div class="tab-pane fade" id="ir-ctiev" role="tabpanel" aria-labelledby="ir-ctiev-tab">
+            <p class="text-muted small mb-3">
+              The CTI Evaluation taxonomy provides a structured vocabulary for scoring intelligence quality. Each of the twelve predicates uses a five-level scale. Apply these tags from the data collection page using the <i class="fas fa-microscope fa-xs"></i> button.
+            </p>
+            <div class="d-flex align-items-center gap-1 mb-3 flex-wrap">
+              <span class="text-muted small me-1">Scale:</span>
+              <span class="badge" style="background:#dc3545;">Very Low</span>
+              <span class="badge" style="background:#fd7e14;">Low</span>
+              <span class="badge text-dark" style="background:#ffc107;">Moderate</span>
+              <span class="badge" style="background:#20c997;">High</span>
+              <span class="badge" style="background:#198754;">Very High</span>
+              <span class="text-muted small ms-2">lower = weaker, higher = stronger</span>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="admiralty-section-label mb-1"><i class="fas fa-chart-line me-2"></i>Analytical Quality</div>
+                <div class="admiralty-scale-list">
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">overall-score</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Overall Score</span>
+                      <span class="adm-desc">Composite quality rating combining all evaluation dimensions</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">accuracy</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Accuracy</span>
+                      <span class="adm-desc">Factual correctness and absence of errors or misleading claims</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">clarity</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Clarity</span>
+                      <span class="adm-desc">Readability, structure, and ease of understanding</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">specificity</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Specificity</span>
+                      <span class="adm-desc">Level of technical detail, context, and actionable depth</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="admiralty-section-label mt-3 mb-1"><i class="fas fa-bullseye me-2"></i>Operational Value</div>
+                <div class="admiralty-scale-list">
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">relevance</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Relevance</span>
+                      <span class="adm-desc">Alignment with your organisation's threat landscape and priorities</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">timeliness</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Timeliness</span>
+                      <span class="adm-desc">Currency and actionability given the current threat timeline</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">usefulness</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Usefulness</span>
+                      <span class="adm-desc">Practical operational value for your team's mission</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">confidence</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Confidence</span>
+                      <span class="adm-desc">Overall analytical confidence in the intelligence assessment</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="admiralty-section-label mb-1"><i class="fas fa-link me-2"></i>Provenance &amp; Fidelity</div>
+                <div class="admiralty-scale-list">
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">source-reliability</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Source Reliability</span>
+                      <span class="adm-desc">Trustworthiness and track record of the originating source</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">evidence-strength</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Evidence Strength</span>
+                      <span class="adm-desc">Quality and weight of evidence supporting the claims</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">format-validity</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Format Validity</span>
+                      <span class="adm-desc">Structural correctness of the MISP format and data model</span>
+                    </div>
+                  </div>
+                  <div class="adm-row">
+                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">conversion-fidelity</span>
+                    <div class="adm-body">
+                      <span class="adm-name">Conversion Fidelity</span>
+                      <span class="adm-desc">Accuracy of data transformation or conversion from the original source</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-gms-search]').forEach(function(searchInput) {
+      var field = searchInput.getAttribute('data-gms-search');
+      var list = document.getElementById('gms-' + field);
+      var selectedDisplay = document.getElementById('gms-selected-' + field);
+      if (!list) return;
+
+      function updateCount() {
+        if (!selectedDisplay) return;
+        var checked = list.querySelectorAll('input[type="checkbox"]:checked');
+        selectedDisplay.innerHTML = '';
+        checked.forEach(function(cb) {
+          var pill = document.createElement('span');
+          pill.className = 'gms-pill';
+          pill.textContent = cb.value;
+          selectedDisplay.appendChild(pill);
+        });
+      }
+
+      function applyFilter() {
+        var q = (searchInput.value || '').toLowerCase().trim();
+        list.querySelectorAll('.gms-item').forEach(function(item) {
+          var txt = (item.textContent || '').toLowerCase();
+          item.classList.toggle('gms-hidden', q && txt.indexOf(q) === -1);
+        });
+        updateCount();
+      }
+
+      searchInput.addEventListener('input', applyFilter);
+      list.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+        cb.addEventListener('change', updateCount);
+      });
+      updateCount();
+    });
+  });
+
+  // Auto-dismiss flash messages after 4 seconds
+  setTimeout(() => {
+    try {
+      document.querySelectorAll('.alert-flash').forEach(el => {
+        const bsAlert = new bootstrap.Alert(el);
+        bsAlert.close();
+      });
+    } catch(e) {}
+  }, 4000);
+</script>
+{% block scripts %}{% endblock %}
+<script>
+  (function() {
+    var badge = document.getElementById('misp-status-badge');
+    var icon  = document.getElementById('misp-status-icon');
+    if (!badge || !icon) return;
+
+    function update() {
+      fetch('/api/misp-status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) {
+            icon.className = 'misp-status-icon misp-status-ok';
+            icon.innerHTML = '<i class="fas fa-circle-check"></i>';
+            badge.title = 'MISP connected: ' + (data.version || data.url || '');
+          } else {
+            icon.className = 'misp-status-icon misp-status-error';
+            icon.innerHTML = '<i class="fas fa-circle-xmark"></i>';
+            badge.title = 'MISP unreachable: ' + (data.error || data.url || '');
+          }
+        })
+        .catch(function() {
+          icon.className = 'misp-status-icon misp-status-error';
+          icon.innerHTML = '<i class="fas fa-circle-xmark"></i>';
+          badge.title = 'MISP status check failed';
+        });
+    }
+
+    update();
+    setInterval(update, 60000);
+  })();
+</script>
+<script>
+  (function() {
+    var token = document.querySelector('meta[name="csrf-token"]').content;
+    document.querySelectorAll('form').forEach(function(form) {
+      var method = (form.getAttribute('method') || 'get').toLowerCase();
+      if (method !== 'get') {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'csrf_token';
+        input.value = token;
+        form.appendChild(input);
+      }
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}{{ fia.fia_id }} | Flash intel{% endblock %}
+{% block page_title %}{{ fia.fia_id }} - {{ fia.title or '(untitled)' }}{% endblock %}
+
+{% block misp_object_url %}{{ fia.misp_url }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('flash_intel.review') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+<a href="{{ url_for('flash_intel.pdf', id=fia.uuid) }}" class="btn btn-sm btn-outline-secondary" title="Download PDF">
+  <i class="fas fa-file-pdf me-1"></i> PDF
+</a>
+<a href="{{ url_for('flash_intel.wizard_edit', id=fia.uuid) }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-pen me-1"></i> Edit
+</a>
+{% endblock %}
+
+{% macro bullets(items) %}
+  {% if items %}<ul class="mb-0">{% for i in items %}<li>{{ i }}</li>{% endfor %}</ul>{% else %}<span class="text-muted">none recorded</span>{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-8">
+    <div class="card content-card mb-3">
+      <div class="card-body">
+        <div class="d-flex gap-2 mb-2">
+          <span class="tlp-badge tlp-{{ fia.tlp | slug }}">TLP:{{ fia.tlp | upper }}</span>
+          {% if fia.review_state == 'approved' %}<span class="badge bg-success">approved</span>
+          {% elif fia.review_state == 'rejected' %}<span class="badge bg-danger">rejected</span>
+          {% elif fia.review_state == 'pending-review' %}<span class="badge bg-info text-dark">pending review</span>
+          {% else %}<span class="badge bg-secondary">{{ fia.review_state }}</span>{% endif %}
+          {% if fia.published %}<span class="badge bg-primary">published</span>{% endif %}
+        </div>
+        <h5>Summary</h5>
+        <p>{{ fia.summary or '_No summary._' }}</p>
+        <p><strong>Action required:</strong> {{ fia.action_required or '-' }}</p>
+        <hr>
+        <h5>What happened</h5>
+        {{ bullets(fia.what_happened) }}
+        <p class="mt-3 mb-0 small text-muted">
+          Source: {{ fia.source_description or 'unspecified' }} ·
+          Reliability: {{ fia.source_reliability or '-' }} ·
+          Credibility: {{ fia.information_credibility or '-' }}
+        </p>
+        <hr>
+        <h5>Why it matters</h5>
+        <ul>
+          <li><strong>Likely impact:</strong> {{ fia.likely_impact or '-' }}</li>
+          <li><strong>Affected assets:</strong> {{ fia.affected_assets or '-' }}</li>
+          <li><strong>Actor context:</strong> {{ fia.actor_context or '-' }}</li>
+          {% if fia.geographic_scope %}<li><strong>Geography:</strong> {{ fia.geographic_scope | join(', ') }}</li>{% endif %}
+          {% if fia.sectors %}<li><strong>Sectors:</strong> {{ fia.sectors | join(', ') }}</li>{% endif %}
+          {% if fia.threat_actors %}<li><strong>Threat actors:</strong> {{ fia.threat_actors | join(', ') }}</li>{% endif %}
+          {% if fia.threat_types %}<li><strong>Threat types:</strong> {{ fia.threat_types | join(', ') }}</li>{% endif %}
+          {% if fia.technology %}<li><strong>Technology:</strong> {{ fia.technology | join(', ') }}</li>{% endif %}
+          {% if fia.vendor %}<li><strong>Vendor:</strong> {{ fia.vendor | join(', ') }}</li>{% endif %}
+          {% if fia.incident %}<li><strong>Incident:</strong> {{ fia.incident | join(', ') }}</li>{% endif %}
+          {% if fia.campaign %}<li><strong>Campaign:</strong> {{ fia.campaign | join(', ') }}</li>{% endif %}
+        </ul>
+        <hr>
+        <h5>Recommended actions</h5>
+        <h6 class="mt-3">Immediate (0-24h)</h6>
+        {{ bullets(fia.actions_immediate) }}
+        <h6 class="mt-3">Near-term (1-7d)</h6>
+        {{ bullets(fia.actions_near_term) }}
+        <hr>
+        <h5>Detection guidance</h5>
+        <h6 class="mt-3">MITRE ATT&CK techniques</h6>
+        {{ bullets(fia.mitre_techniques) }}
+        <h6 class="mt-3">Hunting hypotheses</h6>
+        {{ bullets(fia.hunting_hypotheses) }}
+        <hr>
+        <h5>References</h5>
+        {% if fia.external_references %}
+          <ul class="mb-0">
+            {% for r in fia.external_references %}
+              {% if r.startswith('http://') or r.startswith('https://') %}
+              <li><a href="{{ r }}" target="_blank" rel="noopener noreferrer">{{ r }}</a></li>
+              {% else %}
+              <li>{{ r }}</li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        {% else %}
+          <span class="text-muted">none recorded</span>
+        {% endif %}
+        {% if fia.source_event_uuids %}
+          {% for uid in fia.source_event_uuids %}
+          <p class="mt-2 mb-0 small">Originating MISP event: <code>{{ uid }}</code></p>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card content-card mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <strong>Metadata</strong>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                data-bs-toggle="modal" data-bs-target="#recipientsModal"
+                title="Preview recipients">
+          <i class="fas fa-users me-1"></i> Recipients
+        </button>
+      </div>
+      <div class="card-body small">
+        <p class="mb-1"><strong>FIA:</strong> {{ fia.fia_id }}</p>
+        <p class="mb-1"><strong>Audience:</strong> {{ fia.audience or '-' }}</p>
+        <p class="mb-1"><strong>Author:</strong> {{ fia.author or '-' }}</p>
+        <p class="mb-1"><strong>Created:</strong> {{ fia.created_at.strftime('%Y-%m-%d %H:%M UTC') if fia.created_at else '-' }}</p>
+        {% if notify_status %}
+        <p class="mb-1">
+          <strong>Last notification:</strong>
+          <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
+          <span class="text-muted">{{ notify_status.timestamp }}</span>
+        </p>
+        {% if notify_status.details %}
+        <p class="mb-1 text-muted" style="font-size:.78rem;">{{ notify_status.details }}</p>
+        {% endif %}
+        {% endif %}
+        {% if fia.feedback_deadline %}
+        <p class="mb-1"><strong>Feedback by:</strong> {{ fia.feedback_deadline.strftime('%d-%m-%Y') }}</p>
+        {% endif %}
+        {% if fia.rejection_reason %}
+        <hr>
+        <p class="mb-0 text-danger"><strong>Rejection reason:</strong><br>{{ fia.rejection_reason }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if fia.review_state in ('draft', 'pending-review') %}
+    <div class="card content-card mb-3">
+      <div class="card-header"><strong>Review actions</strong></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('flash_intel.approve', id=fia.uuid) }}" class="mb-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-success w-100">
+            <i class="fas fa-check me-1"></i> Approve & publish
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('flash_intel.reject', id=fia.uuid) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="reason" class="form-control form-control-sm mb-2" rows="2"
+                    placeholder="Rejection reason"></textarea>
+          <button class="btn btn-outline-danger w-100">
+            <i class="fas fa-xmark me-1"></i> Reject
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-comment-dots me-2"></i>Feedback</div>
+      <div class="card-body">
+        {% if feedback %}
+        {% for f in feedback %}
+        <div class="border rounded p-2 mb-2 small">
+          <div class="text-muted mb-1">{{ f.name }}</div>
+          <div class="report-md-body" data-md="{{ f.content | e }}"></div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-2"><em>No feedback recorded yet.</em></p>
+        {% endif %}
+        <hr>
+        <form method="post" action="{{ url_for('flash_intel.add_feedback', id=fia.uuid) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-2">
+            <input type="text" name="author" class="form-control form-control-sm" placeholder="Your name (optional)">
+          </div>
+          <div class="mb-2">
+            <select name="rating" class="form-select form-select-sm">
+              <option value="">- rating -</option>
+              <option value="Very useful">Very useful</option>
+              <option value="Useful">Useful</option>
+              <option value="Somewhat useful">Somewhat useful</option>
+              <option value="Not useful">Not useful</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <textarea name="comment" class="form-control form-control-sm" rows="3"
+                      placeholder="Comments or suggestions…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            <i class="fas fa-paper-plane me-1"></i> Submit feedback
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('flash_intel.delete', id=fia.uuid) }}"
+          onsubmit="return confirm('Delete {{ fia.fia_id }}?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-danger w-100">
+        <i class="fas fa-trash me-1"></i> Delete FIA
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Recipients modal -->
+<div class="modal fade" id="recipientsModal" tabindex="-1" aria-labelledby="recipientsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="recipientsModalLabel">
+          <i class="fas fa-users me-2"></i>Who gets this alert?
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Showing delivery eligibility based on subscription, TLP clearance, and audience role.
+          TLP: <strong>{{ fia.tlp | upper }}</strong> &middot; Audience: <strong>{{ fia.audience or '(none)' }}</strong>
+        </p>
+        {% set green_recipients = recipients | selectattr("status", "eq", "green") | list %}
+        {% set yellow_recipients = recipients | selectattr("status", "eq", "yellow") | list %}
+        {% set grey_recipients = recipients | selectattr("status", "eq", "grey") | list %}
+
+        {% if green_recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle-check text-success me-1"></i>Will receive <span class="badge bg-success rounded-pill">{{ green_recipients | length }}</span></h6>
+        <div class="d-flex flex-wrap gap-2 mb-4">
+          {% for r in green_recipients %}
+          <span class="badge rounded-pill px-3 py-2"
+                style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-size:.82rem;cursor:default;"
+                data-bs-toggle="tooltip" data-bs-placement="top" title="{{ r.reason }}">
+            {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if yellow_recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle-exclamation text-warning me-1"></i>Subscribed but blocked <span class="badge bg-warning text-dark rounded-pill">{{ yellow_recipients | length }}</span></h6>
+        <div class="d-flex flex-wrap gap-2 mb-4">
+          {% for r in yellow_recipients %}
+          <span class="badge rounded-pill px-3 py-2"
+                style="background:#fef9c3;color:#713f12;border:1px solid #fde047;font-size:.82rem;cursor:default;"
+                data-bs-toggle="tooltip" data-bs-placement="top" title="{{ r.reason }}">
+            {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if grey_recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle text-secondary me-1"></i>Not subscribed <span class="badge bg-secondary rounded-pill">{{ grey_recipients | length }}</span></h6>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          {% for r in grey_recipients %}
+          <span class="badge rounded-pill px-3 py-2"
+                style="background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;font-size:.82rem;cursor:default;"
+                data-bs-toggle="tooltip" data-bs-placement="top" title="{{ r.reason }}">
+            {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if not recipients %}
+        <p class="text-muted">No stakeholders configured.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+  document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+    var raw = el.getAttribute('data-md') || '';
+    el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+    el.removeAttribute('data-md');
+  });
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el);
+  });
+})();
+</script>
+{% endblock %}

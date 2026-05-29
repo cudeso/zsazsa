@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Flash intel review | zsazsa CTI{% endblock %}
+{% block page_title %}Flash intel review queue{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('flash_intel.wizard_new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> New flash intel
+</a>
+{% endblock %}
+
+{% macro bullets(items) %}
+  {% if items %}<ul class="mb-0 ps-3">{% for i in items %}<li style="font-size:.82rem;">{{ i }}</li>{% endfor %}</ul>
+  {% else %}<span class="text-muted" style="font-size:.82rem;">none recorded</span>{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Review state</label>
+        <select name="state" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All states</option>
+          {% for s in review_states %}
+          <option value="{{ s }}" {{ 'selected' if state_filter == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if state_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('flash_intel.review') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ fias | length }} alert{{ 's' if fias|length != 1 }}</div>
+    </form>
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if fias %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:110px">FIA</th>
+          <th>Title</th>
+          <th>TLP</th>
+          <th>State</th>
+          <th>Author</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in fias %}
+        {# ── Main row ── #}
+        <tr id="fia-row-{{ f.uuid }}">
+          <td>
+            <a href="{{ url_for('flash_intel.detail', id=f.uuid) }}" class="text-decoration-none">
+              <span class="req-id-badge">{{ f.fia_id }}</span>
+            </a>
+          </td>
+          <td>
+            {{ f.title or '(untitled)' }}
+            {% if f.audience %}
+            <div class="mt-1">
+              {% for a in f.audience.split(', ') %}{% if a.strip() %}
+              <span class="badge" style="font-size:.63rem;background:#e8f0fe;color:#1a56a0;border:1px solid #b3c8ed;">{{ a.strip() }}</span>
+              {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td><span class="tlp-badge tlp-{{ f.tlp | slug }}">TLP:{{ f.tlp | upper }}</span></td>
+          <td>
+            {% if f.review_state == 'approved' %}<span class="badge bg-success">approved</span>
+            {% elif f.review_state == 'rejected' %}<span class="badge bg-danger">rejected</span>
+            {% elif f.review_state == 'pending-review' %}<span class="badge bg-info text-dark">pending review</span>
+            {% else %}<span class="badge bg-secondary">{{ f.review_state }}</span>{% endif %}
+          </td>
+          <td>{{ f.author or '-' }}</td>
+          <td class="text-end" style="white-space:nowrap;">
+            <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
+              <div class="btn-group btn-group-sm" role="group" aria-label="FIA quick actions">
+                <button type="button" class="btn btn-outline-secondary preview-toggle-btn"
+                        data-target="fia-preview-{{ f.uuid }}" title="Preview">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary feedback-btn"
+                        data-uuid="{{ f.uuid }}" data-fia-id="{{ f.fia_id }}"
+                        data-bs-toggle="modal" data-bs-target="#feedback-modal" title="Give feedback">
+                  <i class="fas fa-comment-dots"></i>
+                </button>
+                <a href="{{ url_for('flash_intel.pdf', id=f.uuid) }}" class="btn btn-outline-secondary" title="Download PDF">
+                  <i class="fas fa-file-pdf"></i>
+                </a>
+              </div>
+              <div class="btn-group btn-group-sm" role="group" aria-label="FIA navigation actions">
+                <a href="{{ url_for('flash_intel.detail', id=f.uuid) }}" class="btn btn-outline-primary">Open</a>
+                <a href="{{ url_for('flash_intel.wizard_edit', id=f.uuid) }}" class="btn btn-outline-secondary">Edit</a>
+              </div>
+            {% if f.review_state == 'approved' %}
+            <form method="post" action="{{ url_for('flash_intel.resend', id=f.uuid) }}" class="d-inline m-0">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-primary" title="Resend to stakeholders">
+                <i class="fas fa-paper-plane me-1"></i>Resend
+              </button>
+            </form>
+            {% endif %}
+            {% if f.review_state != 'approved' %}
+            <form method="post" action="{{ url_for('flash_intel.delete', id=f.uuid) }}"
+                  class="d-inline m-0"
+                  onsubmit="return confirm('Delete {{ f.fia_id }}?\n\nThis also removes the MISP event and cannot be undone.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </form>
+            {% endif %}
+            </div>
+          </td>
+        </tr>
+
+        {# ── Expandable preview row ── #}
+        <tr id="fia-preview-{{ f.uuid }}" style="display:none;">
+          <td colspan="6" class="p-0">
+            <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:1rem 1.25rem;">
+
+              {# Header strip #}
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <span class="req-id-badge">{{ f.fia_id }}</span>
+                <span class="tlp-badge tlp-{{ f.tlp | slug }}">TLP:{{ f.tlp | upper }}</span>
+                {% if f.audience %}<span class="text-muted small">{{ f.audience }}</span>{% endif %}
+                {% if f.author %}<span class="text-muted small">by {{ f.author }}</span>{% endif %}
+              </div>
+
+              <div class="row g-3">
+                <div class="col-lg-8">
+
+                  {# Summary #}
+                  {% if f.summary %}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Summary</div>
+                    <p class="mb-1" style="font-size:.88rem;">{{ f.summary }}</p>
+                    {% if f.action_required %}
+                    <p class="mb-0" style="font-size:.85rem;"><strong>Action required:</strong> {{ f.action_required }}</p>
+                    {% endif %}
+                  </div>
+                  {% endif %}
+
+                  {# What happened #}
+                  {% if f.what_happened %}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">What happened</div>
+                    {{ bullets(f.what_happened) }}
+                    <p class="mt-2 mb-0" style="font-size:.78rem;color:#64748b;">
+                      Source: {{ f.source_description or 'unspecified' }}
+                      {% if f.source_reliability %} · Reliability: <strong>{{ f.source_reliability }}</strong>{% endif %}
+                      {% if f.information_credibility %} · Credibility: <strong>{{ f.information_credibility }}</strong>{% endif %}
+                    </p>
+                  </div>
+                  {% endif %}
+
+                  {# Why it matters #}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Why it matters</div>
+                    <ul class="mb-0 ps-3">
+                      {% if f.likely_impact %}<li style="font-size:.82rem;"><strong>Likely impact:</strong> {{ f.likely_impact }}</li>{% endif %}
+                      {% if f.affected_assets %}<li style="font-size:.82rem;"><strong>Affected assets:</strong> {{ f.affected_assets }}</li>{% endif %}
+                      {% if f.actor_context %}<li style="font-size:.82rem;"><strong>Actor context:</strong> {{ f.actor_context }}</li>{% endif %}
+                      {% if f.geographic_scope %}<li style="font-size:.82rem;"><strong>Geography:</strong> {{ f.geographic_scope | join(', ') }}</li>{% endif %}
+                      {% if f.sectors %}<li style="font-size:.82rem;"><strong>Sectors:</strong> {{ f.sectors | join(', ') }}</li>{% endif %}
+                      {% if f.threat_actors %}<li style="font-size:.82rem;"><strong>Threat actors:</strong> {{ f.threat_actors | join(', ') }}</li>{% endif %}
+                      {% if f.threat_types %}<li style="font-size:.82rem;"><strong>Threat types:</strong> {{ f.threat_types | join(', ') }}</li>{% endif %}
+                      {% if f.technology %}<li style="font-size:.82rem;"><strong>Technology:</strong> {{ f.technology | join(', ') }}</li>{% endif %}
+                      {% if f.vendor %}<li style="font-size:.82rem;"><strong>Vendor:</strong> {{ f.vendor | join(', ') }}</li>{% endif %}
+                    </ul>
+                  </div>
+
+                  {# Recommended actions #}
+                  {% if f.actions_immediate or f.actions_near_term %}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Recommended actions</div>
+                    {% if f.actions_immediate %}
+                    <div class="small fw-semibold mb-1">Immediate (0–24 h)</div>
+                    {{ bullets(f.actions_immediate) }}
+                    {% endif %}
+                    {% if f.actions_near_term %}
+                    <div class="small fw-semibold mt-2 mb-1">Near-term (1–7 d)</div>
+                    {{ bullets(f.actions_near_term) }}
+                    {% endif %}
+                  </div>
+                  {% endif %}
+
+                  {# Detection guidance #}
+                  {% if f.mitre_techniques or f.hunting_hypotheses %}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Detection guidance</div>
+                    {% if f.mitre_techniques %}
+                    <div class="small fw-semibold mb-1">MITRE ATT&CK</div>
+                    {{ bullets(f.mitre_techniques) }}
+                    {% endif %}
+                    {% if f.hunting_hypotheses %}
+                    <div class="small fw-semibold mt-2 mb-1">Hunting hypotheses</div>
+                    {{ bullets(f.hunting_hypotheses) }}
+                    {% endif %}
+                  </div>
+                  {% endif %}
+
+                </div>
+
+                {# Right column: attribution + metadata #}
+                <div class="col-lg-4">
+                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;background:#fff;">
+                    <div class="fw-semibold small mb-2">Attribution &amp; scope</div>
+                    {% if f.threat_actors %}
+                    <p class="mb-1"><strong>Threat actors:</strong> {{ f.threat_actors | join(', ') }}</p>
+                    {% endif %}
+                    {% if f.threat_types %}
+                    <p class="mb-1"><strong>Threat types:</strong> {{ f.threat_types | join(', ') }}</p>
+                    {% endif %}
+                    {% if f.sectors %}
+                    <p class="mb-1"><strong>Sectors:</strong> {{ f.sectors | join(', ') }}</p>
+                    {% endif %}
+                    {% if f.geographic_scope %}
+                    <p class="mb-1"><strong>Geography:</strong> {{ f.geographic_scope | join(', ') }}</p>
+                    {% endif %}
+                    {% if not f.threat_actors and not f.threat_types and not f.sectors and not f.geographic_scope %}
+                    <span class="text-muted">No attribution data</span>
+                    {% endif %}
+                  </div>
+                  {% if f.external_references %}
+                  <div class="border rounded p-2" style="font-size:.8rem;background:#fff;">
+                    <div class="fw-semibold small mb-1">References</div>
+                    <ul class="mb-0 ps-3">
+                      {% for r in f.external_references %}
+                      <li><a href="{{ r }}" target="_blank" rel="noopener noreferrer" style="word-break:break-all;font-size:.78rem;">{{ r }}</a></li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-4 text-muted">No flash intel alerts yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Inline feedback modal ── #}
+<div class="modal fade" id="feedback-modal" tabindex="-1" aria-labelledby="feedback-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="feedback-modal-label">
+          <i class="fas fa-comment-dots me-2"></i>Feedback - <span id="feedback-fia-id"></span>
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="feedback-form" method="post" action="">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small">Your name <span class="text-muted">(optional)</span></label>
+            <input type="text" name="author" class="form-control form-control-sm" placeholder="Name">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Rating</label>
+            <select name="rating" class="form-select form-select-sm">
+              <option value="">- select rating -</option>
+              <option value="Very useful">Very useful</option>
+              <option value="Useful">Useful</option>
+              <option value="Somewhat useful">Somewhat useful</option>
+              <option value="Not useful">Not useful</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Comments or suggestions</label>
+            <textarea name="comment" class="form-control form-control-sm" rows="4"
+                      placeholder="Any matches found, false positive rates, affected assets…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="fas fa-paper-plane me-1"></i>Submit
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  // Preview row toggle
+  document.querySelectorAll('.preview-toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var targetId = btn.getAttribute('data-target');
+      var row = document.getElementById(targetId);
+      if (!row) return;
+      var open = row.style.display !== 'none';
+      row.style.display = open ? 'none' : '';
+      var icon = btn.querySelector('i');
+      if (icon) {
+        icon.className = open ? 'fas fa-eye' : 'fas fa-eye-slash';
+      }
+    });
+  });
+
+  // Feedback modal wiring
+  var feedbackModal = document.getElementById('feedback-modal');
+  if (feedbackModal) {
+    feedbackModal.addEventListener('show.bs.modal', function(e) {
+      var trigger = e.relatedTarget;
+      if (!trigger) return;
+      var uuid = trigger.getAttribute('data-uuid');
+      var fiaId = trigger.getAttribute('data-fia-id');
+      document.getElementById('feedback-fia-id').textContent = fiaId || '';
+      document.getElementById('feedback-form').action = '/products/flash-intel/' + uuid + '/feedback';
+    });
+    feedbackModal.addEventListener('hidden.bs.modal', function() {
+      feedbackModal.querySelector('form').reset();
+    });
+  }
+})();
+</script>
+{% endblock %}

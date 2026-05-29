@@ -1,0 +1,943 @@
+{% extends "base.html" %}
+
+{% block title %}Collection sources | zsazsa CTI{% endblock %}
+{% block page_title %}Collection sources{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('collection_sources.new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> Add manual source
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── MISP scraper ─────────────────────────────────────────────────────── #}
+<form method="post" action="{{ url_for('config_page.save_scraper_config') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card content-card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span>
+        <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:15px;width:auto;vertical-align:middle;margin-right:6px;opacity:.8;">MISP scraper (collection pipeline)
+      </span>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Always active</span>
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i>Save
+        </button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="form-text mb-3">
+        The misp-scraper instance the analyser pulls from. Always available as a source on the
+        <a href="{{ url_for('data_collection.index') }}">Data collection</a> page.
+        The scraper marker tag <code>{{ cfg.SCRAPER_MARKER_TAG }}</code> is configurable in the
+        <a href="{{ url_for('config_page.index') }}">Configuration</a> page under Context elements.
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">URL</label>
+          <input type="url" name="MISP_URL" class="form-control font-monospace" value="{{ cfg.MISP_URL }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">API key</label>
+          <div class="input-group">
+            <input type="password" name="MISP_KEY" class="form-control font-monospace api-key-input" value="{{ cfg.MISP_KEY }}">
+            <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Verify TLS</label>
+          <select name="MISP_VERIFYCERT" class="form-select">
+            <option value="true" {{ 'selected' if cfg.MISP_VERIFYCERT }}>Yes</option>
+            <option value="false" {{ 'selected' if not cfg.MISP_VERIFYCERT }}>No</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Max events</label>
+          <input type="number" name="MISP_SCRAPER_LIMIT" class="form-control" value="{{ cfg.MISP_SCRAPER_LIMIT }}" min="1" max="100000">
+        </div>
+        <div class="col-12 mt-1">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="scraper-test-btn">
+            <i class="fas fa-plug me-1"></i>Test connection
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="scraper-estimate-btn"
+                  title="Estimate how many events the scraper MISP currently holds">
+            <i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate
+          </button>
+          <span class="small ms-2" id="scraper-test-result"></span>
+          <span class="small ms-2" id="scraper-estimate-result"></span>
+        </div>
+        <div class="col-12 mt-2">
+          <button type="button" class="btn btn-xs btn-link text-muted p-0" id="scraper-query-toggle" style="font-size:.78rem;">
+            <i class="fas fa-code me-1"></i>Show query
+          </button>
+          <pre id="scraper-query-pre" class="font-monospace bg-light border rounded p-2 mt-1 mb-0" style="display:none;font-size:.72rem;white-space:pre-wrap;word-break:break-all;"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# ── Other MISP servers ───────────────────────────────────────────────── #}
+<div class="card content-card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span>
+        <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:15px;width:auto;vertical-align:middle;margin-right:6px;opacity:.8;">Other MISP servers
+      </span>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="add-misp-server">
+        <i class="fas fa-plus me-1"></i>Add MISP server
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="form-text mb-3">
+        Each server appears as a filter option on the
+        <a href="{{ url_for('data_collection.index') }}">Data collection</a> page. Only
+        <strong>published</strong> events are fetched, filtered by the configured tags and time window.
+      </div>
+      <div id="misp-servers-list">
+        {% for s in cfg.MISP_SERVERS %}
+        <div class="misp-server-row border rounded mb-3" data-original-id="{{ s.id }}">
+          <div class="server-row-header d-flex align-items-center px-3 py-2 gap-2"
+               style="cursor:pointer;user-select:none;">
+            <i class="fas fa-server text-muted" style="font-size:.85rem;"></i>
+            <span class="server-label-display fw-semibold flex-grow-1">{{ s.label or 'Unnamed server' }}</span>
+            <span class="server-url-display text-muted small"
+                  style="font-size:.78rem;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ s.url or '' }}</span>
+            {% if s.get('enabled', True) %}
+            <span class="server-enabled-badge badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            {% else %}
+            <span class="server-enabled-badge badge" style="background:#f5f5f5;color:#888;font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
+            {% endif %}
+            <button type="button" class="btn btn-xs btn-outline-secondary toggle-server-enabled ms-1"
+                    data-label="{{ s.label }}"
+                    data-enabled="{{ 'true' if s.get('enabled', True) else 'false' }}"
+                    title="Enable or disable this server">
+              <i class="fas fa-power-off"></i>
+            </button>
+            <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
+            <button type="button" class="btn btn-sm btn-outline-danger delete-misp-server ms-1" title="Delete">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+          <div class="collapse" id="server-body-{{ loop.index }}">
+            <div class="border-top px-3 pt-3 pb-2">
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Label</label>
+                  <input type="text" name="server_label" class="form-control form-control-sm" value="{{ s.label }}" placeholder="Partner X">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">ID <span class="text-muted">(URL slug, optional)</span></label>
+                  <input type="text" name="server_id" class="form-control form-control-sm font-monospace" value="{{ s.id }}" placeholder="auto from label">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Verify TLS</label>
+                  <select name="server_verify_tls" class="form-select form-select-sm">
+                    <option value="true" {{ 'selected' if s.verify_tls }}>Yes</option>
+                    <option value="false" {{ 'selected' if not s.verify_tls }}>No</option>
+                  </select>
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label small mb-1">URL</label>
+                  <input type="url" name="server_url" class="form-control form-control-sm font-monospace" value="{{ s.url }}">
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label small mb-1">API key</label>
+                  <div class="input-group input-group-sm">
+                    <input type="password" name="server_api_key" class="form-control form-control-sm font-monospace api-key-input" value="{{ s.api_key }}">
+                    <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+                  </div>
+                </div>
+                <div class="col-12 mt-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary test-misp-connection">
+                    <i class="fas fa-plug me-1"></i>Test connection
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary pull-estimate-btn ms-1" title="Estimate how many events would be pulled with the current filter settings">
+                    <i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate
+                  </button>
+                  <span class="test-connection-result small ms-2"></span>
+                  <span class="pull-estimate-result small ms-2"></span>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Tags OR <span class="text-muted">(any of these)</span></label>
+                  <input type="text" name="server_tags" class="form-control form-control-sm font-monospace" value="{{ s.tags }}" placeholder="tlp:amber ransomware">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Tags AND <span class="text-muted">(all of these)</span></label>
+                  <input type="text" name="server_tags_and" class="form-control form-control-sm font-monospace" value="{{ s.tags_and }}" placeholder="tlp:green apt">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Tags NOT <span class="text-muted">(none of these)</span></label>
+                  <input type="text" name="server_tags_not" class="form-control form-control-sm font-monospace" value="{{ s.tags_not }}" placeholder="tlp:red">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Organisation filter</label>
+                  <select name="server_org_filter_type" class="form-select form-select-sm server-org-filter-type">
+                    <option value="" {{ 'selected' if not s.org_filter_type }}>No filter</option>
+                    <option value="include" {{ 'selected' if s.org_filter_type == 'include' }}>Include only</option>
+                    <option value="exclude" {{ 'selected' if s.org_filter_type == 'exclude' }}>Exclude</option>
+                  </select>
+                </div>
+                <div class="col-md-8 server-org-filter-wrap" style="{{ '' if s.org_filter_type else 'opacity:.4;pointer-events:none;' }}">
+                  <label class="form-label small mb-1">Organisation UUIDs <span class="text-muted">(space or comma separated)</span></label>
+                  <input type="text" name="server_org_filter" class="form-control form-control-sm font-monospace" value="{{ s.org_filter }}" placeholder="55f6ea5e-2c60-40e5-964f-47a8950d210f">
+                  <div class="org-uuid-labels mt-1" style="font-size:.75rem;line-height:1.6;"></div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Events from last (days)
+                    <span class="text-muted" data-bs-toggle="tooltip" title="Filters on the event date field (date_from), not the publish timestamp."><i class="fas fa-circle-info ms-1"></i></span>
+                  </label>
+                  <input type="number" name="server_since_days" class="form-control form-control-sm" value="{{ s.since_days or 7 }}" min="1" max="3650">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Max events</label>
+                  <input type="number" name="server_limit" class="form-control form-control-sm" value="{{ s.limit or 500 }}" min="1" max="100000">
+                </div>
+                <input type="hidden" class="server-enabled-value" value="{{ 'true' if s.get('enabled', True) else 'false' }}">
+                <div class="col-12">
+                  <button type="button" class="btn btn-xs btn-link text-muted p-0 query-preview-toggle" style="font-size:.78rem;">
+                    <i class="fas fa-code me-1"></i>Show query
+                  </button>
+                  <pre class="query-preview font-monospace bg-light border rounded p-2 mt-1 mb-0" style="display:none;font-size:.72rem;white-space:pre-wrap;word-break:break-all;"></pre>
+                </div>
+                <div class="col-12 mt-2 d-flex align-items-center gap-2">
+                  <button type="button" class="btn btn-sm btn-primary save-server-btn">
+                    <i class="fas fa-floppy-disk me-1"></i>Save server
+                  </button>
+                  <span class="save-server-result small"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="text-muted small" id="no-misp-servers"{% if cfg.MISP_SERVERS %} style="display:none;"{% endif %}>
+        No additional MISP servers configured.
+      </div>
+
+      <template id="misp-server-template">
+        <div class="misp-server-row border rounded mb-3" data-original-id="">
+          <div class="server-row-header d-flex align-items-center px-3 py-2 gap-2"
+               style="cursor:pointer;user-select:none;">
+            <i class="fas fa-server text-muted" style="font-size:.85rem;"></i>
+            <span class="server-label-display fw-semibold flex-grow-1 text-muted fst-italic">New server</span>
+            <span class="server-url-display text-muted small"
+                  style="font-size:.78rem;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            <span class="server-enabled-badge badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            <button type="button" class="btn btn-xs btn-outline-secondary toggle-server-enabled ms-1"
+                    data-label="" data-enabled="true" title="Enable or disable this server">
+              <i class="fas fa-power-off"></i>
+            </button>
+            <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
+            <button type="button" class="btn btn-sm btn-outline-danger delete-misp-server ms-1" title="Delete">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+          <div class="collapse show" id="server-body-tpl">
+            <div class="border-top px-3 pt-3 pb-2">
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Label</label>
+                  <input type="text" name="server_label" class="form-control form-control-sm" placeholder="Partner X">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">ID <span class="text-muted">(URL slug, optional)</span></label>
+                  <input type="text" name="server_id" class="form-control form-control-sm font-monospace" placeholder="auto from label">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Verify TLS</label>
+                  <select name="server_verify_tls" class="form-select form-select-sm">
+                    <option value="true" selected>Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label small mb-1">URL</label>
+                  <input type="url" name="server_url" class="form-control form-control-sm font-monospace">
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label small mb-1">API key</label>
+                  <div class="input-group input-group-sm">
+                    <input type="password" name="server_api_key" class="form-control form-control-sm font-monospace api-key-input">
+                    <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+                  </div>
+                </div>
+                <div class="col-12 mt-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary test-misp-connection">
+                    <i class="fas fa-plug me-1"></i>Test connection
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary pull-estimate-btn ms-1" title="Estimate how many events would be pulled with the current filter settings">
+                    <i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate
+                  </button>
+                  <span class="test-connection-result small ms-2"></span>
+                  <span class="pull-estimate-result small ms-2"></span>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Tags OR <span class="text-muted">(any of these)</span></label>
+                  <input type="text" name="server_tags" class="form-control form-control-sm font-monospace" placeholder="tlp:amber ransomware">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Tags AND <span class="text-muted">(all of these)</span></label>
+                  <input type="text" name="server_tags_and" class="form-control form-control-sm font-monospace" placeholder="tlp:green apt">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Tags NOT <span class="text-muted">(none of these)</span></label>
+                  <input type="text" name="server_tags_not" class="form-control form-control-sm font-monospace" placeholder="tlp:red">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Organisation filter</label>
+                  <select name="server_org_filter_type" class="form-select form-select-sm server-org-filter-type">
+                    <option value="">No filter</option>
+                    <option value="include">Include only</option>
+                    <option value="exclude">Exclude</option>
+                  </select>
+                </div>
+                <div class="col-md-8 server-org-filter-wrap" style="opacity:.4;pointer-events:none;">
+                  <label class="form-label small mb-1">Organisation UUIDs <span class="text-muted">(space or comma separated)</span></label>
+                  <input type="text" name="server_org_filter" class="form-control form-control-sm font-monospace" placeholder="55f6ea5e-2c60-40e5-964f-47a8950d210f">
+                  <div class="org-uuid-labels mt-1" style="font-size:.75rem;line-height:1.6;"></div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Events from last (days)
+                    <span class="text-muted" data-bs-toggle="tooltip" title="Filters on the event date field (date_from), not the publish timestamp."><i class="fas fa-circle-info ms-1"></i></span>
+                  </label>
+                  <input type="number" name="server_since_days" class="form-control form-control-sm" value="7" min="1" max="3650">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small mb-1">Max events</label>
+                  <input type="number" name="server_limit" class="form-control form-control-sm" value="500" min="1" max="100000">
+                </div>
+                <input type="hidden" class="server-enabled-value" value="true">
+                <div class="col-12">
+                  <button type="button" class="btn btn-xs btn-link text-muted p-0 query-preview-toggle" style="font-size:.78rem;">
+                    <i class="fas fa-code me-1"></i>Show query
+                  </button>
+                  <pre class="query-preview font-monospace bg-light border rounded p-2 mt-1 mb-0" style="display:none;font-size:.72rem;white-space:pre-wrap;word-break:break-all;"></pre>
+                </div>
+                <div class="col-12 mt-2 d-flex align-items-center gap-2">
+                  <button type="button" class="btn btn-sm btn-primary save-server-btn">
+                    <i class="fas fa-floppy-disk me-1"></i>Save server
+                  </button>
+                  <span class="save-server-result small"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+{# ── Manual sources ───────────────────────────────────────────────────── #}
+<div class="card content-card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span><i class="fas fa-hand me-2"></i>Manual sources</span>
+    <a href="{{ url_for('collection_sources.new') }}" class="btn btn-xs btn-outline-primary">
+      <i class="fas fa-plus"></i>
+    </a>
+  </div>
+  {% if sources %}
+  <div class="card-body p-0">
+    <table class="table zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Owner</th>
+          <th>Location</th>
+          <th>Reliability</th>
+          <th>Status</th>
+          <th style="width:1%;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for src in sources %}
+        <tr>
+          <td>
+            <span class="fw-semibold">{{ src.name }}</span>
+            {% if src.description %}
+            <div class="text-muted small">{{ src.description | truncate(80) }}</div>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ src.owner or '-' }}</td>
+          <td class="small" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            {% if src.location %}<span title="{{ src.location }}">{{ src.location | truncate(35) }}</span>{% else %}-{% endif %}
+          </td>
+          <td>
+            {% if src.source_reliability %}
+            <span class="badge text-bg-light font-monospace">{{ src.source_reliability }}</span>
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if src.enabled %}
+            <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            {% else %}
+            <span class="badge" style="background:#f5f5f5;color:#888;font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
+            {% endif %}
+          </td>
+          <td class="text-end" style="white-space:nowrap;">
+            {% if src.misp_url %}
+            <a href="{{ src.misp_url }}" target="_blank" rel="noopener"
+               class="btn btn-xs btn-outline-secondary me-1" title="Open MISP event">
+              <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:11px;width:auto;vertical-align:middle;opacity:.7;">
+            </a>
+            {% endif %}
+            <a href="{{ url_for('collection_sources.edit', id=src.uuid) }}"
+               class="btn btn-xs btn-outline-secondary me-1" title="Edit">
+              <i class="fas fa-pen"></i>
+            </a>
+            <form method="post" action="{{ url_for('collection_sources.toggle', id=src.uuid) }}"
+                  class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-xs btn-outline-secondary me-1"
+                      title="{{ 'Disable' if src.enabled else 'Enable' }}">
+                <i class="fas fa-power-off"></i>
+              </button>
+            </form>
+            <form method="post" action="{{ url_for('collection_sources.delete', id=src.uuid) }}"
+                  class="d-inline"
+                  onsubmit="return confirm('Delete source ' + {{ src.name | tojson }} + '?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-xs btn-outline-danger" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">
+    <div class="empty-state py-3">
+      <p class="text-muted mb-3 small">No manual collection sources registered yet.</p>
+      <a href="{{ url_for('collection_sources.new') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-plus me-1"></i> Add your first source
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const list = document.getElementById('misp-servers-list');
+  const tpl = document.getElementById('misp-server-template');
+  const addBtn = document.getElementById('add-misp-server');
+  const empty = document.getElementById('no-misp-servers');
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  if (!list || !tpl || !addBtn) return;
+
+  let rowCounter = 100;
+
+  function bindRow(row) {
+    const collapseEl = row.querySelector('.collapse');
+    if (collapseEl && (!collapseEl.id || collapseEl.id === 'server-body-tpl')) {
+      collapseEl.id = 'server-body-' + (++rowCounter);
+    }
+
+    const deleteBtn = row.querySelector('.delete-misp-server');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const originalId = row.dataset.originalId || '';
+        if (!originalId) {
+          row.remove();
+          if (empty && !list.querySelector('.misp-server-row')) empty.style.display = '';
+          return;
+        }
+        if (!confirm('Delete this server from configuration?')) return;
+        deleteBtn.disabled = true;
+        try {
+          const resp = await fetch('/config/sources/delete-server', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify({server_id: originalId}),
+          });
+          const data = await resp.json();
+          if (data.ok) {
+            row.remove();
+            if (empty && !list.querySelector('.misp-server-row')) empty.style.display = '';
+          } else {
+            alert('Delete failed: ' + (data.error || 'unknown error'));
+            deleteBtn.disabled = false;
+          }
+        } catch (err) {
+          alert('Request failed');
+          deleteBtn.disabled = false;
+        }
+      });
+    }
+
+    const saveBtn = row.querySelector('.save-server-btn');
+    const saveResult = row.querySelector('.save-server-result');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const originalId = row.dataset.originalId || '';
+        const payload = {
+          original_id: originalId,
+          id: (row.querySelector('[name="server_id"]')?.value || '').trim(),
+          label: (row.querySelector('[name="server_label"]')?.value || '').trim(),
+          url: (row.querySelector('[name="server_url"]')?.value || '').trim(),
+          api_key: (row.querySelector('[name="server_api_key"]')?.value || '').trim(),
+          verify_tls: row.querySelector('[name="server_verify_tls"]')?.value === 'true',
+          enabled: row.querySelector('.server-enabled-value')?.value === 'true',
+          tags: (row.querySelector('[name="server_tags"]')?.value || '').trim(),
+          tags_and: (row.querySelector('[name="server_tags_and"]')?.value || '').trim(),
+          tags_not: (row.querySelector('[name="server_tags_not"]')?.value || '').trim(),
+          org_filter_type: (row.querySelector('[name="server_org_filter_type"]')?.value || '').trim(),
+          org_filter: (row.querySelector('[name="server_org_filter"]')?.value || '').trim(),
+          since_days: parseInt(row.querySelector('[name="server_since_days"]')?.value || '7', 10),
+          limit: parseInt(row.querySelector('[name="server_limit"]')?.value || '500', 10),
+        };
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+        try {
+          const resp = await fetch('/config/sources/save-server', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+            body: JSON.stringify(payload),
+          });
+          const data = await resp.json();
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-floppy-disk me-1"></i>Save server';
+          if (data.ok) {
+            row.dataset.originalId = data.new_id;
+            if (saveResult) { saveResult.textContent = 'Saved'; saveResult.className = 'save-server-result small text-success'; setTimeout(() => { saveResult.textContent = ''; }, 3000); }
+          } else {
+            if (saveResult) { saveResult.textContent = data.error || 'Save failed'; saveResult.className = 'save-server-result small text-danger'; }
+          }
+        } catch (err) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-floppy-disk me-1"></i>Save server';
+          if (saveResult) { saveResult.textContent = 'Request failed'; saveResult.className = 'save-server-result small text-danger'; }
+        }
+      });
+    }
+
+    const toggleBtn = row.querySelector('.toggle-server-enabled');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const hiddenField = row.querySelector('.server-enabled-value');
+        const badge = row.querySelector('.server-enabled-badge');
+        const currentlyEnabled = hiddenField.value === 'true';
+        if (currentlyEnabled) {
+          const serverLabel = toggleBtn.dataset.label || '';
+          try {
+            const resp = await fetch(`/config/server_usage?label=${encodeURIComponent(serverLabel)}`);
+            const data = await resp.json();
+            if (data.in_use) {
+              const msg = `"${serverLabel}" is referenced in ${data.pir_count} PIR(s) and ${data.gir_count} GIR(s). Disabling it will not remove those references. Continue?`;
+              if (!confirm(msg)) return;
+            }
+          } catch (err) { /* ignore, proceed */ }
+          hiddenField.value = 'false';
+          badge.innerHTML = '<i class="fas fa-circle-pause me-1"></i>Disabled';
+          badge.style.background = '#f5f5f5'; badge.style.color = '#888';
+        } else {
+          hiddenField.value = 'true';
+          badge.innerHTML = '<i class="fas fa-circle-check me-1"></i>Enabled';
+          badge.style.background = '#eaf6f1'; badge.style.color = '#1a8a5a';
+        }
+        const saveBtn = row.querySelector('.save-server-btn');
+        if (saveBtn) saveBtn.click();
+      });
+    }
+
+    const header = row.querySelector('.server-row-header');
+    const chevron = row.querySelector('.collapse-chevron');
+    if (header && collapseEl) {
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.delete-misp-server') || e.target.closest('.toggle-server-enabled')) return;
+        bootstrap.Collapse.getOrCreateInstance(collapseEl, {toggle: false}).toggle();
+      });
+      collapseEl.addEventListener('show.bs.collapse', () => {
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+      });
+      collapseEl.addEventListener('hide.bs.collapse', () => {
+        if (chevron) chevron.style.transform = 'rotate(-90deg)';
+      });
+      if (!collapseEl.classList.contains('show')) {
+        if (chevron) chevron.style.transform = 'rotate(-90deg)';
+      }
+    }
+
+    const labelInput = row.querySelector('input[name="server_label"]');
+    const labelDisplay = row.querySelector('.server-label-display');
+    if (labelInput && labelDisplay) {
+      labelInput.addEventListener('input', () => {
+        const v = labelInput.value.trim();
+        labelDisplay.textContent = v || 'New server';
+        labelDisplay.classList.toggle('text-muted', !v);
+        labelDisplay.classList.toggle('fst-italic', !v);
+        const tb = row.querySelector('.toggle-server-enabled');
+        if (tb) tb.dataset.label = v;
+      });
+    }
+
+    const urlInput = row.querySelector('input[name="server_url"]');
+    const urlDisplay = row.querySelector('.server-url-display');
+    if (urlInput && urlDisplay) {
+      urlInput.addEventListener('input', () => {
+        urlDisplay.textContent = urlInput.value || '';
+      });
+    }
+
+    row.querySelectorAll('.api-key-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const input = btn.closest('.input-group').querySelector('.api-key-input');
+        const icon = btn.querySelector('i');
+        if (input.type === 'password') {
+          input.type = 'text';
+          icon.classList.replace('fa-eye', 'fa-eye-slash');
+        } else {
+          input.type = 'password';
+          icon.classList.replace('fa-eye-slash', 'fa-eye');
+        }
+      });
+    });
+
+    const orgTypeSelect = row.querySelector('.server-org-filter-type');
+    const orgFilterWrap = row.querySelector('.server-org-filter-wrap');
+    if (orgTypeSelect && orgFilterWrap) {
+      function updateOrgWrap() {
+        const active = !!orgTypeSelect.value;
+        orgFilterWrap.style.opacity = active ? '' : '.4';
+        orgFilterWrap.style.pointerEvents = active ? '' : 'none';
+      }
+      orgTypeSelect.addEventListener('change', updateOrgWrap);
+      updateOrgWrap();
+    }
+
+    const orgInput = row.querySelector('input[name="server_org_filter"]');
+    const orgLabels = row.querySelector('.org-uuid-labels');
+    if (orgInput && orgLabels) {
+      async function resolveOrgUuids() {
+        const raw = orgInput.value.trim();
+        if (!raw) { orgLabels.innerHTML = ''; return; }
+        const uuids = raw.split(/[\s,]+/).filter(Boolean);
+        const mispUrl = (row.querySelector('input[name="server_url"]')?.value || '').trim();
+        const mispKey = (row.querySelector('input[name="server_api_key"]')?.value || '').trim();
+        orgLabels.innerHTML = uuids.map(u => `<span class="text-muted font-monospace">${u}:</span> <span class="fst-italic text-secondary">looking up…</span>`).join('<br>');
+        for (const uuid of uuids) {
+          try {
+            const resp = await fetch('/api/lookup-org', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+              body: JSON.stringify({uuid, misp_url: mispUrl, misp_key: mispKey}),
+            });
+            const data = await resp.json();
+            const label = data.name
+              ? `<span class="text-muted font-monospace">${uuid}:</span> <span class="text-success fw-semibold">${data.name}</span>`
+              : `<span class="text-muted font-monospace">${uuid}:</span> <span class="text-danger fst-italic">not found</span>`;
+            orgLabels.innerHTML = orgLabels.innerHTML.replace(
+              new RegExp(`<span class="text-muted font-monospace">${uuid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:<\\/span> <span[^>]*>looking up…<\\/span>`),
+              label
+            );
+          } catch (_) {}
+        }
+      }
+      orgInput.addEventListener('blur', resolveOrgUuids);
+      orgInput.addEventListener('change', resolveOrgUuids);
+      if (orgInput.value.trim()) resolveOrgUuids();
+    }
+
+    const testBtn = row.querySelector('.test-misp-connection');
+    if (testBtn) {
+      testBtn.addEventListener('click', () => {
+        const urlVal = (row.querySelector('input[name="server_url"]')?.value || '').trim();
+        const keyVal = (row.querySelector('input[name="server_api_key"]')?.value || '').trim();
+        const verifyVal = row.querySelector('select[name="server_verify_tls"]')?.value === 'true';
+        const resultEl = row.querySelector('.test-connection-result');
+        if (!urlVal || !keyVal) {
+          if (resultEl) { resultEl.textContent = 'Enter URL and API key first.'; resultEl.className = 'test-connection-result small ms-2 text-warning'; }
+          return;
+        }
+        testBtn.disabled = true;
+        testBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing…';
+        fetch('/config/test_misp_connection', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({url: urlVal, api_key: keyVal, verify_tls: verifyVal}),
+        })
+        .then(r => r.json())
+        .then(data => {
+          testBtn.disabled = false;
+          testBtn.innerHTML = '<i class="fas fa-plug me-1"></i>Test connection';
+          if (resultEl) {
+            if (data.ok) {
+              resultEl.textContent = 'Connected' + (data.version ? ', MISP ' + data.version : '');
+              resultEl.className = 'test-connection-result small ms-2 text-success';
+            } else {
+              resultEl.textContent = data.error || 'Connection failed';
+              resultEl.className = 'test-connection-result small ms-2 text-danger';
+            }
+          }
+        })
+        .catch(() => {
+          testBtn.disabled = false;
+          testBtn.innerHTML = '<i class="fas fa-plug me-1"></i>Test connection';
+          if (resultEl) { resultEl.textContent = 'Request failed'; resultEl.className = 'test-connection-result small ms-2 text-danger'; }
+        });
+      });
+    }
+
+    function splitTags(raw) {
+      return raw.replace(/,/g, ' ').split(/\s+/).filter(Boolean);
+    }
+    function buildQueryText() {
+      const tagsOr  = splitTags(row.querySelector('[name="server_tags"]')?.value || '');
+      const tagsAnd = splitTags(row.querySelector('[name="server_tags_and"]')?.value || '');
+      const tagsNot = splitTags(row.querySelector('[name="server_tags_not"]')?.value || '');
+      const sinceDays = parseInt(row.querySelector('[name="server_since_days"]')?.value || '7', 10);
+      const limitVal  = parseInt(row.querySelector('[name="server_limit"]')?.value || '500', 10);
+      const orgType   = (row.querySelector('[name="server_org_filter_type"]')?.value || '').trim();
+      const orgUuids  = splitTags(row.querySelector('[name="server_org_filter"]')?.value || '');
+
+      const cutoff = new Date(Date.now() - sinceDays * 86400000).toISOString().split('T')[0];
+
+      const lines = ['misp.search(', '    published=True,', `    limit=${limitVal},`];
+      if (sinceDays) lines.push(`    date_from="${cutoff}",  # last ${sinceDays} day${sinceDays !== 1 ? 's' : ''}`);
+
+      if (tagsAnd.length || tagsNot.length) {
+        lines.push('    tags=build_complex_query(');
+        if (tagsOr.length)  lines.push(`        or_parameters=${JSON.stringify(tagsOr)},`);
+        if (tagsAnd.length) lines.push(`        and_parameters=${JSON.stringify(tagsAnd)},`);
+        if (tagsNot.length) lines.push(`        not_parameters=${JSON.stringify(tagsNot)},`);
+        lines.push('    ),');
+      } else if (tagsOr.length) {
+        lines.push(`    tags=${JSON.stringify(tagsOr)},`);
+      }
+      lines.push(')');
+
+      if (orgType && orgUuids.length) {
+        const action = orgType === 'include' ? 'keep only' : 'exclude';
+        lines.push('');
+        lines.push(`# Post-filter (client-side): ${action} events from org UUID${orgUuids.length > 1 ? 's' : ''}:`);
+        orgUuids.forEach(u => lines.push(`#   ${u}`));
+      }
+      return lines.join('\n');
+    }
+
+    const queryToggle = row.querySelector('.query-preview-toggle');
+    const queryPre    = row.querySelector('.query-preview');
+    if (queryToggle && queryPre) {
+      queryToggle.addEventListener('click', () => {
+        const open = queryPre.style.display !== 'none';
+        queryPre.style.display = open ? 'none' : '';
+        queryToggle.innerHTML = open
+          ? '<i class="fas fa-code me-1"></i>Show query'
+          : '<i class="fas fa-code me-1"></i>Hide query';
+        if (!open) queryPre.textContent = buildQueryText();
+      });
+      ['server_tags', 'server_tags_and', 'server_tags_not', 'server_since_days',
+       'server_limit', 'server_org_filter', 'server_org_filter_type'].forEach(name => {
+        const el = row.querySelector(`[name="${name}"]`);
+        if (el) el.addEventListener('input',  () => { if (queryPre.style.display !== 'none') queryPre.textContent = buildQueryText(); });
+        if (el) el.addEventListener('change', () => { if (queryPre.style.display !== 'none') queryPre.textContent = buildQueryText(); });
+      });
+    }
+
+    const estimateBtn = row.querySelector('.pull-estimate-btn');
+    const estimateResult = row.querySelector('.pull-estimate-result');
+    if (estimateBtn) {
+      estimateBtn.addEventListener('click', () => {
+        const urlVal = (row.querySelector('input[name="server_url"]')?.value || '').trim();
+        const keyVal = (row.querySelector('input[name="server_api_key"]')?.value || '').trim();
+        const verifyVal = row.querySelector('select[name="server_verify_tls"]')?.value === 'true';
+        if (!urlVal || !keyVal) {
+          if (estimateResult) { estimateResult.textContent = 'Enter URL and API key first.'; estimateResult.className = 'pull-estimate-result small ms-2 text-warning'; }
+          return;
+        }
+        estimateBtn.disabled = true;
+        estimateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Estimating…';
+        if (estimateResult) { estimateResult.textContent = ''; }
+        fetch('/api/pull-estimate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({
+            misp_url: urlVal,
+            misp_key: keyVal,
+            verify_tls: verifyVal,
+            tags: (row.querySelector('[name="server_tags"]')?.value || '').trim(),
+            tags_and: (row.querySelector('[name="server_tags_and"]')?.value || '').trim(),
+            tags_not: (row.querySelector('[name="server_tags_not"]')?.value || '').trim(),
+            since_days: parseInt(row.querySelector('[name="server_since_days"]')?.value || '7', 10),
+            org_filter_type: (row.querySelector('[name="server_org_filter_type"]')?.value || '').trim(),
+            org_filter: (row.querySelector('[name="server_org_filter"]')?.value || '').trim(),
+            limit: parseInt(row.querySelector('[name="server_limit"]')?.value || '500', 10),
+          }),
+        })
+        .then(r => r.json())
+        .then(data => {
+          estimateBtn.disabled = false;
+          estimateBtn.innerHTML = '<i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate';
+          if (estimateResult) {
+            if (data.error) {
+              estimateResult.textContent = data.error;
+              estimateResult.className = 'pull-estimate-result small ms-2 text-danger';
+            } else {
+              const n = data.count;
+              estimateResult.textContent = n + ' event' + (n !== 1 ? 's' : '') + ' would be pulled';
+              estimateResult.className = 'pull-estimate-result small ms-2 text-success';
+            }
+          }
+        })
+        .catch(() => {
+          estimateBtn.disabled = false;
+          estimateBtn.innerHTML = '<i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate';
+          if (estimateResult) { estimateResult.textContent = 'Request failed'; estimateResult.className = 'pull-estimate-result small ms-2 text-danger'; }
+        });
+      });
+    }
+  }
+
+  list.querySelectorAll('.misp-server-row').forEach(bindRow);
+
+  addBtn.addEventListener('click', () => {
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    list.appendChild(node);
+    bindRow(node);
+    if (empty) empty.style.display = 'none';
+    const labelInput = node.querySelector('input[name="server_label"]');
+    if (labelInput) labelInput.focus();
+  });
+
+  // API key show/hide for scraper field
+  document.querySelectorAll('.api-key-toggle').forEach((btn) => {
+    if (btn.closest('.misp-server-row')) return;
+    btn.addEventListener('click', () => {
+      const input = btn.closest('.input-group').querySelector('.api-key-input');
+      const icon = btn.querySelector('i');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+      } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+      }
+    });
+  });
+
+  const scraperMarkerTag = {{ cfg.SCRAPER_MARKER_TAG | tojson }};
+
+  // Pull estimate for scraper
+  const scraperEstimateBtn = document.getElementById('scraper-estimate-btn');
+  const scraperEstimateResult = document.getElementById('scraper-estimate-result');
+  if (scraperEstimateBtn) {
+    scraperEstimateBtn.addEventListener('click', () => {
+      const urlVal = (document.querySelector('input[name="MISP_URL"]')?.value || '').trim();
+      const keyVal = (document.querySelector('input[name="MISP_KEY"]')?.value || '').trim();
+      const verifyVal = document.querySelector('select[name="MISP_VERIFYCERT"]')?.value === 'true';
+      if (!urlVal || !keyVal) {
+        if (scraperEstimateResult) { scraperEstimateResult.textContent = 'Enter URL and API key first.'; scraperEstimateResult.className = 'small ms-2 text-warning'; }
+        return;
+      }
+      scraperEstimateBtn.disabled = true;
+      scraperEstimateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Estimating…';
+      if (scraperEstimateResult) scraperEstimateResult.textContent = '';
+      fetch('/api/pull-estimate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({
+          misp_url: urlVal, misp_key: keyVal, verify_tls: verifyVal,
+          tags: scraperMarkerTag,
+          limit: parseInt(document.querySelector('input[name="MISP_SCRAPER_LIMIT"]')?.value || '500', 10),
+          published: false,
+        }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        scraperEstimateBtn.disabled = false;
+        scraperEstimateBtn.innerHTML = '<i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate';
+        if (scraperEstimateResult) {
+          if (data.error) {
+            scraperEstimateResult.textContent = data.error;
+            scraperEstimateResult.className = 'small ms-2 text-danger';
+          } else {
+            const n = data.count;
+            scraperEstimateResult.textContent = n + ' event' + (n !== 1 ? 's' : '') + ' would be pulled';
+            scraperEstimateResult.className = 'small ms-2 text-success';
+          }
+        }
+      })
+      .catch(() => {
+        scraperEstimateBtn.disabled = false;
+        scraperEstimateBtn.innerHTML = '<i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate';
+        if (scraperEstimateResult) { scraperEstimateResult.textContent = 'Request failed'; scraperEstimateResult.className = 'small ms-2 text-danger'; }
+      });
+    });
+  }
+
+  // Show/hide query for scraper
+  const scraperQueryToggle = document.getElementById('scraper-query-toggle');
+  const scraperQueryPre    = document.getElementById('scraper-query-pre');
+  if (scraperQueryToggle && scraperQueryPre) {
+    scraperQueryToggle.addEventListener('click', () => {
+      const open = scraperQueryPre.style.display !== 'none';
+      scraperQueryPre.style.display = open ? 'none' : '';
+      scraperQueryToggle.innerHTML = open
+        ? '<i class="fas fa-code me-1"></i>Show query'
+        : '<i class="fas fa-code me-1"></i>Hide query';
+      if (!open) {
+        const scraperLimit = parseInt(document.querySelector('input[name="MISP_SCRAPER_LIMIT"]')?.value || '500', 10);
+        scraperQueryPre.textContent =
+          'misp.search(\n' +
+          '    tags=[' + JSON.stringify(scraperMarkerTag) + '],\n' +
+          '    limit=' + scraperLimit + ',\n' +
+          '    page=1,\n' +
+          '    pythonify=True,\n' +
+          ')';
+      }
+    });
+  }
+
+  // Test connection for scraper
+  const scraperTestBtn = document.getElementById('scraper-test-btn');
+  const scraperTestResult = document.getElementById('scraper-test-result');
+  if (scraperTestBtn) {
+    scraperTestBtn.addEventListener('click', () => {
+      const urlVal = (document.querySelector('input[name="MISP_URL"]')?.value || '').trim();
+      const keyVal = (document.querySelector('input[name="MISP_KEY"]')?.value || '').trim();
+      const verifyVal = document.querySelector('select[name="MISP_VERIFYCERT"]')?.value === 'true';
+      if (!urlVal || !keyVal) {
+        if (scraperTestResult) { scraperTestResult.textContent = 'Enter URL and API key first.'; scraperTestResult.className = 'small ms-2 text-warning'; }
+        return;
+      }
+      scraperTestBtn.disabled = true;
+      scraperTestBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing…';
+      fetch('/config/test_misp_connection', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({url: urlVal, api_key: keyVal, verify_tls: verifyVal}),
+      })
+      .then(r => r.json())
+      .then(data => {
+        scraperTestBtn.disabled = false;
+        scraperTestBtn.innerHTML = '<i class="fas fa-plug me-1"></i>Test connection';
+        if (scraperTestResult) {
+          if (data.ok) {
+            scraperTestResult.textContent = 'Connected' + (data.version ? ', MISP ' + data.version : '');
+            scraperTestResult.className = 'small ms-2 text-success';
+          } else {
+            scraperTestResult.textContent = data.error || 'Connection failed';
+            scraperTestResult.className = 'small ms-2 text-danger';
+          }
+        }
+      })
+      .catch(() => {
+        scraperTestBtn.disabled = false;
+        scraperTestBtn.innerHTML = '<i class="fas fa-plug me-1"></i>Test connection';
+        if (scraperTestResult) { scraperTestResult.textContent = 'Request failed'; scraperTestResult.className = 'small ms-2 text-danger'; }
+      });
+    });
+  }
+})();
+</script>
+{% endblock %}

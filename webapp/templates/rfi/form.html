@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% set is_edit = is_edit | default(false) %}
+{% set sel_owner = rfi.owner_uuid if is_edit else '' %}
+{% set sel_pir = rfi.linked_pir_uuid if is_edit else '' %}
+{% set sel_gir = rfi.linked_gir_uuid if is_edit else '' %}
+
+{% block title %}{{ 'Edit ' + rfi.rfi_id if is_edit else 'New RFI' }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ 'Edit ' + rfi.rfi_id if is_edit else 'New RFI' }}{% endblock %}
+
+{% block misp_object_url %}{% if is_edit %}{{ rfi.misp_url }}{% else %}{{ misp_webapp_url }}{% endif %}{% endblock %}
+{% block topbar_actions %}{% endblock %}
+
+{% block content %}
+<form method="post" class="row g-4">
+
+  <div class="col-lg-8">
+
+    {% if not is_edit %}
+    <div class="card content-card mb-4 border-info">
+      <div class="card-header bg-info bg-opacity-10 text-info-emphasis">
+        <i class="fas fa-lightbulb me-2"></i>Capturing a good RFI
+      </div>
+      <div class="card-body small">
+        <p class="mb-2">An RFI is an ad-hoc question from a stakeholder. Capture
+          enough context to triage and respond:</p>
+        <ul class="mb-0">
+          <li><strong>Who is asking, and for what decision?</strong> The same question from a SOC lead vs. a CISO has a different answer.</li>
+          <li><strong>Tie it to a PIR or GIR if possible.</strong> Recurring RFIs hint at missing standing requirements.</li>
+          <li><strong>Set a realistic due date.</strong> SLA hints: High {{ sla_days.High }}BD, Medium {{ sla_days.Medium }}BD, Low {{ sla_days.Low }}BD.</li>
+          <li><strong>Always close the loop.</strong> Record the response and capture feedback to feed the metrics dashboard.</li>
+          <li><strong>Attachments and notes</strong> can be added once the RFI is created.</li>
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-question-circle me-2"></i>The request</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required-label">Question</label>
+          <textarea name="question" class="form-control" rows="3" required
+            placeholder="What does the stakeholder want to know?">{{ rfi.question if is_edit else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Context / decision supported</label>
+          <textarea name="context" class="form-control" rows="3"
+            placeholder="Why is this question being asked? What decision will the answer inform?">{{ rfi.context if is_edit else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-paper-plane me-2"></i>Response</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Response (delivered to the requester)</label>
+          <textarea name="response" class="form-control" rows="6">{{ rfi.response if is_edit else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Output formats</label>
+          <div id="fmt-list">
+            {% set existing = rfi.output_format_list if is_edit else [] %}
+            {% for item in existing %}
+            <div class="fmt-row d-flex gap-2 mb-2 align-items-center">
+              <select name="output_format_item" class="form-select form-select-sm" style="max-width:220px;">
+                <option value="">-</option>
+                {% for fmt in output_formats %}
+                <option value="{{ fmt }}" {{ 'selected' if item.format == fmt }}>{{ fmt }}</option>
+                {% endfor %}
+              </select>
+              <select name="output_format_tlp" class="form-select form-select-sm" style="max-width:160px;">
+                {% for lvl in tlp_levels %}
+                <option value="{{ lvl }}" {{ 'selected' if item.tlp == lvl }}>TLP:{{ lvl }}</option>
+                {% endfor %}
+              </select>
+              <button type="button" class="btn btn-sm btn-outline-danger fmt-remove"><i class="fas fa-minus"></i></button>
+            </div>
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="fmt-add">
+            <i class="fas fa-plus me-1"></i>Add format
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {% if not is_edit %}
+    <div class="card content-card mb-4 opacity-50">
+      <div class="card-header"><i class="fas fa-paperclip me-2"></i>Attachments <span class="badge bg-secondary ms-1" style="font-size:.7rem;">Available after saving</span></div>
+      <div class="card-body">
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <input type="file" class="form-control form-control-sm" disabled>
+          </div>
+          <button class="btn btn-sm btn-primary" type="button" disabled>Upload</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4 opacity-50">
+      <div class="card-header"><i class="fas fa-sticky-note me-2"></i>Notes <span class="badge bg-secondary ms-1" style="font-size:.7rem;">Available after saving</span></div>
+      <div class="card-body">
+        <div class="mb-2">
+          <input type="text" class="form-control form-control-sm" placeholder="Note title" disabled>
+        </div>
+        <div class="mb-2">
+          <textarea class="form-control form-control-sm" rows="3" placeholder="Markdown content…" disabled></textarea>
+        </div>
+        <button class="btn btn-sm btn-primary" type="button" disabled>Add note</button>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-comment-dots me-2"></i>Feedback (after delivery)</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Did the response meet the requirement?</label>
+            <select name="feedback_requirement_met" class="form-select">
+              {% for opt in feedback_requirement %}
+              <option value="{{ opt }}" {{ 'selected' if is_edit and rfi.feedback_requirement_met == opt }}>{{ opt or '-' }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Delivered on time?</label>
+            <select name="feedback_on_time" class="form-select">
+              {% for opt in feedback_on_time %}
+              <option value="{{ opt }}" {{ 'selected' if is_edit and rfi.feedback_on_time == opt }}>{{ opt or '-' }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Usefulness</label>
+            <select name="feedback_usefulness" class="form-select">
+              {% for opt in feedback_usefulness %}
+              <option value="{{ opt }}" {{ 'selected' if is_edit and rfi.feedback_usefulness == opt }}>{{ opt or '-' }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Suggestions</label>
+            <textarea name="feedback_suggestions" class="form-control" rows="2">{{ rfi.feedback_suggestions if is_edit else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user me-2"></i>Requester</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          <input type="text" name="requester_name" class="form-control"
+            value="{{ rfi.requester_name if is_edit else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Team / unit</label>
+          <input type="text" name="requester_team" class="form-control"
+            value="{{ rfi.requester_team if is_edit else '' }}">
+        </div>
+        <div>
+          <label class="form-label">Stakeholder</label>
+          <select name="owner_uuid" class="form-select">
+            <option value="">- none -</option>
+            {% for s in stakeholders %}
+            <option value="{{ s.id }}" {{ 'selected' if sel_owner == s.id }}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-tasks me-2"></i>Triage</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Priority</label>
+          <select name="priority" class="form-select">
+            {% for p in priorities %}
+            <option value="{{ p }}" {{ 'selected' if (is_edit and rfi.priority == p) or (not is_edit and p == 'Medium') }}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Status</label>
+          <select name="status" class="form-select">
+            {% for s in statuses %}
+            <option value="{{ s }}" {{ 'selected' if (is_edit and rfi.status == s) or (not is_edit and s == 'New') }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Assigned analyst</label>
+          <input type="text" name="assigned_analyst" class="form-control"
+            value="{{ rfi.assigned_analyst if is_edit else '' }}">
+        </div>
+        <div>
+          <label class="form-label">Due date</label>
+          <input type="date" name="due_date" class="form-control"
+            value="{{ rfi.due_date.isoformat() if is_edit and rfi.due_date else '' }}">
+          <div class="form-text">Leave blank to auto-set from priority.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-link me-2"></i>Linked requirements</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Linked PIR</label>
+          <select name="linked_pir_uuid" class="form-select">
+            <option value="">- none -</option>
+            {% for p in pirs %}
+            <option value="{{ p.id }}" {{ 'selected' if sel_pir == p.id }}>{{ p.pir_id }} - {{ p.question | truncate(50) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Linked GIR</label>
+          <select name="linked_gir_uuid" class="form-select">
+            <option value="">- none -</option>
+            {% for g in girs %}
+            <option value="{{ g.id }}" {{ 'selected' if sel_gir == g.id }}>{{ g.gir_id }} - {{ g.topic | truncate(50) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary w-100" type="submit">
+      <i class="fas fa-save me-1"></i> {{ 'Update RFI' if is_edit else 'Create RFI' }}
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var fmtList = document.getElementById('fmt-list');
+  var fmtAdd = document.getElementById('fmt-add');
+  var outputFormats = {{ output_formats | tojson }};
+  var tlpLevels = {{ tlp_levels | tojson }};
+
+  function buildRow() {
+    var row = document.createElement('div');
+    row.className = 'fmt-row d-flex gap-2 mb-2 align-items-center';
+
+    var fmtSel = document.createElement('select');
+    fmtSel.name = 'output_format_item';
+    fmtSel.className = 'form-select form-select-sm';
+    fmtSel.style.maxWidth = '220px';
+    var blank = document.createElement('option');
+    blank.value = ''; blank.textContent = '-';
+    fmtSel.appendChild(blank);
+    outputFormats.forEach(function(f) {
+      var o = document.createElement('option');
+      o.value = f; o.textContent = f;
+      fmtSel.appendChild(o);
+    });
+
+    var tlpSel = document.createElement('select');
+    tlpSel.name = 'output_format_tlp';
+    tlpSel.className = 'form-select form-select-sm';
+    tlpSel.style.maxWidth = '160px';
+    tlpLevels.forEach(function(l) {
+      var o = document.createElement('option');
+      o.value = l; o.textContent = 'TLP:' + l;
+      if (l === 'amber') o.selected = true;
+      tlpSel.appendChild(o);
+    });
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-outline-danger fmt-remove';
+    btn.innerHTML = '<i class="fas fa-minus"></i>';
+    btn.addEventListener('click', function() { row.remove(); });
+
+    row.appendChild(fmtSel);
+    row.appendChild(tlpSel);
+    row.appendChild(btn);
+    return row;
+  }
+
+  fmtAdd.addEventListener('click', function() {
+    fmtList.appendChild(buildRow());
+  });
+
+  fmtList.addEventListener('click', function(e) {
+    var btn = e.target.closest('.fmt-remove');
+    if (btn) btn.closest('.fmt-row').remove();
+  });
+})();
+</script>
+{% endblock %}

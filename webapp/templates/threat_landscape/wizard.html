@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit' if is_edit else 'New' }} threat landscape report | zsazsa CTI{% endblock %}
+{% block page_title %}{{ 'Edit' if is_edit else 'New' }} threat landscape report{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('threat_landscape.review') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="row g-4">
+
+    <!-- Left: main content -->
+    <div class="col-lg-8">
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-file-lines me-2"></i>Report details</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Title</label>
+              <input type="text" name="title" class="form-control"
+                     value="{{ tlr.title if tlr else '' }}" required
+                     placeholder="e.g. Q1 2026 Threat Landscape">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Reporting period</label>
+              <input type="text" name="reporting_period" class="form-control"
+                     value="{{ tlr.reporting_period if tlr else '' }}"
+                     placeholder="e.g. Q1 2026, January 2026">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">TLP</label>
+              <select name="tlp" class="form-select">
+                {% for lvl in tlp_levels %}
+                <option value="{{ lvl }}" {% if tlr and tlr.tlp == lvl %}selected{% elif not tlr and lvl == 'amber' %}selected{% endif %}>
+                  TLP:{{ lvl | upper }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Author</label>
+              <input type="text" name="author" class="form-control"
+                     value="{{ tlr.author if tlr else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Audience</label>
+              <input type="text" name="audience" class="form-control"
+                     value="{{ tlr.audience if tlr else '' }}"
+                     placeholder="Leadership, SOC, ...">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-triangle-exclamation me-2"></i>Top threats</div>
+        <div class="card-body">
+          <textarea name="top_threats" class="form-control font-monospace" rows="5"
+                    placeholder="Summarise the top threats observed during this period…">{{ tlr.top_threats if tlr else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-user-secret me-2"></i>Trending threat actors</div>
+        <div class="card-body">
+          <textarea name="trending_actors" class="form-control font-monospace" rows="4"
+                    placeholder="Threat actors that increased in activity or relevance…">{{ tlr.trending_actors if tlr else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-fire me-2"></i>Key incidents</div>
+        <div class="card-body">
+          <textarea name="key_incidents" class="form-control font-monospace" rows="5"
+                    placeholder="Notable incidents, campaigns, or vulnerabilities during the period…">{{ tlr.key_incidents if tlr else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-shield me-2"></i>Recommendations</div>
+        <div class="card-body">
+          <textarea name="recommendations" class="form-control font-monospace" rows="4"
+                    placeholder="Recommended actions for the audience…">{{ tlr.recommendations if tlr else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-binoculars me-2"></i>Outlook</div>
+        <div class="card-body">
+          <textarea name="outlook" class="form-control font-monospace" rows="4"
+                    placeholder="Near-term threat outlook and anticipated developments…">{{ tlr.outlook if tlr else '' }}</textarea>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: save -->
+    <div class="col-lg-4">
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-save me-2"></i>Save</div>
+        <div class="card-body">
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="fas fa-save me-1"></i> {{ 'Update report' if is_edit else 'Create report' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</form>
+{% endblock %}

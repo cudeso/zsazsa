@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}GIRs | zsazsa CTI{% endblock %}
+{% block page_title %}General Intelligence Requirements{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('requirements.gir_new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> New GIR
+</a>
+<a href="{{ url_for('export.girs') }}" class="btn btn-sm btn-outline-secondary ms-2" title="Export as Markdown">
+  <i class="fas fa-download me-1"></i> Export
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Intelligence level</label>
+        <select name="intel_level" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All levels</option>
+          {% for lvl in intel_levels %}
+          <option value="{{ lvl }}" {{ 'selected' if intel_filter == lvl }}>{{ lvl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if intel_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('requirements.gir_list') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ girs | length }} GIR{{ 's' if girs|length != 1 }}</div>
+    </form>
+  </div>
+</div>
+
+<!-- Kanban board -->
+{% set kanban_statuses = ['Pending', 'Active', 'Retired'] %}
+<div class="card content-card mb-3">
+  <div class="card-header"><i class="fas fa-columns me-2"></i>Status board (drag to update status)</div>
+  <div class="card-body p-2">
+    <div class="kanban-board d-flex gap-2 overflow-auto pb-1">
+      {% for col_status in kanban_statuses %}
+      <div class="kanban-col flex-shrink-0" data-status="{{ col_status }}" style="min-width:180px;width:180px;">
+        <div class="kanban-col-header text-center fw-semibold small p-1 mb-1 rounded
+          {% if col_status == 'Active' %}bg-success-subtle text-success-emphasis
+          {% elif col_status == 'Pending' %}bg-secondary-subtle text-secondary-emphasis
+          {% else %}bg-light text-muted{% endif %}">
+          {{ col_status }}
+          <span class="badge bg-white text-dark ms-1" style="font-size:.65rem">{{ girs | selectattr('status', 'equalto', col_status) | list | length }}</span>
+        </div>
+        <div class="kanban-cards" style="min-height:60px;">
+          {% for gir in girs %}
+          {% if gir.status == col_status %}
+          <div class="kanban-card card mb-1 p-1 shadow-sm" draggable="true"
+               data-id="{{ gir.id }}"
+               data-update-url="{{ url_for('requirements.gir_status_update', id=gir.id) }}"
+               style="cursor:grab;font-size:.75rem;">
+            <div class="fw-semibold"><a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="text-decoration-none">{{ gir.gir_id }}</a></div>
+            <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ gir.topic }}">{{ gir.topic | truncate(30) }}</div>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if girs %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th style="width:90px">ID</th>
+          <th>Topic</th>
+          <th>Owner</th>
+          <th>Level</th>
+          <th>Status</th>
+          <th title="Scope"><i class="fas fa-crosshairs fa-xs"></i></th>
+          <th>Review cycle</th>
+          <th>Next review</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for gir in girs %}
+        <tr>
+          <td><span class="req-id-badge">{{ gir.gir_id }}</span></td>
+          <td>
+            <a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="fw-semibold text-decoration-none">{{ gir.topic }}</a>
+            {% if gir.description %}
+            <div class="text-muted small">{{ gir.description | truncate(80) }}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if gir.owner_stakeholder %}
+            <a href="{{ url_for('stakeholders.detail', id=gir.owner_stakeholder.id) }}" class="text-decoration-none text-muted small">
+              {{ gir.owner_stakeholder.name }}
+            </a>
+            {% elif gir.owner_name %}
+            <span class="text-muted small">{{ gir.owner_name }}</span>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if gir.intel_level %}
+            <div class="d-flex flex-wrap gap-1">
+              {% for lvl in gir.intel_level %}
+              <span class="badge text-bg-light text-muted">{{ lvl }}</span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="text-muted small">-</span>
+            {% endif %}
+          </td>
+          <td><span class="badge status-badge status-{{ gir.status | slug }}">{{ gir.status }}</span></td>
+          <td>
+            {% set n = fp_counts.get(gir.id, 0) %}
+            {% if n > 0 %}
+            <span class="fp-count-badge" title="{{ n }} scope item{{ 's' if n != 1 }}">{{ n }}</span>
+            {% else %}
+            <span class="fp-count-badge fp-count-empty" title="No scope items">0</span>
+            {% endif %}
+          </td>
+          <td class="text-muted">{{ gir.review_cycle or '-' }}</td>
+          <td class="text-muted small">{{ gir.next_review.strftime('%d-%m-%Y') if gir.next_review else '-' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('requirements.gir_scope_preview', id=gir.id) }}" class="btn btn-xs btn-outline-info me-1" title="Preview matches in collection">
+              <i class="fas fa-eye"></i>
+            </a>
+            <a href="{{ url_for('requirements.gir_edit', id=gir.id) }}" class="btn btn-xs btn-outline-secondary me-1" title="Edit">
+              <i class="fas fa-pen"></i>
+            </a>
+            <form method="post" action="{{ url_for('requirements.gir_delete', id=gir.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ gir.gir_id }}?')">
+              <button class="btn btn-xs btn-outline-danger" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state py-5">
+      <i class="fas fa-list-check fa-2x text-muted mb-3 d-block"></i>
+      <p class="text-muted mb-3">No GIRs yet. Define your ongoing monitoring needs.</p>
+      <a href="{{ url_for('requirements.gir_new') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-plus me-1"></i> New GIR
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var dragging = null;
+  document.querySelectorAll('.kanban-card').forEach(function(card) {
+    card.addEventListener('dragstart', function(e) { dragging = card; card.style.opacity = '0.5'; });
+    card.addEventListener('dragend', function() { card.style.opacity = ''; dragging = null; });
+  });
+  document.querySelectorAll('.kanban-col').forEach(function(col) {
+    col.addEventListener('dragover', function(e) { e.preventDefault(); col.querySelector('.kanban-cards').style.background = '#f0f4ff'; });
+    col.addEventListener('dragleave', function() { col.querySelector('.kanban-cards').style.background = ''; });
+    col.addEventListener('drop', function(e) {
+      e.preventDefault();
+      col.querySelector('.kanban-cards').style.background = '';
+      if (!dragging) return;
+      var fd = new FormData();
+      fd.append('status', col.dataset.status);
+      var csrf = document.querySelector('meta[name="csrf-token"]');
+      fetch(dragging.dataset.updateUrl, {method: 'POST', body: fd, headers: csrf ? {'X-CSRF-Token': csrf.content} : {}})
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (d.ok) window.location.reload(); else alert('Could not update: ' + (d.error || '')); })
+        .catch(function() { alert('Status update failed.'); });
+    });
+  });
+})();
+</script>
+{% endblock %}

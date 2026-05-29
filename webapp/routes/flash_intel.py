@@ -1,0 +1,382 @@
+"""Flash Intel Alert (FIA) routes.
+
+Manual wizard for creating and reviewing flash intel alerts. Auto-generated
+drafts from the analyser pipeline land in the same review queue.
+"""
+
+import logging
+
+import config as _cfg
+import os
+
+from flask import Blueprint, flash, redirect, render_template, request, url_for, Response
+
+from webapp import audit, misp_store
+
+logger = logging.getLogger(__name__)
+
+bp = Blueprint("flash_intel", __name__, url_prefix="/products/flash-intel")
+
+
+def _form_data(form, fia_id=""):
+    return {
+        "fia_id": fia_id,
+        "title": form.get("title", "").strip(),
+        "audience": ", ".join(form.getlist("audience")),
+        "tlp": form.get("tlp", "amber"),
+        "summary": form.get("summary", ""),
+        "action_required": form.get("action_required", ""),
+        "what_happened": misp_store._split_lines(form.get("what_happened")),
+        "source_description": form.get("source_description", ""),
+        "source_reliability": form.get("source_reliability", ""),
+        "information_credibility": form.get("information_credibility", ""),
+        "likely_impact": form.get("likely_impact", ""),
+        "affected_assets": form.get("affected_assets", ""),
+        "actor_context": form.get("actor_context", ""),
+        "geographic_scope": form.getlist("geographic_scope"),
+        "sectors": form.getlist("sectors"),
+        "threat_actors": form.getlist("threat_actors"),
+        "threat_types": form.getlist("threat_types"),
+        "technology": form.getlist("technology"),
+        "vendor": form.getlist("vendor"),
+        "incident": form.getlist("incident"),
+        "campaign": form.getlist("campaign"),
+        "actions_immediate": misp_store._split_lines(form.get("actions_immediate")),
+        "actions_near_term": misp_store._split_lines(form.get("actions_near_term")),
+        "mitre_techniques": misp_store._split_lines(form.get("mitre_techniques")),
+        "hunting_hypotheses": misp_store._split_lines(form.get("hunting_hypotheses")),
+        "external_references": [r.strip() for r in form.getlist("external_reference_item")
+                                 if r.strip() and r.strip().startswith(("http://", "https://"))],
+        "feedback_deadline": form.get("feedback_deadline") or "",
+        "author": form.get("author", ""),
+        "source_event_uuids": [u.strip() for u in form.getlist("source_event_uuid_item") if u.strip()],
+        "context_tags": form.getlist("context_tags"),
+        "linked_pir_uuid": form.get("linked_pir_uuid", ""),
+        "review_state": form.get("review_state", misp_store.FIA_REVIEW_DRAFT),
+    }
+
+
+def _wizard_context(fia=None, source_events=None):
+    return {
+        "fia": fia,
+        "audiences": misp_store.FIA_AUDIENCES,
+        "tlp_levels": misp_store.FIA_TLP_LEVELS,
+        "reliabilities": misp_store.FIA_RELIABILITIES,
+        "credibilities": misp_store.FIA_CREDIBILITIES,
+        "review_states": misp_store.FIA_REVIEW_STATES,
+        "geo_items": misp_store.galaxy_geography(),
+        "sector_items": misp_store.galaxy_sectors(),
+        "threat_actor_items": misp_store.galaxy_threat_actors(),
+        "action_presets_immediate": getattr(_cfg, "RECOMMENDED_ACTIONS_IMMEDIATE", []),
+        "action_presets_near_term": getattr(_cfg, "RECOMMENDED_ACTIONS_NEAR_TERM", []),
+        "pirs": misp_store.list_pirs(),
+        "source_event_tags": sorted({t for ev in (source_events or []) for t in ev.get("tags", [])}),
+    }
+
+
+def _seed_from_sources(source_uuids):
+    """Build a partial FIA seed from one or more source event UUIDs."""
+    from types import SimpleNamespace
+    if not source_uuids:
+        return None, []
+    source_events = misp_store.fetch_source_events(source_uuids)
+    title = source_events[0]["info"] if source_events else ""
+    labels = list(dict.fromkeys(ev["source_label"] for ev in source_events if ev.get("source_label")))
+    seed = SimpleNamespace(
+        fia_id="",
+        title=title,
+        audience="", tlp="amber",
+        summary="", action_required="",
+        what_happened=[], source_description=", ".join(labels),
+        source_reliability="", information_credibility="",
+        likely_impact="", affected_assets="", actor_context="",
+        geographic_scope=[], sectors=[], threat_actors=[],
+        threat_types=[], technology=[], vendor=[], incident=[], campaign=[],
+        actions_immediate=[], actions_near_term=[],
+        mitre_techniques=[], hunting_hypotheses=[],
+        external_references=[], feedback_deadline=None,
+        author="", source_event_uuids=source_uuids,
+        source_event_uuid=source_uuids[0] if source_uuids else "",
+        review_state=misp_store.FIA_REVIEW_DRAFT,
+        rejection_reason="", context_tags=[], linked_pir_uuid="",
+    )
+    return seed, source_events
+
+
+def _eligible_flash_recipients(fia):
+    allowed = {
+        r.get("uuid")
+        for r in misp_store.recipient_preview("Flash intel alert", fia.tlp, fia.audience)
+        if r.get("status") == "green" and r.get("uuid")
+    }
+    if not allowed:
+        return []
+    return [s for s in misp_store.list_stakeholders() if getattr(s, "uuid", None) in allowed]
+
+
+def _latest_notify_status(entity_id: str):
+    row = audit.latest_event("notify", "fia", entity_id=entity_id)
+    if row is None:
+        return None
+    details = (row["details"] or "")
+    lower = details.lower()
+    if "result=ok" in lower or lower.startswith("ok"):
+        tone = "success"
+        label = "Delivered"
+    elif "skip" in lower:
+        tone = "warning"
+        label = "Skipped"
+    elif "fail" in lower:
+        tone = "danger"
+        label = "Failed"
+    else:
+        tone = "secondary"
+        label = "Unknown"
+    return {
+        "tone": tone,
+        "label": label,
+        "timestamp": row["timestamp"],
+        "details": details,
+    }
+
+
+@bp.route("/")
+def review():
+    state_filter = (request.args.get("state") or "").strip() or None
+    fias = misp_store.list_fias(review_state=state_filter)
+    return render_template(
+        "flash_intel/review.html",
+        fias=fias,
+        state_filter=state_filter or "",
+        review_states=misp_store.FIA_REVIEW_STATES,
+    )
+
+
+@bp.route("/new", methods=["GET", "POST"])
+def wizard_new():
+    if request.method == "POST":
+        data = _form_data(request.form)
+        if not data["title"]:
+            flash("Title is required.", "warning")
+            return render_template("flash_intel/wizard.html", is_edit=False,
+                                   source_events=[], **_wizard_context())
+        action = request.form.get("action", "save")
+        data["review_state"] = (misp_store.FIA_REVIEW_PENDING
+                                if action == "submit" else misp_store.FIA_REVIEW_DRAFT)
+        try:
+            uuid, fia_id = misp_store.create_fia(data)
+            audit.record("create", "fia", entity_id=uuid, entity_label=fia_id)
+            flash(f"{fia_id} {'submitted for review' if action == 'submit' else 'saved as draft'}.",
+                  "success")
+            return redirect(url_for("flash_intel.detail", id=uuid))
+        except Exception as exc:
+            flash(f"Could not create FIA: {exc}", "warning")
+    source_uuids = [u.strip() for u in request.args.getlist("source") if u.strip()]
+    seed, source_events = _seed_from_sources(source_uuids)
+    return render_template("flash_intel/wizard.html", is_edit=False,
+                           source_events=source_events, **_wizard_context(seed, source_events))
+
+
+@bp.route("/<string:id>")
+def detail(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    feedback = misp_store.list_product_feedback(fia.uuid)
+    recipients = misp_store.recipient_preview("Flash intel alert", fia.tlp, fia.audience)
+    notify_status = _latest_notify_status(id)
+    return render_template(
+        "flash_intel/detail.html",
+        fia=fia,
+        feedback=feedback,
+        recipients=recipients,
+        notify_status=notify_status,
+    )
+
+
+@bp.route("/<string:id>/edit", methods=["GET", "POST"])
+def wizard_edit(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    if request.method == "POST":
+        data = _form_data(request.form, fia_id=fia.fia_id)
+        action = request.form.get("action", "save")
+        if action == "submit":
+            data["review_state"] = misp_store.FIA_REVIEW_PENDING
+        elif action == "publish":
+            data["review_state"] = misp_store.FIA_REVIEW_APPROVED
+        else:
+            data["review_state"] = fia.review_state or misp_store.FIA_REVIEW_DRAFT
+        try:
+            misp_store.update_fia(id, data)
+            audit.record("update", "fia", entity_id=id, entity_label=fia.fia_id)
+            if action == "publish":
+                sent_ok = _publish_and_notify(id)
+                audit.record(
+                    "notify",
+                    "fia",
+                    entity_id=id,
+                    entity_label=fia.fia_id,
+                    details=f"publish notification; result={'ok' if sent_ok else 'failed'}",
+                )
+                if sent_ok:
+                    flash(f"{fia.fia_id} published.", "success")
+                else:
+                    flash(f"{fia.fia_id} published, but notification failed.", "warning")
+            else:
+                flash(f"{fia.fia_id} saved.", "success")
+            return redirect(url_for("flash_intel.detail", id=id))
+        except Exception as exc:
+            flash(f"Could not update FIA: {exc}", "warning")
+    return render_template("flash_intel/wizard.html", is_edit=True,
+                           source_events=[], **_wizard_context(fia, []))
+
+
+@bp.route("/<string:id>/approve", methods=["POST"])
+def approve(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    try:
+        sent_ok = _publish_and_notify(id)
+        audit.record("publish", "fia", entity_id=id, entity_label=fia.fia_id)
+        audit.record(
+            "notify",
+            "fia",
+            entity_id=id,
+            entity_label=fia.fia_id,
+            details=f"publish notification; result={'ok' if sent_ok else 'failed'}",
+        )
+        if sent_ok:
+            flash(f"{fia.fia_id} approved and published.", "success")
+        else:
+            flash(f"{fia.fia_id} approved and published, but notification failed.", "warning")
+    except Exception as exc:
+        flash(f"Could not publish FIA: {exc}", "warning")
+    return redirect(url_for("flash_intel.detail", id=id))
+
+
+@bp.route("/<string:id>/reject", methods=["POST"])
+def reject(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    reason = request.form.get("reason", "").strip()
+    try:
+        misp_store.reject_fia(id, reason=reason)
+        audit.record("reject", "fia", entity_id=id, entity_label=fia.fia_id)
+        flash(f"{fia.fia_id} rejected.", "info")
+    except Exception as exc:
+        flash(f"Could not reject FIA: {exc}", "warning")
+    return redirect(url_for("flash_intel.detail", id=id))
+
+
+@bp.route("/<string:id>/delete", methods=["POST"])
+def delete(id):
+    fia = misp_store.get_fia(id)
+    label = fia.fia_id if fia else id
+    try:
+        misp_store.delete_fia(id)
+        audit.record("delete", "fia", entity_id=id, entity_label=label)
+        flash(f"{label} deleted.", "success")
+    except Exception as exc:
+        flash(f"Could not delete FIA: {exc}", "warning")
+    return redirect(url_for("flash_intel.review"))
+
+
+@bp.route("/<string:id>/resend", methods=["POST"])
+def resend(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    if getattr(fia, "review_state", "") != misp_store.FIA_REVIEW_APPROVED:
+        flash("Only published alerts can be resent.", "warning")
+        return redirect(url_for("flash_intel.review"))
+    try:
+        from notifier import mattermost
+
+        stakeholders = _eligible_flash_recipients(fia)
+        sent_ok = mattermost.send_product_published(
+            "Flash intel alert",
+            fia.fia_id,
+            fia.title or "Flash intel alert",
+            stakeholders,
+        )
+        audit.record(
+            "notify",
+            "fia",
+            entity_id=id,
+            entity_label=fia.fia_id,
+            details=(
+                f"resend to stakeholders; recipients={len(stakeholders)}; "
+                f"result={'ok' if sent_ok else 'failed'}"
+            ),
+        )
+        if sent_ok:
+            flash(f"{fia.fia_id} resent to stakeholders.", "success")
+        else:
+            flash(f"{fia.fia_id} resend failed. Check notification channels/logs.", "warning")
+    except Exception as exc:
+        flash(f"Could not resend {fia.fia_id}: {exc}", "warning")
+    return redirect(url_for("flash_intel.review"))
+
+
+@bp.route("/<string:id>/feedback", methods=["POST"])
+def add_feedback(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    author = request.form.get("author", "").strip()
+    rating = request.form.get("rating", "").strip()
+    comment = request.form.get("comment", "").strip()
+    try:
+        misp_store.add_product_feedback(fia.uuid, author, rating, comment)
+        audit.record("create", "fia_feedback", entity_id=id, entity_label=fia.fia_id)
+        flash("Feedback recorded.", "success")
+    except Exception as exc:
+        logger.warning("add_feedback FIA %s failed: %s", id, exc)
+        flash(f"Could not record feedback: {exc}", "warning")
+    return redirect(url_for("flash_intel.detail", id=id))
+
+
+@bp.route("/<string:id>/pdf")
+def pdf(id):
+    fia = misp_store.get_fia(id)
+    if fia is None:
+        return "FIA not found", 404
+    css_path = os.path.join(
+        os.path.dirname(__file__), "..", "static", "css", "fia_pdf.css"
+    )
+    css_url = "file://" + os.path.abspath(css_path)
+    html = render_template("flash_intel/pdf.html", fia=fia, css_url=css_url)
+    try:
+        import weasyprint
+        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    except Exception as exc:
+        logger.warning("pdf: weasyprint failed for %s: %s", id, exc)
+        return f"PDF generation failed: {exc}", 500
+    filename = f"{fia.fia_id}.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _publish_and_notify(uuid):
+    """Publish FIA and send Mattermost alert (best-effort)."""
+    misp_store.publish_fia(uuid)
+    fia = misp_store.get_fia(uuid)
+    if fia is None:
+        return False
+    try:
+        from types import SimpleNamespace
+        from notifier import mattermost
+        content = misp_store.render_fia_markdown(fia, fia.fia_id)
+        shim = SimpleNamespace(id=uuid, info=f"[zsazsa:fia] {fia.title or 'Untitled'}")
+        return bool(mattermost.send_flash_intel_alert(shim, fia.fia_id, content))
+    except Exception as exc:
+        from logging import getLogger
+        getLogger(__name__).warning("mattermost notify failed for %s: %s", uuid, exc)
+        return False

@@ -1,0 +1,81 @@
+{
+    "name": "zsazsa-threat-landscape-report",
+    "meta-category": "intelligence",
+    "description": "Threat landscape report (TLR) managed by the zsazsa CTI program",
+    "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "version": 1,
+    "attributes": {
+        "tlr-id": {
+            "misp-attribute": "text",
+            "ui-priority": 0,
+            "description": "Unique TLR identifier (e.g. TLR-001)",
+            "disable_correlation": true
+        },
+        "title": {
+            "misp-attribute": "text",
+            "ui-priority": 1,
+            "description": "Short descriptive title",
+            "disable_correlation": true
+        },
+        "reporting-period": {
+            "misp-attribute": "text",
+            "ui-priority": 2,
+            "description": "Time period covered by this report (e.g. Q1 2026)",
+            "disable_correlation": true
+        },
+        "tlp": {
+            "misp-attribute": "text",
+            "ui-priority": 3,
+            "description": "TLP classification",
+            "disable_correlation": true
+        },
+        "author": {
+            "misp-attribute": "text",
+            "ui-priority": 4,
+            "description": "Author or team responsible",
+            "disable_correlation": true
+        },
+        "audience": {
+            "misp-attribute": "text",
+            "ui-priority": 5,
+            "description": "Primary audience (Leadership, SOC, IR, ...)",
+            "disable_correlation": true
+        },
+        "top-threats": {
+            "misp-attribute": "text",
+            "ui-priority": 6,
+            "description": "Summary of top threats observed during the period",
+            "disable_correlation": true
+        },
+        "trending-actors": {
+            "misp-attribute": "text",
+            "ui-priority": 7,
+            "description": "Threat actors that increased in activity",
+            "disable_correlation": true
+        },
+        "key-incidents": {
+            "misp-attribute": "text",
+            "ui-priority": 8,
+            "description": "Notable incidents or campaigns during the period",
+            "disable_correlation": true
+        },
+        "recommendations": {
+            "misp-attribute": "text",
+            "ui-priority": 9,
+            "description": "Recommended actions for the audience",
+            "disable_correlation": true
+        },
+        "outlook": {
+            "misp-attribute": "text",
+            "ui-priority": 10,
+            "description": "Near-term threat outlook",
+            "disable_correlation": true
+        },
+        "review-state": {
+            "misp-attribute": "text",
+            "ui-priority": 11,
+            "description": "Workflow state: draft / published",
+            "disable_correlation": true
+        }
+    }
+}

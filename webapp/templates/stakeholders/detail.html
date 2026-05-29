@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}{{ stakeholder.name }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ stakeholder.name }}{% endblock %}
+
+{% block misp_object_url %}{{ stakeholder.misp_url }}{% endblock %}
+{% block topbar_actions %}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-id-card me-2"></i>Identity</div>
+      <div class="card-body">
+        <dl class="detail-list">
+          <dt>Role</dt>
+          <dd>{{ stakeholder.role or '-' }}</dd>
+          <dt>Organisation</dt>
+          <dd>{{ org_map.get(stakeholder.organization, stakeholder.organization) or '-' }}</dd>
+          <dt>Type</dt>
+          <dd>
+            {% if stakeholder.stakeholder_type == 'Internal' %}
+            <span class="badge text-bg-primary"><i class="fas fa-building me-1"></i>Internal</span>
+            {% else %}
+            <span class="badge text-bg-secondary"><i class="fas fa-globe me-1"></i>External</span>
+            {% endif %}
+          </dd>
+          {% if stakeholder.contacts %}
+          <dt>Contact{{ 's' if stakeholder.contacts|length > 1 }}</dt>
+          <dd>
+            <div class="d-flex flex-column gap-1">
+            {% for c in stakeholder.contacts %}
+            <div class="d-flex align-items-center gap-2">
+              {% if c.type == 'Email' %}<i class="fas fa-envelope text-muted" style="width:1rem;"></i><a href="mailto:{{ c.value }}">{{ c.value }}</a>
+              {% elif c.type == 'Phone' %}<i class="fas fa-phone text-muted" style="width:1rem;"></i><span>{{ c.value }}</span>
+              {% elif c.type == 'Teams' %}<i class="fas fa-comments text-muted" style="width:1rem;"></i><span>{{ c.value }}</span>
+              {% elif c.type == 'Mattermost' %}<i class="fas fa-bolt text-muted" style="width:1rem;"></i><span>{{ c.value }}</span>
+              {% else %}<i class="fas fa-address-card text-muted" style="width:1rem;"></i><span>{{ c.value }}</span>
+              {% endif %}
+              {% if c.get('preferred') %}<span class="badge text-bg-light text-muted small">preferred</span>{% endif %}
+            </div>
+            {% endfor %}
+            </div>
+          </dd>
+          {% endif %}
+          <dt>Added</dt>
+          <dd>{{ stakeholder.created_at.strftime('%d-%m-%Y') if stakeholder.created_at else '-' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Intelligence preferences</div>
+      <div class="card-body">
+        <dl class="detail-list mb-3">
+          <dt>TLP clearance</dt>
+          <dd><span class="tlp-badge tlp-{{ stakeholder.tlp_clearance | slug }}">TLP:{{ stakeholder.tlp_clearance | upper }}</span></dd>
+        </dl>
+        <div class="fw-semibold mb-2 text-muted small text-uppercase tracking-wide">Products subscribed</div>
+        {% if stakeholder.products %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for p in stakeholder.products %}
+          {% set mode = stakeholder.product_modes.get(p) if stakeholder.product_modes else None %}
+          <span class="product-tag">
+            {{ p }}
+            <span class="badge ms-1" style="background:{{ '#22a06b' if mode == 'automated' else '#888' }};font-weight:500;">
+              {{ mode or 'after-approval' }}
+            </span>
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0 small">No products configured.</p>
+        {% endif %}
+
+        {% if stakeholder.notification_channels %}
+        <div class="fw-semibold mt-3 mb-2 text-muted small text-uppercase tracking-wide">Notification channels</div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for cid in stakeholder.notification_channels %}
+          <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">{{ cid }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if stakeholder.notes %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-note-sticky me-2"></i>Notes</div>
+      <div class="card-body">
+        <p class="mb-0">{{ stakeholder.notes }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('stakeholders.edit', id=stakeholder.id) }}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-pen me-1"></i> Edit
+      </a>
+      <form method="post" action="{{ url_for('stakeholders.delete', id=stakeholder.id) }}" onsubmit="return confirm('Delete {{ stakeholder.name }}?')">
+        <button class="btn btn-outline-danger btn-sm">
+          <i class="fas fa-trash me-1"></i> Delete
+        </button>
+      </form>
+    </div>
+
+  </div>
+
+  <div class="col-lg-8">
+
+    <!-- Owned PIRs -->
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-star me-2 text-primary"></i>Priority Intelligence Requirements</span>
+        <a href="{{ url_for('requirements.pir_new', from_stakeholder=stakeholder.uuid) }}" class="btn btn-xs btn-outline-primary" title="New PIR">
+          <i class="fas fa-plus"></i>
+        </a>
+      </div>
+      <div class="card-body p-0">
+        <div class="px-3 pt-3 pb-2 border-bottom">
+          <div class="text-muted small text-uppercase fw-semibold">Owned by {{ stakeholder.name }}</div>
+        </div>
+        {% if owned_pirs %}
+        <ul class="req-list">
+          {% for pir in owned_pirs %}
+          <li class="req-item">
+            <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="req-link">
+              <span class="req-id">{{ pir.pir_id }}</span>
+              <span class="req-text">{{ pir.question | truncate(80) }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="badge priority-badge priority-{{ pir.priority | slug }}">{{ pir.priority }}</span>
+              <span class="badge status-badge status-{{ pir.status | slug }}">{{ pir.status }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-4">
+          <p class="text-muted mb-1 small">{{ stakeholder.name }} does not own any PIRs yet.</p>
+          <a href="{{ url_for('requirements.pir_new', from_stakeholder=stakeholder.uuid) }}" class="btn btn-xs btn-outline-primary">
+            <i class="fas fa-plus me-1"></i> Create PIR
+          </a>
+        </div>
+        {% endif %}
+
+        <div class="px-3 pt-3 pb-2 border-top border-bottom">
+          <div class="text-muted small text-uppercase fw-semibold">Listed in Distribution</div>
+        </div>
+        {% if distributed_pirs %}
+        <ul class="req-list">
+          {% for pir in distributed_pirs %}
+          <li class="req-item">
+            <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="req-link">
+              <span class="req-id">{{ pir.pir_id }}</span>
+              <span class="req-text">{{ pir.question | truncate(80) }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="badge priority-badge priority-{{ pir.priority | slug }}">{{ pir.priority }}</span>
+              <span class="badge status-badge status-{{ pir.status | slug }}">{{ pir.status }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-4">
+          <p class="text-muted mb-0 small">{{ stakeholder.name }} is not listed in PIR distribution yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Owned GIRs -->
+    <div class="card content-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list-check me-2 text-success"></i>General Intelligence Requirements</span>
+        <a href="{{ url_for('requirements.gir_new') }}" class="btn btn-xs btn-outline-success" title="New GIR">
+          <i class="fas fa-plus"></i>
+        </a>
+      </div>
+      <div class="card-body p-0">
+        <div class="px-3 pt-3 pb-2 border-bottom">
+          <div class="text-muted small text-uppercase fw-semibold">Owned by {{ stakeholder.name }}</div>
+        </div>
+        {% if owned_girs %}
+        <ul class="req-list">
+          {% for gir in owned_girs %}
+          <li class="req-item">
+            <a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="req-link">
+              <span class="req-id">{{ gir.gir_id }}</span>
+              <span class="req-text">{{ gir.topic }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="badge status-badge status-{{ gir.status | slug }}">{{ gir.status }}</span>
+              <span class="text-muted small">{{ gir.review_cycle }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-4">
+          <p class="text-muted mb-1 small">{{ stakeholder.name }} does not own any GIRs yet.</p>
+          <a href="{{ url_for('requirements.gir_new') }}" class="btn btn-xs btn-outline-success">
+            <i class="fas fa-plus me-1"></i> Create GIR
+          </a>
+        </div>
+        {% endif %}
+
+        <div class="px-3 pt-3 pb-2 border-top border-bottom">
+          <div class="text-muted small text-uppercase fw-semibold">Listed in Distribution</div>
+        </div>
+        {% if distributed_girs %}
+        <ul class="req-list">
+          {% for gir in distributed_girs %}
+          <li class="req-item">
+            <a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="req-link">
+              <span class="req-id">{{ gir.gir_id }}</span>
+              <span class="req-text">{{ gir.topic }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="badge status-badge status-{{ gir.status | slug }}">{{ gir.status }}</span>
+              <span class="text-muted small">{{ gir.review_cycle }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-4">
+          <p class="text-muted mb-0 small">{{ stakeholder.name }} is not listed in GIR distribution yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent products linked via PIR/GIR or sent through direct product subscriptions -->
+    <div class="card content-card mt-4">
+      <div class="card-header">
+        <i class="fas fa-folder-open me-2 text-info"></i>Recent products
+      </div>
+      <div class="card-body p-0">
+        {% if recent_products %}
+        <ul class="req-list">
+          {% for ev in recent_products %}
+          <li class="req-item">
+            <a href="{{ ev.app_url or ev.misp_url }}" class="req-link">
+              <span class="req-id">{{ ev.product_type or '-' }}</span>
+              <span class="req-text">{{ ev.info | truncate(80) }}</span>
+            </a>
+            <div class="req-meta">
+              <span class="text-muted small">{{ ev.date }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state py-4">
+          <p class="text-muted mb-0 small">No recent products found for this stakeholder's requirement links or direct product subscriptions.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}

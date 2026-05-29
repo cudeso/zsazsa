@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Triage | Daily briefing{% endblock %}
+{% block page_title %}Triage: select stories{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('daily_briefing.compose') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-pen me-1"></i> Blank briefing
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ url_for('daily_briefing.compose') }}" id="triage-form">
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <label class="form-label">Briefing date</label>
+      <input type="date" name="date" class="form-control" value="{{ today }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Author</label>
+      <input name="author" class="form-control" placeholder="Analyst name">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">TLP</label>
+      <select name="tlp" class="form-select">
+        <option value="clear" selected>clear</option>
+        <option value="green">green</option>
+        <option value="amber">amber</option>
+      </select>
+    </div>
+    <div class="col-auto align-self-end">
+      <button type="submit" class="btn btn-primary" id="btn-start"
+              onclick="return validateSelection()">
+        <i class="fas fa-pen-to-square me-1"></i> Compose with selected
+      </button>
+    </div>
+  </div>
+
+  <div class="card content-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-inbox me-2"></i>Recent collection events (last {{ limit }})</span>
+      <div class="d-flex gap-2 align-items-center">
+        <span class="text-muted small" id="selected-count">0 selected</span>
+        <a href="{{ url_for('daily_briefing.triage', limit=limit*2) }}"
+           class="btn btn-xs btn-outline-secondary">Load more</a>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      {% if events %}
+      <table class="table table-hover zsazsa-table mb-0">
+        <thead>
+          <tr>
+            <th style="width:40px">
+              <input type="checkbox" class="form-check-input" id="select-all">
+            </th>
+            <th>Event</th>
+            <th>Date</th>
+            <th>Tags</th>
+            <th>Reports</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in events %}
+          <tr class="triage-row" data-uuid="{{ ev.uuid }}">
+            <td>
+              <input type="checkbox" name="selected_events" value="{{ ev.uuid }}"
+                     class="form-check-input event-check">
+            </td>
+            <td>
+              <a href="#" class="text-decoration-none preview-trigger"
+                 data-uuid="{{ ev.uuid }}"
+                 data-info="{{ ev.info | e }}">{{ ev.info | truncate(90) }}</a>
+            </td>
+            <td class="text-muted small">{{ ev.date or '-' }}</td>
+            <td>
+              {% for tag in ev.tags[:4] %}
+              <span class="badge bg-light text-dark border" style="font-size:0.7rem">{{ tag | truncate(30) }}</span>
+              {% endfor %}
+              {% if ev.tags | length > 4 %}<span class="text-muted small">+{{ ev.tags|length - 4 }}</span>{% endif %}
+            </td>
+            <td class="text-muted small">{{ ev.report_count }}</td>
+            <td>
+              <a href="{{ url_for('data_collection.detail', uuid=ev.uuid) }}" target="_blank"
+                 class="btn btn-xs btn-outline-secondary" title="Open in new tab">
+                <i class="fas fa-external-link-alt"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="p-4 text-muted">No events in the scraper MISP. Check the data collection configuration.</div>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+<!-- Preview slide panel (no Bootstrap JS required) -->
+<div id="previewPanel" style="
+  position:fixed; top:0; right:0; height:100vh;
+  width:min(560px,100vw); z-index:1050;
+  background:#fff; box-shadow:-4px 0 24px rgba(0,0,0,.15);
+  transform:translateX(100%); transition:transform .25s ease;
+  display:flex; flex-direction:column;">
+  <div style="display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid #dee2e6;flex-shrink:0;">
+    <h6 id="previewTitle" style="margin:0;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;"></h6>
+    <a href="#" id="previewExternalLink" target="_blank"
+       class="btn btn-xs btn-outline-secondary flex-shrink-0" title="Open in data collection">
+      <i class="fas fa-external-link-alt"></i>
+    </a>
+    <button id="previewSelectBtn" type="button" class="btn btn-xs btn-outline-primary flex-shrink-0">
+      <i class="fas fa-plus me-1"></i> Select
+    </button>
+    <button id="previewClose" type="button" class="btn-close flex-shrink-0" aria-label="Close"></button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:0;" id="previewBody">
+    <div id="previewLoading" class="p-4 text-center text-muted">
+      <i class="fas fa-circle-notch fa-spin me-2"></i>Loading…
+    </div>
+    <div id="previewContent" style="display:none;">
+      <div id="previewMeta" style="padding:.75rem 1rem;border-bottom:1px solid #dee2e6;font-size:.82rem;"></div>
+      <div id="previewReports" style="padding:1rem;font-size:.88rem;line-height:1.6;"></div>
+    </div>
+    <div id="previewError" class="p-4 text-danger" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+var currentUuid = null;
+
+document.getElementById('select-all').addEventListener('change', function() {
+  document.querySelectorAll('.event-check').forEach(cb => cb.checked = this.checked);
+  updateCount();
+});
+document.querySelectorAll('.event-check').forEach(cb => cb.addEventListener('change', updateCount));
+
+function updateCount() {
+  var n = document.querySelectorAll('.event-check:checked').length;
+  document.getElementById('selected-count').textContent = n + ' selected';
+}
+
+function validateSelection() {
+  var n = document.querySelectorAll('.event-check:checked').length;
+  if (n === 0) {
+    alert('Select at least one event to include in the briefing, or use "Blank briefing" to start from scratch.');
+    return false;
+  }
+  if (n > 8) {
+    return confirm(n + ' events selected. Keep briefings to 3-5 stories. Continue?');
+  }
+  return true;
+}
+
+// ── Preview panel ──────────────────────────────────────────────────────────────
+
+var panelEl = document.getElementById('previewPanel');
+
+function showPanel() { panelEl.style.transform = 'translateX(0)'; }
+function hidePanel() { panelEl.style.transform = 'translateX(100%)'; }
+
+document.getElementById('previewClose').addEventListener('click', hidePanel);
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') hidePanel();
+});
+
+document.addEventListener('click', function(e) {
+  var trigger = e.target.closest('.preview-trigger');
+  if (!trigger) return;
+  e.preventDefault();
+  openPreview(trigger.dataset.uuid, trigger.dataset.info);
+});
+
+function openPreview(uuid, info) {
+  currentUuid = uuid;
+
+  document.getElementById('previewTitle').textContent = info || uuid;
+  document.getElementById('previewExternalLink').href = '/collection/' + uuid;
+  document.getElementById('previewLoading').style.display = '';
+  document.getElementById('previewContent').style.display = 'none';
+  document.getElementById('previewError').style.display = 'none';
+  updateSelectBtn(uuid);
+
+  showPanel();
+
+  fetch('/api/event-preview', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+    },
+    body: JSON.stringify({uuid: uuid}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('previewLoading').style.display = 'none';
+    if (data.error) {
+      document.getElementById('previewError').textContent = 'Error: ' + data.error;
+      document.getElementById('previewError').style.display = '';
+      return;
+    }
+
+    var meta = document.getElementById('previewMeta');
+    var tags = (data.tags || []).map(function(t) {
+      return '<span class="badge bg-light text-dark border me-1" style="font-size:.7rem;">' + esc(t) + '</span>';
+    }).join('');
+    meta.innerHTML = '<span class="text-muted me-2">' + esc(data.date) + '</span>' + tags;
+
+    var reportsEl = document.getElementById('previewReports');
+    if (data.reports && data.reports.length) {
+      reportsEl.innerHTML = data.reports.map(function(r) {
+        var header = r.name ? '<div class="text-muted small fw-semibold mb-1">' + esc(r.name) + '</div>' : '';
+        return '<div class="mb-4">' + header +
+          '<div style="white-space:pre-wrap;">' + esc(r.content) + '</div></div>';
+      }).join('');
+    } else {
+      reportsEl.innerHTML = '<p class="text-muted">No report content attached to this event.</p>';
+    }
+
+    document.getElementById('previewContent').style.display = '';
+  })
+  .catch(function(err) {
+    document.getElementById('previewLoading').style.display = 'none';
+    document.getElementById('previewError').textContent = 'Request failed: ' + err;
+    document.getElementById('previewError').style.display = '';
+  });
+}
+
+function updateSelectBtn(uuid) {
+  var cb = document.querySelector('input[name="selected_events"][value="' + uuid + '"]');
+  var btn = document.getElementById('previewSelectBtn');
+  if (!cb) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  if (cb.checked) {
+    btn.innerHTML = '<i class="fas fa-check me-1"></i> Selected';
+    btn.classList.remove('btn-outline-primary');
+    btn.classList.add('btn-primary');
+  } else {
+    btn.innerHTML = '<i class="fas fa-plus me-1"></i> Select';
+    btn.classList.add('btn-outline-primary');
+    btn.classList.remove('btn-primary');
+  }
+}
+
+document.getElementById('previewSelectBtn').addEventListener('click', function() {
+  if (!currentUuid) return;
+  var cb = document.querySelector('input[name="selected_events"][value="' + currentUuid + '"]');
+  if (cb) {
+    cb.checked = !cb.checked;
+    updateCount();
+    updateSelectBtn(currentUuid);
+  }
+});
+
+// Sync select button when checkboxes change from the table
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('event-check') && currentUuid) {
+    updateSelectBtn(currentUuid);
+  }
+});
+
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

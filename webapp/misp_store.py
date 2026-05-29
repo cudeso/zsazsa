@@ -1,0 +1,3620 @@
+"""
+MISP storage backend for the zsazsa CTI program.
+
+One MISP event per stakeholder, PIR, and GIR. Fields are stored inside a
+custom MISP object (zsazsa-stakeholder, zsazsa-pir, zsazsa-gir) whose
+definition templates live in webapp/misp_objects/objects/. Focus points are
+kept as event-level text attributes with comment 'zsazsa:fp' so they can be
+added and deleted independently without rebuilding the whole object.
+
+PIR/GIR ownership is recorded by storing the stakeholder event UUID in the
+owner-uuid object attribute, with name and role denormalised so list views
+never need a second API call per row.
+
+List-valued scope fields (geographic-scope, sectors, threat-types,
+threat-actors, out-of-scope) are stored as JSON arrays inside a single text
+attribute.
+"""
+
+import json
+import logging
+import os
+import threading
+import time
+import urllib3
+from datetime import date, datetime
+from types import SimpleNamespace
+
+import config
+from pymisp import MISPAttribute, MISPEvent, MISPObject, PyMISP
+from webapp.collection_cache import AI_SUMMARY_PREFIX
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+logger = logging.getLogger(__name__)
+
+_FP_COMMENT = "zsazsa:fp"
+
+# PyMISP resolves templates as {_OBJECTS_PATH}/{name}/definition.json
+_OBJECTS_PATH = os.path.join(os.path.dirname(__file__), "misp_objects", "objects")
+
+# Galaxy UUIDs for scope fields
+GALAXY_COUNTRY = "84668357-5a8c-4bdd-9f0f-6b50b2aee4c1"
+GALAXY_TARGET_INFORMATION = "709ed29c-aa00-11e9-82cd-67ac1a6ee3bc"
+GALAXY_SECTOR = "e1bb134c-ae4d-11e7-8aa9-f78a37325439"
+GALAXY_THREAT_ACTOR = "698774c7-8022-42c4-917f-8d6e4f06ada3"
+GALAXY_MITRE_ATTACK = "d752161c-78f6-11e7-a0ea-bfa79b407ce4"
+
+# Fallback tag prefixes used when the cluster object has no tag_name attribute
+_GALAXY_TAG_PREFIX = {
+    GALAXY_COUNTRY: 'misp-galaxy:country',
+    GALAXY_TARGET_INFORMATION: 'misp-galaxy:target-information',
+    GALAXY_SECTOR: 'misp-galaxy:sector',
+    GALAXY_THREAT_ACTOR: 'misp-galaxy:threat-actor',
+    GALAXY_MITRE_ATTACK: 'misp-galaxy:mitre-attack-pattern',
+}
+
+# Used to identify and remove stale scope tags on event update
+_SCOPE_TAG_PREFIXES = (
+    'misp-galaxy:country=',
+    'misp-galaxy:target-information=',
+    'misp-galaxy:sector=',
+    'misp-galaxy:threat-actor=',
+)
+
+_galaxy_cache: dict = {}  # galaxy_uuid -> (timestamp, values_list, tag_map)
+_GALAXY_TTL = 600  # seconds
+
+
+# ── Connection ────────────────────────────────────────────────────────────────
+
+def _misp():
+    # Cache per Flask request via g; fall back to a fresh connection outside Flask (analyser).
+    try:
+        from flask import g
+        if not hasattr(g, '_webapp_misp'):
+            g._webapp_misp = PyMISP(
+                config.MISP_WEBAPP_URL,
+                config.MISP_WEBAPP_KEY,
+                config.MISP_WEBAPP_VERIFYCERT,
+                False,
+            )
+        return g._webapp_misp
+    except RuntimeError:
+        return PyMISP(
+            config.MISP_WEBAPP_URL,
+            config.MISP_WEBAPP_KEY,
+            config.MISP_WEBAPP_VERIFYCERT,
+            False,
+        )
+
+
+def _scraper_misp():
+    try:
+        from flask import g
+        if not hasattr(g, '_scraper_misp'):
+            g._scraper_misp = PyMISP(
+                config.MISP_URL,
+                config.MISP_KEY,
+                config.MISP_VERIFYCERT,
+                False,
+            )
+        return g._scraper_misp
+    except RuntimeError:
+        return PyMISP(
+            config.MISP_URL,
+            config.MISP_KEY,
+            config.MISP_VERIFYCERT,
+            False,
+        )
+
+
+# ── Galaxy cluster fetching ───────────────────────────────────────────────────
+
+def _fetch_galaxy_clusters(galaxy_uuid: str) -> list:
+    """Return a sorted list of cluster value strings for the given galaxy UUID.
+
+    Results are cached for _GALAXY_TTL seconds to avoid hammering MISP on
+    every form load. The cache also stores a value->tag_name mapping used
+    when writing galaxy scope fields as MISP tags.
+    """
+    now = time.time()
+    if galaxy_uuid in _galaxy_cache:
+        ts, values, _ = _galaxy_cache[galaxy_uuid]
+        if now - ts < _GALAXY_TTL:
+            return values
+    try:
+        m = _misp()
+        clusters = m.search_galaxy_clusters(galaxy_uuid, pythonify=True)
+        if isinstance(clusters, dict) or not clusters:
+            values = []
+            tag_map = {}
+        else:
+            prefix = _GALAXY_TAG_PREFIX.get(galaxy_uuid)
+            value_set = set()
+            tag_map = {}
+            for c in clusters:
+                if not hasattr(c, "value"):
+                    continue
+                value_set.add(c.value)
+                tag_name = getattr(c, "tag_name", None)
+                if not tag_name and prefix:
+                    tag_name = f'{prefix}="{c.value}"'
+                if tag_name:
+                    tag_map[c.value] = tag_name
+            values = sorted(value_set)
+        _galaxy_cache[galaxy_uuid] = (now, values, tag_map)
+        return values
+    except Exception as exc:
+        logger.warning("Failed to fetch galaxy %s: %s", galaxy_uuid, exc)
+        return []
+
+
+def _galaxy_tag_map(galaxy_uuid: str) -> dict:
+    """Return the value->tag_name mapping for a galaxy, fetching if needed."""
+    entry = _galaxy_cache.get(galaxy_uuid)
+    if entry:
+        ts, _, tag_map = entry
+        if time.time() - ts < _GALAXY_TTL:
+            return tag_map
+    _fetch_galaxy_clusters(galaxy_uuid)
+    entry = _galaxy_cache.get(galaxy_uuid)
+    return entry[2] if entry else {}
+
+
+def _build_scope_tags(data: dict) -> list:
+    """Return MISP galaxy tag strings for geographic_scope, sectors, threat_actors.
+
+    Lookup is case-insensitive so stored values normalised to a different case
+    still resolve to the correct tag.
+    """
+    tags = []
+    geo_maps_ci = [
+        {k.lower(): v for k, v in _galaxy_tag_map(GALAXY_COUNTRY).items()},
+        {k.lower(): v for k, v in _galaxy_tag_map(GALAXY_TARGET_INFORMATION).items()},
+    ]
+    for v in data.get("geographic_scope") or []:
+        for gm_ci in geo_maps_ci:
+            tag = gm_ci.get(v.lower())
+            if tag:
+                tags.append(tag)
+                break
+    sector_map_ci = {k.lower(): v for k, v in _galaxy_tag_map(GALAXY_SECTOR).items()}
+    for v in data.get("sectors") or []:
+        tag = sector_map_ci.get(v.lower())
+        if tag:
+            tags.append(tag)
+    ta_map_ci = {k.lower(): v for k, v in _galaxy_tag_map(GALAXY_THREAT_ACTOR).items()}
+    for v in data.get("threat_actors") or []:
+        tag = ta_map_ci.get(v.lower())
+        if tag:
+            tags.append(tag)
+    return tags
+
+
+def _ensure_tag(misp, tag_name: str):
+    """Create a MISP tag if it does not already exist."""
+    from pymisp import MISPTag
+    t = MISPTag()
+    t.from_dict(name=tag_name)
+    r = misp.add_tag(t)
+    if isinstance(r, dict) and "errors" in r:
+        logger.debug("add_tag %s: %s (may already exist)", tag_name, r["errors"])
+
+
+def _apply_scope_tags(misp, event_uuid: str, data: dict, new_info: str = None, _event=None):
+    """Apply scope galaxy tags using individual tag/untag API calls.
+
+    Calls misp.tag()/misp.untag() per tag which is the only reliable path
+    for galaxy tags. Falls back to creating missing tags via _ensure_tag.
+    Pass _event to avoid a redundant fetch when the caller already has it.
+    """
+    event = _event or misp.get_event(event_uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        logger.warning("_apply_scope_tags: could not fetch event %s", event_uuid)
+        return
+    if new_info:
+        misp.update_event({"Event": {"id": event.id, "info": new_info}})
+    current_scope = {t.name for t in (getattr(event, "tags", []) or [])
+                     if t.name.startswith(_SCOPE_TAG_PREFIXES)}
+    wanted = set(_build_scope_tags(data))
+    for name in current_scope - wanted:
+        r = misp.untag(event_uuid, name)
+        if isinstance(r, dict) and "errors" in r:
+            logger.warning("untag %s from %s: %s", name, event_uuid, r["errors"])
+    for name in wanted - current_scope:
+        r = misp.tag(event_uuid, name)
+        if isinstance(r, dict) and "errors" in r:
+            logger.warning("tag %s on %s failed, trying to create: %s", name, event_uuid, r["errors"])
+            _ensure_tag(misp, name)
+            r2 = misp.tag(event_uuid, name)
+            if isinstance(r2, dict) and "errors" in r2:
+                logger.error("tag %s still failed after create: %s", name, r2["errors"])
+
+
+def galaxy_countries() -> list:
+    return _fetch_galaxy_clusters(GALAXY_COUNTRY)
+
+
+def galaxy_target_information() -> list:
+    return _fetch_galaxy_clusters(GALAXY_TARGET_INFORMATION)
+
+
+def galaxy_geography() -> list:
+    """Geographic scope = Country galaxy ∪ Target Information galaxy.
+
+    Some event creators tag geographic targets via the Country galaxy and
+    others via the Target Information galaxy. We expose both as a single
+    combined list so a PIR scope catches either tagging style.
+    """
+    seen = set()
+    merged = []
+    for v in galaxy_countries() + galaxy_target_information():
+        if v and v not in seen:
+            seen.add(v)
+            merged.append(v)
+    return sorted(merged)
+
+
+def galaxy_sectors() -> list:
+    return _fetch_galaxy_clusters(GALAXY_SECTOR)
+
+
+def galaxy_threat_actors() -> list:
+    return _fetch_galaxy_clusters(GALAXY_THREAT_ACTOR)
+
+
+_MITRE_CACHE_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "mitre-attack-pattern.json")
+
+
+def galaxy_mitre_attack_patterns() -> list:
+    """Return MITRE ATT&CK technique names.
+
+    Primary source: data/mitre-attack-pattern.json (populate with scripts/fetch_mitre_galaxy.py).
+    Falls back to the MISP galaxy cluster query when the local file is missing or empty.
+    """
+    try:
+        path = os.path.normpath(_MITRE_CACHE_FILE)
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list) and data:
+                return data
+    except Exception as exc:
+        logger.warning("Could not load local MITRE cache: %s", exc)
+    return _fetch_galaxy_clusters(GALAXY_MITRE_ATTACK)
+
+
+
+# ── Connectivity tests ────────────────────────────────────────────────────────
+
+def _test_connection(url, key, verify):
+    try:
+        m = PyMISP(url, key, verify, False)
+        resp = m.misp_instance_version
+        if isinstance(resp, dict) and "version" in resp:
+            return {"ok": True, "version": resp["version"], "url": url}
+        return {"ok": False, "url": url, "error": "Unexpected response from server"}
+    except Exception as exc:
+        return {"ok": False, "url": url, "error": str(exc)}
+
+
+def test_scraper_misp():
+    return _test_connection(config.MISP_URL, config.MISP_KEY, config.MISP_VERIFYCERT)
+
+
+def test_webapp_misp():
+    return _test_connection(
+        config.MISP_WEBAPP_URL, config.MISP_WEBAPP_KEY, config.MISP_WEBAPP_VERIFYCERT
+    )
+
+
+# ── Low-level helpers ─────────────────────────────────────────────────────────
+
+def _make_event(info, tag=None, extra_tags=None):
+    e = MISPEvent()
+    e.info = info
+    e.distribution = 0
+    e.threat_level_id = 4
+    e.analysis = 2
+    if tag:
+        e.add_tag(tag, local=True)
+    for t in extra_tags or []:
+        # extra_tags are TLP, admiralty-scale, and similar federation metadata -
+        # intentionally not local so they sync to connected MISP instances.
+        e.add_tag(t)
+    return e
+
+
+def _tag_scraper_event_as_product_source(src_uuid: str, product_label: str) -> None:
+    """Tag a scraper source event as having been used to create a product.
+
+    Sets workflow:state="ongoing" (so the analyser skips reprocessing) and adds
+    a zsazsa:product tag so the event is flagged in the collection view.
+    """
+    if not src_uuid:
+        return
+    try:
+        scraper = _scraper_misp()
+        event = scraper.get_event(src_uuid, pythonify=True)
+        if not event or isinstance(event, dict):
+            return
+        for tag in list(getattr(event, "tags", []) or []):
+            if tag.name.startswith('workflow:state='):
+                try:
+                    scraper.untag(src_uuid, tag.name)
+                except Exception:
+                    pass
+        scraper.tag(src_uuid, 'workflow:state="ongoing"', local=True)
+        scraper.tag(src_uuid, f'zsazsa:product="{product_label}"', local=True)
+    except Exception as exc:
+        logger.warning("Could not tag scraper source event %s: %s", src_uuid, exc)
+
+
+def _build_obj(name):
+    """Create a MISPObject, loading the local template if found.
+
+    strict=False allows creation even when the template path is unreachable,
+    which would otherwise raise UnknownMISPObjectError.
+    """
+    return MISPObject(name, misp_objects_path_custom=_OBJECTS_PATH, strict=False)
+
+
+def _oa(obj, relation, value):
+    """Add a text attribute to a MISPObject, skipping empty/None values.
+
+    Always passes type='text' explicitly so attribute creation succeeds even
+    when the template file cannot be read.
+    """
+    if value in (None, "", [], "[]"):
+        return
+    obj.add_attribute(relation, value=str(value), type="text", disable_correlation=True)
+
+
+def _oa_json(obj, relation, lst):
+    """Add a list field as a JSON-encoded text attribute."""
+    if isinstance(lst, str):
+        lst = [lst] if lst else []
+    if lst:
+        obj.add_attribute(relation, value=json.dumps(lst), type="text", disable_correlation=True)
+
+
+def _obj_attr(obj, relation):
+    if obj is None:
+        return None
+    attrs = obj.get_attributes_by_relation(relation)
+    return attrs[0].value if attrs else None
+
+
+def _get_obj(event, name):
+    for o in event.objects:
+        if o.name == name:
+            return o
+    return None
+
+
+def _get_fp_attrs(event):
+    return [a for a in event.attributes if a.comment == _FP_COMMENT]
+
+
+def _parse_date(s):
+    try:
+        return date.fromisoformat(s) if s else None
+    except ValueError:
+        return None
+
+
+def _parse_dt(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d") if s else None
+    except ValueError:
+        return None
+
+
+def _check(result, label="MISP"):
+    if isinstance(result, dict) and "errors" in result:
+        raise RuntimeError(f"{label}: {result['errors']}")
+    return result
+
+
+def _json_list(raw):
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
+def _json_list_or_str(raw):
+    """Like _json_list but treats a bare string as a single-item list (migration aid)."""
+    if not raw:
+        return []
+    try:
+        result = json.loads(raw)
+        return result if isinstance(result, list) else ([str(result)] if result else [])
+    except Exception:
+        return [raw] if raw.strip() else []
+
+
+def _json_dict(raw):
+    if not raw:
+        return {}
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, dict) else {}
+    except Exception:
+        return {}
+
+
+SUBSCRIPTION_MODES = ["automated", "after-approval"]
+DEFAULT_SUBSCRIPTION_MODE = "after-approval"
+
+
+def _event_ref(event):
+    if isinstance(event, dict):
+        ev = event.get("Event", event)
+        return ev.get("id") or ev.get("uuid")
+    return getattr(event, "id", None) or getattr(event, "uuid", None)
+
+
+def _event_uuid(event):
+    if isinstance(event, dict):
+        ev = event.get("Event", event)
+        return ev.get("uuid")
+    return getattr(event, "uuid", None)
+
+
+def _event_has_tag(event, tag_name: str) -> bool:
+    return tag_name in {
+        tag.name for tag in (getattr(event, "tags", []) or []) if getattr(tag, "name", "")
+    }
+
+
+def _stakeholder_event(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return None
+    if not _event_has_tag(event, config.TAG_STAKEHOLDER):
+        logger.warning("Event %s is not tagged as a stakeholder", uuid)
+        return None
+    if _get_obj(event, "zsazsa-stakeholder") is None:
+        logger.warning("Event %s is missing stakeholder object", uuid)
+        return None
+    return event
+
+
+def _replace_focus_points(req_uuid, focus_points):
+    if not req_uuid:
+        return
+    misp = _misp()
+    event = misp.get_event(req_uuid, pythonify=True)
+    if isinstance(event, dict):
+        return
+    for old in _get_fp_attrs(event):
+        misp.delete_attribute(old.id)
+    for fp in focus_points or []:
+        category = (fp.get("category") or "").strip()
+        value = (fp.get("value") or "").strip()
+        notes = (fp.get("notes") or "").strip()
+        if category and value:
+            add_focus_point(req_uuid, category, value, notes)
+
+
+# ── Namespace builders ────────────────────────────────────────────────────────
+
+def _fp_ns(attr):
+    parts = attr.value.split("|", 2)
+    return SimpleNamespace(
+        id=attr.uuid,
+        uuid=attr.uuid,
+        category=parts[0] if len(parts) > 0 else "",
+        value=parts[1] if len(parts) > 1 else attr.value,
+        notes=parts[2] if len(parts) > 2 else "",
+    )
+
+
+def _stakeholder_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-stakeholder")
+    event_date = event.date
+    created_at = _parse_dt(event_date.isoformat() if event_date else None)
+    contacts = _json_list(_obj_attr(obj, "contacts"))
+    if not contacts:
+        # migrate old single-value fields into the new structure
+        old_email = _obj_attr(obj, "email") or ""
+        old_contact = _obj_attr(obj, "contact") or ""
+        if old_email:
+            contacts.append({"type": "Email", "value": old_email, "preferred": True})
+        if old_contact:
+            contacts.append({"type": "Other", "value": old_contact, "preferred": False})
+    # derive convenience email for backward-compat display (e.g. distribution picker)
+    preferred = next((c for c in contacts if c.get("preferred")), None)
+    email_contact = next((c for c in contacts if c.get("type") == "Email"), None)
+    display_email = (preferred or email_contact or {}).get("value", "")
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        name=_obj_attr(obj, "name") or "",
+        role=_obj_attr(obj, "role") or "",
+        organization=_obj_attr(obj, "organization") or "",
+        stakeholder_type=_obj_attr(obj, "stakeholder-type") or "External",
+        contacts=contacts,
+        email=display_email,
+        tlp_clearance=_obj_attr(obj, "tlp-clearance") or "amber",
+        products=_json_list(_obj_attr(obj, "products")),
+        product_modes=_json_dict(_obj_attr(obj, "product-modes")),
+        notification_channels=_json_list(_obj_attr(obj, "notification-channels")),
+        notes=_obj_attr(obj, "notes") or "",
+        created_at=created_at,
+    )
+
+
+def _pir_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-pir")
+
+    owner_uuid = _obj_attr(obj, "owner-uuid") or ""
+    owner_name = _obj_attr(obj, "owner-name") or ""
+    owner_role = _obj_attr(obj, "owner-role") or ""
+
+    owner_stakeholder = None
+    if owner_uuid:
+        owner_stakeholder = SimpleNamespace(
+            id=owner_uuid, uuid=owner_uuid, name=owner_name, role=owner_role,
+        )
+
+    fps = [_fp_ns(a) for a in _get_fp_attrs(event)]
+    event_date = event.date
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        pir_id=_obj_attr(obj, "pir-id") or "",
+        question=_obj_attr(obj, "question") or "",
+        context=_obj_attr(obj, "context") or "",
+        intel_level=_json_list_or_str(_obj_attr(obj, "intel-level")),
+        owner_id=owner_uuid,
+        owner_uuid=owner_uuid,
+        owner_name=owner_name,
+        owner_stakeholder=owner_stakeholder,
+        owner_display=owner_name,
+        priority=_obj_attr(obj, "priority") or "Should have",
+        status=_obj_attr(obj, "status") or "Pending",
+        time_sensitivity=_obj_attr(obj, "time-sensitivity") or "",
+        geographic_scope=_json_list(_obj_attr(obj, "geographic-scope")),
+        time_frame=_obj_attr(obj, "time-frame") or "",
+        threat_types=_json_list(_obj_attr(obj, "threat-types")),
+        threat_actors=_json_list(_obj_attr(obj, "threat-actors")),
+        sectors=_json_list(_obj_attr(obj, "sectors")),
+        out_of_scope=_json_list(_obj_attr(obj, "out-of-scope")),
+        technology=_json_list(_obj_attr(obj, "technology")),
+        vendor=_json_list(_obj_attr(obj, "vendor")),
+        incident=_json_list(_obj_attr(obj, "incident")),
+        campaign=_json_list(_obj_attr(obj, "campaign")),
+        collection_sources=_json_list(_obj_attr(obj, "collection-sources")),
+        output_format=_json_list(_obj_attr(obj, "output-format")),
+        distribution=_json_list(_obj_attr(obj, "distribution")),
+        resolution_note=_obj_attr(obj, "resolution-note") or "",
+        decision_supported=_obj_attr(obj, "decision-supported") or "",
+        decision_maker=_json_list_or_str(_obj_attr(obj, "decision-maker")),
+        consequence=_json_list_or_str(_obj_attr(obj, "consequence")),
+        deadline=_obj_attr(obj, "deadline") or "",
+        priority_justification=_obj_attr(obj, "priority-justification") or "",
+        sub_questions=_json_list(_obj_attr(obj, "sub-questions")),
+        next_review=_parse_date(_obj_attr(obj, "next-review")),
+        intake_status=_obj_attr(obj, "intake-status") or "submitted",
+        acknowledged_at=_obj_attr(obj, "acknowledged-at") or "",
+        triaged_at=_obj_attr(obj, "triaged-at") or "",
+        decision_at=_obj_attr(obj, "decision-at") or "",
+        rejection_reason=_obj_attr(obj, "rejection-reason") or "",
+        deferral_reason=_obj_attr(obj, "deferral-reason") or "",
+        linked_pir_uuid=_obj_attr(obj, "linked-pir-uuid") or "",
+        mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
+        triage_checklist=_json_list(_obj_attr(obj, "triage-checklist")),
+        created_at=_parse_dt(event_date.isoformat() if event_date else None),
+        focus_points=fps,
+    )
+
+
+def _gir_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-gir")
+
+    owner_uuid = _obj_attr(obj, "owner-uuid") or ""
+    owner_name = _obj_attr(obj, "owner-name") or ""
+    owner_role = _obj_attr(obj, "owner-role") or ""
+
+    owner_stakeholder = None
+    if owner_uuid:
+        owner_stakeholder = SimpleNamespace(
+            id=owner_uuid, uuid=owner_uuid, name=owner_name, role=owner_role,
+        )
+
+    fps = [_fp_ns(a) for a in _get_fp_attrs(event)]
+    event_date = event.date
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        gir_id=_obj_attr(obj, "gir-id") or "",
+        topic=_obj_attr(obj, "topic") or "",
+        description=_obj_attr(obj, "description") or "",
+        owner_id=owner_uuid,
+        owner_uuid=owner_uuid,
+        owner_name=owner_name,
+        owner_stakeholder=owner_stakeholder,
+        owner_display=owner_name,
+        status=_obj_attr(obj, "status") or "Active",
+        review_cycle=_obj_attr(obj, "review-cycle") or "Quarterly",
+        collection_sources=_json_list(_obj_attr(obj, "collection-sources")),
+        geographic_scope=_json_list(_obj_attr(obj, "geographic-scope")),
+        sectors=_json_list(_obj_attr(obj, "sectors")),
+        threat_types=_json_list(_obj_attr(obj, "threat-types")),
+        threat_actors=_json_list(_obj_attr(obj, "threat-actors")),
+        out_of_scope=_json_list(_obj_attr(obj, "out-of-scope")),
+        technology=_json_list(_obj_attr(obj, "technology")),
+        vendor=_json_list(_obj_attr(obj, "vendor")),
+        incident=_json_list(_obj_attr(obj, "incident")),
+        campaign=_json_list(_obj_attr(obj, "campaign")),
+        output_format=_json_list(_obj_attr(obj, "output-format")),
+        distribution=_json_list(_obj_attr(obj, "distribution")),
+        deadline=_obj_attr(obj, "deadline") or "",
+        priority_justification=_obj_attr(obj, "priority-justification") or "",
+        sub_questions=_json_list(_obj_attr(obj, "sub-questions")),
+        next_review=_parse_date(_obj_attr(obj, "next-review")),
+        intel_level=_json_list_or_str(_obj_attr(obj, "intel-level")),
+        mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
+        created_at=_parse_dt(event_date.isoformat() if event_date else None),
+        focus_points=fps,
+    )
+
+
+# ── Object builders ───────────────────────────────────────────────────────────
+
+def _stakeholder_obj(data):
+    obj = _build_obj("zsazsa-stakeholder")
+    _oa(obj, "name", data.get("name"))
+    _oa(obj, "role", data.get("role"))
+    _oa(obj, "organization", data.get("organization"))
+    _oa(obj, "stakeholder-type", data.get("stakeholder_type", "External"))
+    _oa_json(obj, "contacts", data.get("contacts", []))
+    _oa(obj, "tlp-clearance", data.get("tlp_clearance", "amber"))
+    _oa_json(obj, "products", data.get("products", []))
+    _oa_json(obj, "product-modes", data.get("product_modes", {}))
+    _oa_json(obj, "notification-channels", data.get("notification_channels", []))
+    _oa(obj, "notes", data.get("notes"))
+    return obj
+
+
+def _pir_obj(data):
+    obj = _build_obj("zsazsa-pir")
+    _oa(obj, "pir-id", data.get("pir_id"))
+    _oa(obj, "question", data.get("question"))
+    _oa(obj, "context", data.get("context"))
+    _oa_json(obj, "intel-level", data.get("intel_level", []))
+    _oa(obj, "owner-uuid", data.get("owner_uuid"))
+    _oa(obj, "owner-name", data.get("owner_name"))
+    _oa(obj, "owner-role", data.get("owner_role"))
+    _oa(obj, "priority", data.get("priority", "Should have"))
+    _oa(obj, "status", data.get("status", "Pending"))
+    _oa(obj, "time-sensitivity", data.get("time_sensitivity"))
+    _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
+    _oa(obj, "time-frame", data.get("time_frame"))
+    _oa_json(obj, "threat-types", data.get("threat_types", []))
+    _oa_json(obj, "threat-actors", data.get("threat_actors", []))
+    _oa_json(obj, "sectors", data.get("sectors", []))
+    _oa_json(obj, "out-of-scope", data.get("out_of_scope", []))
+    _oa_json(obj, "technology", data.get("technology", []))
+    _oa_json(obj, "vendor", data.get("vendor", []))
+    _oa_json(obj, "incident", data.get("incident", []))
+    _oa_json(obj, "campaign", data.get("campaign", []))
+    _oa_json(obj, "collection-sources", data.get("collection_sources", []))
+    _oa_json(obj, "output-format", data.get("output_format", []))
+    _oa_json(obj, "distribution", data.get("distribution", []))
+    _oa(obj, "resolution-note", data.get("resolution_note"))
+    _oa(obj, "decision-supported", data.get("decision_supported"))
+    _oa_json(obj, "decision-maker", data.get("decision_maker", []))
+    _oa_json(obj, "consequence", data.get("consequence", []))
+    _oa(obj, "deadline", data.get("deadline"))
+    _oa(obj, "priority-justification", data.get("priority_justification"))
+    _oa_json(obj, "sub-questions", data.get("sub_questions", []))
+    _oa(obj, "next-review", data.get("next_review"))
+    _oa(obj, "intake-status", data.get("intake_status", "submitted"))
+    _oa(obj, "acknowledged-at", data.get("acknowledged_at"))
+    _oa(obj, "triaged-at", data.get("triaged_at"))
+    _oa(obj, "decision-at", data.get("decision_at"))
+    _oa(obj, "rejection-reason", data.get("rejection_reason"))
+    _oa(obj, "deferral-reason", data.get("deferral_reason"))
+    _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
+    _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
+    _oa_json(obj, "triage-checklist", data.get("triage_checklist", []))
+    return obj
+
+
+def _gir_obj(data):
+    obj = _build_obj("zsazsa-gir")
+    _oa(obj, "gir-id", data.get("gir_id"))
+    _oa(obj, "topic", data.get("topic"))
+    _oa(obj, "description", data.get("description"))
+    _oa(obj, "owner-uuid", data.get("owner_uuid"))
+    _oa(obj, "owner-name", data.get("owner_name"))
+    _oa(obj, "owner-role", data.get("owner_role"))
+    _oa(obj, "status", data.get("status", "Active"))
+    _oa(obj, "review-cycle", data.get("review_cycle", "Quarterly"))
+    _oa_json(obj, "collection-sources", data.get("collection_sources", []))
+    _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
+    _oa_json(obj, "sectors", data.get("sectors", []))
+    _oa_json(obj, "threat-types", data.get("threat_types", []))
+    _oa_json(obj, "threat-actors", data.get("threat_actors", []))
+    _oa_json(obj, "out-of-scope", data.get("out_of_scope", []))
+    _oa_json(obj, "technology", data.get("technology", []))
+    _oa_json(obj, "vendor", data.get("vendor", []))
+    _oa_json(obj, "incident", data.get("incident", []))
+    _oa_json(obj, "campaign", data.get("campaign", []))
+    _oa_json(obj, "output-format", data.get("output_format", []))
+    _oa_json(obj, "distribution", data.get("distribution", []))
+    _oa(obj, "deadline", data.get("deadline"))
+    _oa(obj, "priority-justification", data.get("priority_justification"))
+    _oa_json(obj, "sub-questions", data.get("sub_questions", []))
+    _oa(obj, "next-review", data.get("next_review"))
+    _oa_json(obj, "intel-level", data.get("intel_level", []))
+    _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
+    return obj
+
+
+# ── Sequential ID generation ──────────────────────────────────────────────────
+
+_id_lock = threading.Lock()
+
+
+def _next_id(tag, prefix):
+    # Known limitation: the sequence is derived by scanning event info titles for
+    # the highest existing number. If a title is manually edited or the prefix
+    # format changes, the scan may produce a duplicate or restart from 001.
+    with _id_lock:
+        misp = _misp()
+        events = misp.search(tags=[tag], metadata=True, pythonify=True)
+        if not events or isinstance(events, dict):
+            return f"{prefix}-001"
+        max_n = 0
+        for e in events:
+            for token in (e.info or "").split():
+                clean = token.rstrip(":")
+                if clean.startswith(prefix + "-"):
+                    try:
+                        max_n = max(max_n, int(clean[len(prefix) + 1:]))
+                    except ValueError:
+                        pass
+        return f"{prefix}-{max_n + 1:03d}"
+
+
+def next_pir_id():
+    return _next_id(config.TAG_PIR, "PIR")
+
+
+def next_gir_id():
+    return _next_id(config.TAG_GIR, "GIR")
+
+
+# ── Stakeholder CRUD ──────────────────────────────────────────────────────────
+
+def list_stakeholders():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_STAKEHOLDER], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_stakeholder_ns(e) for e in events]
+    result.sort(key=lambda s: s.name.lower())
+    return result
+
+
+def get_stakeholder(uuid):
+    event = _stakeholder_event(uuid)
+    if event is None:
+        return None
+    return _stakeholder_ns(event)
+
+
+def create_stakeholder(data):
+    misp = _misp()
+    event = _make_event(f"[zsazsa:stakeholder] {data['name']}", config.TAG_STAKEHOLDER)
+    result = _check(misp.add_event(event, pythonify=True), "create stakeholder")
+    _check(misp.add_object(_event_ref(result), _stakeholder_obj(data)), "add stakeholder object")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create stakeholder: missing UUID in MISP response")
+    return uuid
+
+
+def update_stakeholder(uuid, data):
+    """Update stakeholder fields. If the MISP event was deleted, recreates it.
+
+    Returns the UUID to use for subsequent redirects (may differ if recreated).
+    """
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        logger.warning("Stakeholder event %s not found; recreating", uuid)
+        return create_stakeholder(data)
+    if not _event_has_tag(event, config.TAG_STAKEHOLDER) or _get_obj(event, "zsazsa-stakeholder") is None:
+        raise ValueError(f"Event {uuid} is not a stakeholder")
+    old = _get_obj(event, "zsazsa-stakeholder")
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _stakeholder_obj(data)), "update stakeholder object")
+    misp.update_event({"Event": {"id": event.id, "info": f"[zsazsa:stakeholder] {data['name']}"}})
+    return uuid
+
+
+def delete_stakeholder(uuid):
+    misp = _misp()
+    if _stakeholder_event(uuid) is None:
+        raise ValueError(f"Stakeholder {uuid} not found")
+    misp.delete_event(uuid)
+
+
+# ── PIR CRUD ──────────────────────────────────────────────────────────────────
+
+def list_pirs():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_PIR], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_pir_ns(e) for e in events]
+    result.sort(key=lambda p: p.pir_id)
+    return result
+
+
+def get_pir(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        return None
+    return _pir_ns(event)
+
+
+def create_pir(data):
+    misp = _misp()
+    pir_id = data["pir_id"]
+    if "intake_status" not in data:
+        data = dict(data, intake_status="submitted")
+    event = _make_event(f"[zsazsa:pir] {pir_id}", config.TAG_PIR)
+    for t in _build_scope_tags(data):
+        event.add_tag(t)
+    result = _check(misp.add_event(event, pythonify=True), "create PIR")
+    _check(misp.add_object(_event_ref(result), _pir_obj(data)), "add PIR object")
+    req_uuid = _event_uuid(result)
+    if not req_uuid:
+        raise RuntimeError("create PIR: missing UUID in MISP response")
+    _replace_focus_points(req_uuid, data.get("focus_points", []))
+    return req_uuid
+
+
+def update_pir(uuid, data):
+    """Update PIR fields. If the MISP event was deleted, recreates it.
+
+    Returns the UUID to redirect to (may be a new UUID if the event was gone).
+    """
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        logger.warning("PIR event %s not found; recreating with pir_id %s", uuid, data.get("pir_id"))
+        return create_pir(data)
+    old = _get_obj(event, "zsazsa-pir")
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _pir_obj(data)), "update PIR object")
+    _replace_focus_points(uuid, data.get("focus_points", []))
+    _apply_scope_tags(misp, uuid, data, new_info=f"[zsazsa:pir] {data['pir_id']}")
+    return uuid
+
+
+def delete_pir(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+def update_pir_intake(uuid, intake_status, reason=None, linked_pir_uuid=None, checklist=None):
+    """Update intake workflow fields without touching content fields.
+
+    Focus points are preserved explicitly because _pir_data_from_ns does not carry them.
+    """
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"PIR event {uuid} not found")
+    pir = _pir_ns(event)
+    data = _pir_data_from_ns(pir)
+    data["focus_points"] = [
+        {"category": fp.category, "value": fp.value, "notes": fp.notes}
+        for fp in pir.focus_points
+    ]
+    today = date.today().isoformat()
+    data["intake_status"] = intake_status
+    if intake_status == "acknowledged":
+        data["acknowledged_at"] = today
+    elif intake_status == "triaged":
+        data["triaged_at"] = today
+    elif intake_status in ("approved", "rejected", "deferred", "merged"):
+        data["decision_at"] = today
+        if intake_status == "approved":
+            data["status"] = "Active"
+        elif intake_status == "merged":
+            data["status"] = "Retired"
+    if reason:
+        if intake_status == "rejected":
+            data["rejection_reason"] = reason
+        elif intake_status == "deferred":
+            data["deferral_reason"] = reason
+    if linked_pir_uuid:
+        data["linked_pir_uuid"] = linked_pir_uuid
+    if checklist is not None:
+        data["triage_checklist"] = checklist
+    return update_pir(uuid, data)
+
+
+# ── GIR CRUD ──────────────────────────────────────────────────────────────────
+
+def list_girs():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_GIR], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_gir_ns(e) for e in events]
+    result.sort(key=lambda g: g.gir_id)
+    return result
+
+
+def get_gir(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        return None
+    return _gir_ns(event)
+
+
+def create_gir(data):
+    misp = _misp()
+    gir_id = data["gir_id"]
+    event = _make_event(f"[zsazsa:gir] {gir_id}: {data.get('topic', '')}", config.TAG_GIR)
+    for t in _build_scope_tags(data):
+        event.add_tag(t)
+    result = _check(misp.add_event(event, pythonify=True), "create GIR")
+    _check(misp.add_object(_event_ref(result), _gir_obj(data)), "add GIR object")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create GIR: missing UUID in MISP response")
+    return uuid
+
+
+def update_gir(uuid, data):
+    """Update GIR fields. If the MISP event was deleted, recreates it.
+
+    Returns the UUID to redirect to (may be a new UUID if the event was gone).
+
+    Note: unlike update_pir(), this function does not call _replace_focus_points().
+    GIR focus points are stored as event-level attributes and are intentionally
+    preserved across saves. Calling _replace_focus_points() here would require
+    re-submitting all focus point values on every GIR edit form, which is not
+    the intended workflow.
+    """
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        logger.warning("GIR event %s not found; recreating with gir_id %s", uuid, data.get("gir_id"))
+        return create_gir(data)
+    old = _get_obj(event, "zsazsa-gir")
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _gir_obj(data)), "update GIR object")
+    topic = data.get("topic", "")
+    gir_id = data.get("gir_id", "")
+    _apply_scope_tags(misp, uuid, data, new_info=f"[zsazsa:gir] {gir_id}: {topic}")
+    return uuid
+
+
+def delete_gir(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+# ── Focus points ──────────────────────────────────────────────────────────────
+
+def sync_scope_tags_from_store(event_uuid: str):
+    """Re-apply scope galaxy tags from the current PIR/GIR object state.
+
+    Called after inline scope edits (focus point add/delete/sync) so galaxy
+    tags stay in sync when the user doesn't go through the full edit form.
+    """
+    misp = _misp()
+    event = misp.get_event(event_uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        logger.warning("sync_scope_tags_from_store: could not fetch event %s", event_uuid)
+        return
+    pir_obj = _get_obj(event, "zsazsa-pir")
+    gir_obj = _get_obj(event, "zsazsa-gir")
+    obj = pir_obj or gir_obj
+    if obj is None:
+        return
+    data = {
+        "geographic_scope": _json_list(_obj_attr(obj, "geographic-scope")),
+        "sectors": _json_list(_obj_attr(obj, "sectors")),
+        "threat_actors": _json_list(_obj_attr(obj, "threat-actors")),
+    }
+    _apply_scope_tags(misp, event_uuid, data, _event=event)
+
+
+def add_focus_point(req_uuid, category, value, notes=""):
+    misp = _misp()
+    fp_value = f"{category}|{value}|{notes}" if notes else f"{category}|{value}"
+    attr = {
+        "type": "text",
+        "category": "Other",
+        "value": fp_value,
+        "comment": _FP_COMMENT,
+        "to_ids": False,
+    }
+    result = _check(misp.add_attribute(req_uuid, attr, pythonify=True), "add focus point")
+    return result.uuid
+
+
+def delete_focus_point(attr_uuid):
+    misp = _misp()
+    misp.delete_attribute(attr_uuid)
+
+
+# Map a focus point category back to the PIR/GIR object scope relation.
+_FP_CATEGORY_TO_RELATION = {
+    "Geography": "geographic-scope",
+    "Sector": "sectors",
+    "Threat Actor": "threat-actors",
+    "Threat Type": "threat-types",
+}
+_RELATION_TO_FP_CATEGORY = {v: k for k, v in _FP_CATEGORY_TO_RELATION.items()}
+
+# Categories backed by a MISP galaxy.
+GALAXY_FP_CATEGORIES = {"Geography", "Sector", "Threat Actor"}
+
+
+def _pir_data_from_ns(ns):
+    return {
+        "pir_id": ns.pir_id, "question": ns.question, "context": ns.context,
+        "intel_level": ns.intel_level, "owner_uuid": ns.owner_uuid,
+        "owner_name": ns.owner_name, "owner_role": getattr(ns, "owner_role", "") or "",
+        "priority": ns.priority, "status": ns.status,
+        "time_sensitivity": ns.time_sensitivity,
+        "geographic_scope": list(ns.geographic_scope),
+        "time_frame": ns.time_frame,
+        "threat_types": list(ns.threat_types),
+        "threat_actors": list(ns.threat_actors),
+        "sectors": list(ns.sectors),
+        "out_of_scope": list(ns.out_of_scope),
+        "technology": list(getattr(ns, "technology", []) or []),
+        "vendor": list(getattr(ns, "vendor", []) or []),
+        "incident": list(getattr(ns, "incident", []) or []),
+        "campaign": list(getattr(ns, "campaign", []) or []),
+        "collection_sources": list(ns.collection_sources),
+        "output_format": list(ns.output_format) if isinstance(ns.output_format, list) else ([ns.output_format] if ns.output_format else []),
+        "distribution": list(ns.distribution),
+        "resolution_note": ns.resolution_note,
+        "decision_supported": ns.decision_supported,
+        "decision_maker": ns.decision_maker,
+        "consequence": ns.consequence,
+        "deadline": getattr(ns, "deadline", "") or "",
+        "priority_justification": getattr(ns, "priority_justification", "") or "",
+        "sub_questions": list(getattr(ns, "sub_questions", []) or []),
+        "next_review": ns.next_review.isoformat() if ns.next_review else "",
+        "intake_status": getattr(ns, "intake_status", "submitted") or "submitted",
+        "acknowledged_at": getattr(ns, "acknowledged_at", "") or "",
+        "triaged_at": getattr(ns, "triaged_at", "") or "",
+        "decision_at": getattr(ns, "decision_at", "") or "",
+        "rejection_reason": getattr(ns, "rejection_reason", "") or "",
+        "deferral_reason": getattr(ns, "deferral_reason", "") or "",
+        "linked_pir_uuid": getattr(ns, "linked_pir_uuid", "") or "",
+        "triage_checklist": list(getattr(ns, "triage_checklist", []) or []),
+        "mitre_attack_techniques": list(getattr(ns, "mitre_attack_techniques", []) or []),
+    }
+
+
+def _gir_data_from_ns(ns):
+    return {
+        "gir_id": ns.gir_id, "topic": ns.topic, "description": ns.description,
+        "owner_uuid": ns.owner_uuid, "owner_name": ns.owner_name,
+        "owner_role": getattr(ns, "owner_role", "") or "",
+        "status": ns.status, "review_cycle": ns.review_cycle,
+        "collection_sources": list(ns.collection_sources),
+        "geographic_scope": list(ns.geographic_scope),
+        "sectors": list(ns.sectors),
+        "threat_types": list(ns.threat_types),
+        "threat_actors": list(ns.threat_actors),
+        "out_of_scope": list(ns.out_of_scope),
+        "technology": list(getattr(ns, "technology", []) or []),
+        "vendor": list(getattr(ns, "vendor", []) or []),
+        "incident": list(getattr(ns, "incident", []) or []),
+        "campaign": list(getattr(ns, "campaign", []) or []),
+        "output_format": list(getattr(ns, "output_format", []) or []),
+        "distribution": list(getattr(ns, "distribution", []) or []),
+        "deadline": getattr(ns, "deadline", "") or "",
+        "priority_justification": getattr(ns, "priority_justification", "") or "",
+        "sub_questions": list(getattr(ns, "sub_questions", []) or []),
+        "next_review": ns.next_review.isoformat() if ns.next_review else "",
+        "intel_level": ns.intel_level,
+        "mitre_attack_techniques": list(getattr(ns, "mitre_attack_techniques", []) or []),
+    }
+
+
+def pir_to_data(pir) -> dict:
+    """Return a full PIR payload dict suitable for update_pir()."""
+    return _pir_data_from_ns(pir)
+
+
+def gir_to_data(gir) -> dict:
+    """Return a full GIR payload dict suitable for update_gir()."""
+    return _gir_data_from_ns(gir)
+
+
+def _rewrite_parent_scope(misp, event, relation, new_values):
+    """Rewrite the scope list ``relation`` on the parent PIR/GIR object
+    of ``event`` to ``new_values``. Re-fetches afterwards so callers can
+    keep working with a consistent view."""
+    pir_obj = _get_obj(event, "zsazsa-pir")
+    gir_obj = _get_obj(event, "zsazsa-gir")
+    field = relation.replace("-", "_")
+    if pir_obj:
+        data = _pir_data_from_ns(_pir_ns(event))
+        data[field] = list(new_values)
+        misp.delete_object(pir_obj.id)
+        _check(misp.add_object(_event_ref(event), _pir_obj(data)), "update PIR scope")
+    elif gir_obj:
+        data = _gir_data_from_ns(_gir_ns(event))
+        data[field] = list(new_values)
+        misp.delete_object(gir_obj.id)
+        _check(misp.add_object(_event_ref(event), _gir_obj(data)), "update GIR scope")
+
+
+def remove_focus_point_with_scope(req_uuid, attr_uuid):
+    """Delete a focus point attribute and also drop its value from the
+    matching scope list on the parent PIR/GIR object."""
+    misp = _misp()
+    event = misp.get_event(req_uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        delete_focus_point(attr_uuid)
+        return
+
+    fp_attr = next((a for a in event.attributes if a.uuid == attr_uuid), None)
+    if fp_attr is None:
+        return
+
+    category, value, _ = (fp_attr.value.split("|", 2) + ["", "", ""])[:3]
+    relation = _FP_CATEGORY_TO_RELATION.get(category)
+
+    if relation:
+        field = relation.replace("-", "_")
+        pir_obj = _get_obj(event, "zsazsa-pir")
+        gir_obj = _get_obj(event, "zsazsa-gir")
+        if pir_obj or gir_obj:
+            current = (_pir_ns(event) if pir_obj else _gir_ns(event))
+            new_values = [v for v in getattr(current, field) if v != value]
+            _rewrite_parent_scope(misp, event, relation, new_values)
+
+    misp.delete_attribute(attr_uuid)
+
+
+def sync_focus_points_category(req_uuid, category, values, notes=""):
+    """Replace all focus points of ``category`` for the PIR/GIR with
+    ``values`` (deduplicated, trimmed) and align the parent scope list.
+    Use for galaxy-backed categories where the user picks from a
+    multi-select."""
+    misp = _misp()
+    event = misp.get_event(req_uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return
+
+    cleaned = []
+    seen = set()
+    for v in values:
+        v = (v or "").strip()
+        key = v.lower()
+        if not v or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(v)
+
+    for a in _get_fp_attrs(event):
+        ns = _fp_ns(a)
+        if ns.category == category:
+            misp.delete_attribute(a.uuid)
+
+    for v in cleaned:
+        add_focus_point(req_uuid, category, v, notes)
+
+    relation = _FP_CATEGORY_TO_RELATION.get(category)
+    if relation:
+        # Re-fetch so the scope rewrite runs against the updated event.
+        event = misp.get_event(req_uuid, pythonify=True)
+        if not isinstance(event, dict):
+            _rewrite_parent_scope(misp, event, relation, cleaned)
+
+
+def add_focus_point_with_scope(req_uuid, category, value, notes=""):
+    """Add a single focus point and append its value to the matching
+    parent scope list (if applicable)."""
+    add_focus_point(req_uuid, category, value, notes)
+    relation = _FP_CATEGORY_TO_RELATION.get(category)
+    if not relation:
+        return
+    misp = _misp()
+    event = misp.get_event(req_uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return
+    pir_obj = _get_obj(event, "zsazsa-pir")
+    gir_obj = _get_obj(event, "zsazsa-gir")
+    if not (pir_obj or gir_obj):
+        return
+    current = _pir_ns(event) if pir_obj else _gir_ns(event)
+    field = relation.replace("-", "_")
+    existing = list(getattr(current, field))
+    if value not in existing:
+        existing.append(value)
+        _rewrite_parent_scope(misp, event, relation, existing)
+
+
+# ── RFI CRUD ──────────────────────────────────────────────────────────────────
+
+# SLA targets in business days, indexed by priority
+RFI_SLA_DAYS = {"High": 2, "Medium": 5, "Low": 10}
+
+
+def _build_output_format_list(obj):
+    """Read output-format-list, falling back to legacy single-format fields."""
+    raw = _obj_attr(obj, "output-format-list")
+    if raw:
+        lst = _json_list(raw)
+        return [x for x in lst if isinstance(x, dict) and x.get("format")]
+    old_fmt = _obj_attr(obj, "output-format") or ""
+    old_tlp = _obj_attr(obj, "deliverable-tlp") or "amber"
+    return [{"format": old_fmt, "tlp": old_tlp}] if old_fmt else []
+
+
+def _rfi_obj(data):
+    obj = _build_obj("zsazsa-rfi")
+    _oa(obj, "rfi-id", data.get("rfi_id"))
+    _oa(obj, "question", data.get("question"))
+    _oa(obj, "context", data.get("context"))
+    _oa(obj, "requester-name", data.get("requester_name"))
+    _oa(obj, "requester-team", data.get("requester_team"))
+    _oa(obj, "owner-uuid", data.get("owner_uuid"))
+    _oa(obj, "owner-name", data.get("owner_name"))
+    _oa(obj, "priority", data.get("priority", "Medium"))
+    _oa(obj, "status", data.get("status", "New"))
+    _oa(obj, "assigned-analyst", data.get("assigned_analyst"))
+    _oa(obj, "due-date", data.get("due_date"))
+    _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
+    _oa(obj, "linked-gir-uuid", data.get("linked_gir_uuid"))
+    _oa_json(obj, "output-format-list", data.get("output_format_list", []))
+    _oa(obj, "response", data.get("response"))
+    _oa(obj, "feedback-requirement-met", data.get("feedback_requirement_met"))
+    _oa(obj, "feedback-on-time", data.get("feedback_on_time"))
+    _oa(obj, "feedback-usefulness", data.get("feedback_usefulness"))
+    _oa(obj, "feedback-suggestions", data.get("feedback_suggestions"))
+    return obj
+
+
+def _rfi_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-rfi")
+    owner_uuid = _obj_attr(obj, "owner-uuid") or ""
+    owner_name = _obj_attr(obj, "owner-name") or ""
+    event_date = event.date
+    fmt_list = _build_output_format_list(obj)
+    attachments = [
+        SimpleNamespace(uuid=a.uuid, id=a.uuid, filename=a.value)
+        for a in (getattr(event, "attributes", []) or [])
+        if getattr(a, "comment", "") == "zsazsa:rfi-attachment"
+    ]
+    notes = [
+        SimpleNamespace(
+            id=er.id,
+            uuid=getattr(er, "uuid", str(er.id)),
+            title=(getattr(er, "name", "") or "")[6:],
+            content=getattr(er, "content", "") or "",
+        )
+        for er in (getattr(event, "event_reports", []) or [])
+        if (getattr(er, "name", "") or "").startswith("note: ")
+    ]
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        rfi_id=_obj_attr(obj, "rfi-id") or "",
+        question=_obj_attr(obj, "question") or "",
+        context=_obj_attr(obj, "context") or "",
+        requester_name=_obj_attr(obj, "requester-name") or "",
+        requester_team=_obj_attr(obj, "requester-team") or "",
+        owner_uuid=owner_uuid,
+        owner_name=owner_name,
+        priority=_obj_attr(obj, "priority") or "Medium",
+        status=_obj_attr(obj, "status") or "New",
+        assigned_analyst=_obj_attr(obj, "assigned-analyst") or "",
+        due_date=_parse_date(_obj_attr(obj, "due-date")),
+        linked_pir_uuid=_obj_attr(obj, "linked-pir-uuid") or "",
+        linked_gir_uuid=_obj_attr(obj, "linked-gir-uuid") or "",
+        output_format_list=fmt_list,
+        deliverable_tlp=fmt_list[0]["tlp"] if fmt_list else "amber",
+        response=_obj_attr(obj, "response") or "",
+        feedback_requirement_met=_obj_attr(obj, "feedback-requirement-met") or "",
+        feedback_on_time=_obj_attr(obj, "feedback-on-time") or "",
+        feedback_usefulness=_obj_attr(obj, "feedback-usefulness") or "",
+        feedback_suggestions=_obj_attr(obj, "feedback-suggestions") or "",
+        created_at=_parse_dt(event_date.isoformat() if event_date else None),
+        attachments=attachments,
+        notes=notes,
+    )
+
+
+def next_rfi_id():
+    return _next_id(config.TAG_RFI, "RFI")
+
+
+def list_rfis():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_RFI], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_rfi_ns(e) for e in events]
+    result.sort(key=lambda r: r.rfi_id, reverse=True)
+    return result
+
+
+def get_rfi(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        return None
+    return _rfi_ns(event)
+
+
+def create_rfi(data):
+    misp = _misp()
+    rfi_id = data["rfi_id"]
+    info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
+    event = _make_event(info, config.TAG_RFI)
+    result = _check(misp.add_event(event, pythonify=True), "create RFI")
+    _check(misp.add_object(_event_ref(result), _rfi_obj(data)), "add RFI object")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create RFI: missing UUID in MISP response")
+    return uuid
+
+
+def update_rfi(uuid, data):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        logger.warning("RFI event %s not found; recreating", uuid)
+        return create_rfi(data)
+    old = _get_obj(event, "zsazsa-rfi")
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _rfi_obj(data)), "update RFI object")
+    rfi_id = data.get("rfi_id", "")
+    info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
+    misp.update_event({"Event": {"id": event.id, "info": info}})
+    return uuid
+
+
+def delete_rfi(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+def add_rfi_attachment(event_uuid, filename, file_bytes):
+    import base64
+    misp = _misp()
+    attr = MISPAttribute()
+    attr.type = "attachment"
+    attr.category = "External analysis"
+    attr.value = filename
+    attr.data = base64.b64encode(file_bytes).decode("utf-8")
+    attr.comment = "zsazsa:rfi-attachment"
+    attr.to_ids = False
+    result = _check(misp.add_attribute(event_uuid, attr, pythonify=True), "add RFI attachment")
+    return result.uuid
+
+
+def delete_rfi_attachment(attr_uuid):
+    misp = _misp()
+    misp.delete_attribute(attr_uuid)
+
+
+def get_rfi_attachment_content(attr_uuid):
+    import base64
+    misp = _misp()
+    attr = misp.get_attribute(attr_uuid, pythonify=True)
+    if isinstance(attr, dict) or attr is None:
+        raise RuntimeError(f"Attribute {attr_uuid} not found")
+    content = misp.download_attachment(attr.id)
+    if isinstance(content, dict):
+        raise RuntimeError(f"Download failed: {content.get('errors', 'unknown')}")
+    return content, attr.value
+
+
+def add_rfi_note(event_uuid, title, content):
+    from pymisp import MISPEventReport
+    misp = _misp()
+    er = MISPEventReport()
+    er.name = f"note: {title}"
+    er.content = content
+    result = _check(misp.add_event_report(event_uuid, er), "add RFI note")
+    if isinstance(result, dict):
+        return result.get("EventReport", {}).get("id")
+    return getattr(result, "id", None)
+
+
+def delete_rfi_note(report_id):
+    misp = _misp()
+    misp.delete_event_report(report_id)
+
+
+# ── Feedback (event reports tagged curation:feedback) ────────────────────────
+
+TAG_FEEDBACK = 'curation:feedback'
+
+
+def list_product_feedback(event_uuid):
+    """Return event reports tagged or named as feedback for the given event."""
+    misp = _misp()
+    try:
+        event = misp.get_event(event_uuid, pythonify=True)
+    except Exception as exc:
+        logger.warning("get_event %s for feedback failed: %s", event_uuid, exc)
+        return []
+    if not event or isinstance(event, dict):
+        return []
+    reports = []
+    for er in getattr(event, "event_reports", []) or []:
+        name = getattr(er, "name", "") or ""
+        if name.startswith("feedback"):
+            reports.append(SimpleNamespace(
+                id=er.id,
+                uuid=er.uuid,
+                name=name,
+                content=getattr(er, "content", "") or "",
+                timestamp=getattr(er, "timestamp", None),
+            ))
+    return reports
+
+
+def add_product_feedback(event_uuid, author, rating, comment):
+    """Append a feedback event report and tag the event."""
+    from pymisp import MISPEventReport
+
+    misp = _misp()
+    er = MISPEventReport()
+    er.name = f"feedback: {author or 'anonymous'} ({rating or 'n/a'})"
+    body_lines = [
+        f"**Rating:** {rating or 'n/a'}",
+        f"**Author:** {author or 'anonymous'}",
+        "",
+        comment or "",
+    ]
+    er.content = "\n".join(body_lines)
+    _check(misp.add_event_report(event_uuid, er), "add feedback report")
+    # Tag the event so it is easy to discover in MISP
+    try:
+        misp.tag(event_uuid, TAG_FEEDBACK)
+    except Exception as exc:
+        logger.warning("tag %s with feedback failed: %s", event_uuid, exc)
+
+
+# ── Cross-entity queries ──────────────────────────────────────────────────────
+
+def pirs_for_stakeholder(stakeholder_uuid):
+    return [p for p in list_pirs() if p.owner_uuid == stakeholder_uuid]
+
+
+def girs_for_stakeholder(stakeholder_uuid):
+    return [g for g in list_girs() if g.owner_uuid == stakeholder_uuid]
+
+
+def _matches_distribution_entry(entries, stakeholder_uuid, stakeholder_name="", stakeholder_email=""):
+    """Return True when a stakeholder is explicitly listed in a distribution list.
+
+    Distribution entries are now stakeholder UUIDs, but legacy data may still
+    contain names or contact values.
+    """
+    values = {
+        (stakeholder_uuid or "").strip().lower(),
+        (stakeholder_name or "").strip().lower(),
+        (stakeholder_email or "").strip().lower(),
+    }
+    values.discard("")
+    if not values:
+        return False
+    for raw in entries or []:
+        if (raw or "").strip().lower() in values:
+            return True
+    return False
+
+
+def pirs_distributed_to_stakeholder(stakeholder_uuid, stakeholder_name="", stakeholder_email=""):
+    return [
+        p for p in list_pirs()
+        if p.owner_uuid != stakeholder_uuid
+        and _matches_distribution_entry(p.distribution, stakeholder_uuid, stakeholder_name, stakeholder_email)
+    ]
+
+
+def girs_distributed_to_stakeholder(stakeholder_uuid, stakeholder_name="", stakeholder_email=""):
+    return [
+        g for g in list_girs()
+        if g.owner_uuid != stakeholder_uuid
+        and _matches_distribution_entry(g.distribution, stakeholder_uuid, stakeholder_name, stakeholder_email)
+    ]
+
+
+def products_for_stakeholder(stakeholder_uuid, stakeholder_name="", stakeholder_email="", limit=20):
+    """Return analyser-MISP product events whose linked PIR/GIR ID appears
+    in the event info or as a tag value, where the PIR/GIR is either owned by
+    the given stakeholder or distributed to that stakeholder.
+    """
+    owned_pirs = pirs_for_stakeholder(stakeholder_uuid)
+    owned_girs = girs_for_stakeholder(stakeholder_uuid)
+    distributed_pirs = pirs_distributed_to_stakeholder(stakeholder_uuid, stakeholder_name, stakeholder_email)
+    distributed_girs = girs_distributed_to_stakeholder(stakeholder_uuid, stakeholder_name, stakeholder_email)
+    all_pirs = owned_pirs + distributed_pirs
+    all_girs = owned_girs + distributed_girs
+
+    needles = [
+        value
+        for value in (
+            [p.pir_id for p in all_pirs if p.pir_id]
+            + [g.gir_id for g in all_girs if g.gir_id]
+            + [p.uuid for p in all_pirs if p.uuid]
+            + [g.uuid for g in all_girs if g.uuid]
+        )
+    ]
+    needles = list(dict.fromkeys(needles))
+    if not needles:
+        return []
+    misp = _misp()
+    try:
+        events = misp.search(
+            tags=['zsazsa:ctiproduct="%"'], limit=500,
+            metadata=False, pythonify=True,
+        )
+    except Exception as exc:
+        logger.warning("products_for_stakeholder MISP search failed: %s", exc)
+        return []
+    if not events or isinstance(events, dict):
+        return []
+
+    matches = []
+    for ev in events:
+        info = ev.info or ""
+        ev_tags = [t.name for t in (getattr(ev, "tags", []) or [])]
+        if any(n in info for n in needles) or any(n in t for n in needles for t in ev_tags):
+            ptype = ""
+            for t in ev_tags:
+                if t.startswith('zsazsa:ctiproduct='):
+                    ptype = t.split('=', 1)[1].strip('"')
+                    break
+            matches.append(SimpleNamespace(
+                uuid=ev.uuid,
+                info=info,
+                date=str(ev.date) if ev.date else "",
+                product_type=ptype,
+                misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{ev.uuid}",
+            ))
+    # Include directly delivered products for subscribed product types.
+    stakeholder = get_stakeholder(stakeholder_uuid)
+    subscribed_products = set(getattr(stakeholder, "products", []) or [])
+
+    if "Daily threat briefing" in subscribed_products:
+        for briefing in list_briefings():
+            if getattr(briefing, "review_state", "") != BRIEFING_REVIEW_PUBLISHED:
+                continue
+            title = (getattr(briefing, "title", "") or "").strip()
+            date_value = getattr(briefing, "date", "") or ""
+            info = f"[zsazsa:briefing] {title}" if title else f"[zsazsa:briefing] Daily threat briefing {date_value}"
+            matches.append(SimpleNamespace(
+                uuid=briefing.uuid,
+                info=info,
+                date=date_value,
+                product_type="daily-briefing",
+                misp_url=briefing.misp_url,
+            ))
+
+    if "Flash intel alert" in subscribed_products:
+        for fia in list_fias(review_state=FIA_REVIEW_APPROVED):
+            title = (getattr(fia, "title", "") or "").strip()
+            info = f"[zsazsa:fia] {title}" if title else f"[zsazsa:fia] {fia.fia_id}"
+            date_value = ""
+            created_at = getattr(fia, "created_at", None)
+            if created_at:
+                date_value = created_at.strftime("%Y-%m-%d")
+            matches.append(SimpleNamespace(
+                uuid=fia.uuid,
+                info=info,
+                date=date_value,
+                product_type="flash-intel",
+                misp_url=fia.misp_url,
+            ))
+
+    if "Vulnerability exploitation advisory" in subscribed_products:
+        for vea in list_veas(review_state=VEA_REVIEW_APPROVED):
+            title = (getattr(vea, "title", "") or "").strip()
+            info = f"[zsazsa:vea] {title}" if title else f"[zsazsa:vea] {vea.vea_id}"
+            date_value = ""
+            created_at = getattr(vea, "created_at", None)
+            if created_at:
+                date_value = created_at.strftime("%Y-%m-%d")
+            matches.append(SimpleNamespace(
+                uuid=vea.uuid,
+                info=info,
+                date=date_value,
+                product_type="vea",
+                misp_url=vea.misp_url,
+            ))
+
+    # De-duplicate by UUID and keep the newest items first.
+    deduped = []
+    seen = set()
+    for item in sorted(matches, key=lambda r: (r.date or ""), reverse=True):
+        if item.uuid in seen:
+            continue
+        seen.add(item.uuid)
+        deduped.append(item)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+# ── Flash Intel Alert (FIA) CRUD ──────────────────────────────────────────────
+
+# Workflow review states for FIA drafts
+FIA_REVIEW_DRAFT = "draft"
+FIA_REVIEW_PENDING = "pending-review"
+FIA_REVIEW_APPROVED = "approved"
+FIA_REVIEW_REJECTED = "rejected"
+FIA_REVIEW_STATES = [
+    FIA_REVIEW_DRAFT,
+    FIA_REVIEW_PENDING,
+    FIA_REVIEW_APPROVED,
+    FIA_REVIEW_REJECTED,
+]
+
+FIA_AUDIENCES = ["SOC", "IR", "VM", "Threat Hunting", "Detection Eng.", "Executive", "Other"]
+FIA_TLP_LEVELS = ["clear", "green", "amber", "amber+strict", "red"]
+FIA_RELIABILITIES = ["A", "B", "C", "D", "E", "F"]
+FIA_CREDIBILITIES = ["1", "2", "3", "4", "5", "6"]
+
+
+def _split_lines(s):
+    """Split a textarea value into a stripped non-empty list of lines."""
+    if not s:
+        return []
+    return [ln.strip() for ln in s.splitlines() if ln.strip()]
+
+
+def fetch_source_events(source_uuids, source_hints=None):
+    """Fetch event data for display in product wizard source event accordions.
+
+    source_hints is an optional dict mapping uuid -> source_id. When provided
+    the matching MISP client is tried first before falling back to others.
+
+    For each UUID we try get_event first, then search(uuid=...) as a fallback
+    because some MISP instances (e.g. those with distribution restrictions)
+    allow bulk search but reject direct UUID lookups.
+
+    Returns a list of dicts with keys: uuid, info, date, orgc, source_label,
+    tags, reports, attributes, objects.
+    """
+    if not source_uuids:
+        return []
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    # Build ordered client list: scraper, then external MISP servers, then webapp
+    from pymisp import PyMISP as _PyMISP
+    all_clients = []
+    all_clients.append(("scraper", _scraper_misp(), "MISP scraper"))
+    for s in getattr(config, "MISP_SERVERS", []) or []:
+        sid = s.get("id") or s.get("label") or ""
+        url = s.get("url")
+        api_key = s.get("api_key")
+        if url and api_key:
+            try:
+                all_clients.append((sid, _PyMISP(url, api_key, s.get("verify_tls", True), False),
+                                    s.get("label") or url))
+            except Exception:
+                pass
+    if (config.MISP_WEBAPP_URL != config.MISP_URL
+            and config.MISP_WEBAPP_KEY != config.MISP_KEY):
+        try:
+            all_clients.append(("webapp", _misp(), "MISP webapp"))
+        except Exception:
+            pass
+
+    hints = source_hints or {}
+
+    def _try_fetch(misp_client, uuid):
+        """Try get_event, fall back to search if it returns a 404-style error."""
+        try:
+            fetched = misp_client.get_event(uuid, pythonify=True)
+            if fetched and not isinstance(fetched, dict):
+                return fetched
+        except Exception:
+            pass
+        # Fallback: restSearch by UUID - works on instances where get_event fails
+        # due to distribution restrictions but search scope allows the event.
+        try:
+            results = misp_client.search(uuid=uuid, pythonify=True, metadata=False)
+            if results and not isinstance(results, dict) and len(results) > 0:
+                return results[0]
+        except Exception:
+            pass
+        return None
+
+    result = []
+    for uuid in source_uuids:
+        ev = ev_misp = None
+        ev_source_label = ""
+        hinted_sid = hints.get(uuid, "")
+
+        # Build a client order that puts the hinted source first
+        if hinted_sid:
+            ordered = (
+                [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid == hinted_sid]
+                + [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid != hinted_sid]
+            )
+        else:
+            ordered = all_clients
+
+        for sid, misp_client, label in ordered:
+            fetched = _try_fetch(misp_client, uuid)
+            if fetched is not None:
+                ev, ev_misp, ev_source_label = fetched, misp_client, label
+                break
+
+        if ev is None:
+            logger.debug("fetch_source_events: could not retrieve %s from any MISP client", uuid)
+            continue
+        orgc_name = ""
+        orgc_obj = getattr(ev, "Orgc", None) or getattr(ev, "orgc", None)
+        if orgc_obj:
+            orgc_name = getattr(orgc_obj, "name", "") or ""
+        try:
+            reports = ev_misp.get_event_reports(ev.id, pythonify=True) or []
+        except Exception:
+            reports = []
+        tags = [t.name for t in getattr(ev, "tags", []) or []]
+        attrs = []
+        for a in getattr(ev, "attributes", []) or []:
+            attrs.append({
+                "type": a.type,
+                "category": getattr(a, "category", "") or "",
+                "value": a.value,
+                "comment": getattr(a, "comment", "") or "",
+                "to_ids": bool(getattr(a, "to_ids", False)),
+            })
+        objects = []
+        for obj in getattr(ev, "objects", []) or []:
+            obj_attrs = []
+            for a in getattr(obj, "attributes", []) or []:
+                obj_attrs.append({
+                    "relation": getattr(a, "object_relation", "") or "",
+                    "type": a.type,
+                    "value": a.value,
+                })
+            objects.append({"name": getattr(obj, "name", "") or "", "attributes": obj_attrs})
+        result.append({
+            "uuid": uuid,
+            "info": ev.info or "",
+            "date": str(ev.date) if ev.date else "",
+            "orgc": orgc_name,
+            "source_label": ev_source_label,
+            "tags": tags,
+            "attributes": attrs,
+            "objects": objects,
+            "reports": [
+                {"name": getattr(r, "name", "") or "Report", "content": getattr(r, "content", "") or ""}
+                for r in reports
+            ],
+        })
+    return result
+
+
+# ── Manual collection source registry ───────────────────────────────────────
+
+TAG_COLLECTION_SOURCE = 'zsazsa:type="collection-source"'
+
+
+_ADMIRALTY_SOURCE_TAGS = {
+    "A": 'admiralty-scale:source-reliability="a"',
+    "B": 'admiralty-scale:source-reliability="b"',
+    "C": 'admiralty-scale:source-reliability="c"',
+    "D": 'admiralty-scale:source-reliability="d"',
+    "E": 'admiralty-scale:source-reliability="e"',
+    "F": 'admiralty-scale:source-reliability="f"',
+}
+
+
+def _collection_source_ns(event):
+    """Extract a CollectionSource namespace from a MISP event."""
+    obj = _get_obj(event, "zsazsa-collection-source")
+    if obj is None:
+        return None
+    ev_tags = [t.name for t in (getattr(event, "tags", []) or [])]
+    source_reliability = ""
+    for tag in ev_tags:
+        if tag.startswith("admiralty-scale:source-reliability="):
+            val = tag.split("=", 1)[1].strip('"')
+            source_reliability = val[0].upper() if val else ""
+            break
+    if not source_reliability:
+        raw = _obj_attr(obj, "source-reliability")
+        if raw:
+            source_reliability = raw[0].upper()
+    misp_url = (getattr(config, "MISP_WEBAPP_URL", "") or
+                getattr(config, "MISP_URL", "")).rstrip("/")
+    ns = SimpleNamespace(
+        uuid=event.uuid,
+        misp_url=f"{misp_url}/events/view/{event.uuid}",
+        name=_obj_attr(obj, "name"),
+        owner=_obj_attr(obj, "owner"),
+        location=_obj_attr(obj, "location"),
+        description=_obj_attr(obj, "description"),
+        enabled=_obj_attr(obj, "enabled") != "false",
+        source_reliability=source_reliability,
+    )
+    return ns
+
+
+def list_collection_sources():
+    """Return all manual collection source registry entries."""
+    misp = _misp()
+    try:
+        events = misp.search(tags=[TAG_COLLECTION_SOURCE], limit=200,
+                             metadata=False, pythonify=True)
+        if isinstance(events, dict):
+            return []
+    except Exception:
+        return []
+    result = []
+    for ev in events or []:
+        ns = _collection_source_ns(ev)
+        if ns:
+            result.append(ns)
+    result.sort(key=lambda s: (s.name or "").lower())
+    return result
+
+
+def get_collection_source(uuid):
+    """Fetch a single collection source entry. Returns namespace or None."""
+    misp = _misp()
+    try:
+        ev = misp.get_event(uuid, pythonify=True)
+        if not ev or isinstance(ev, dict):
+            return None
+        return _collection_source_ns(ev)
+    except Exception:
+        return None
+
+
+def _collection_source_obj(data: dict, enabled: bool = True):
+    obj = _build_obj("zsazsa-collection-source")
+    _oa(obj, "name", (data.get("name") or "").strip())
+    _oa(obj, "owner", data.get("owner", ""))
+    _oa(obj, "location", data.get("location", ""))
+    _oa(obj, "description", data.get("description", ""))
+    _oa(obj, "source-reliability", data.get("source_reliability", ""))
+    _oa(obj, "enabled", "true" if enabled else "false")
+    return obj
+
+
+def _apply_admiralty_tag(misp, event_uuid, source_reliability: str):
+    """Remove any existing admiralty source-reliability tag and apply the new one."""
+    ev = misp.get_event(event_uuid, pythonify=True)
+    if not ev or isinstance(ev, dict):
+        return
+    for tag in list(getattr(ev, "tags", []) or []):
+        if getattr(tag, "name", "").startswith("admiralty-scale:source-reliability="):
+            try:
+                misp.untag(event_uuid, tag.name)
+            except Exception:
+                pass
+    if source_reliability and source_reliability.upper() in _ADMIRALTY_SOURCE_TAGS:
+        misp.tag(event_uuid, _ADMIRALTY_SOURCE_TAGS[source_reliability.upper()])
+
+
+def create_collection_source(data: dict) -> str:
+    """Create a manual collection source registry event. Returns the new UUID."""
+    misp = _misp()
+    name = (data.get("name") or "").strip()
+    reliability = (data.get("source_reliability") or "").strip().upper()
+    extra_tags = ["tlp:amber"]
+    if reliability and reliability in _ADMIRALTY_SOURCE_TAGS:
+        extra_tags.append(_ADMIRALTY_SOURCE_TAGS[reliability])
+    event = _make_event(
+        f"Collection source: {name}",
+        TAG_COLLECTION_SOURCE,
+        extra_tags=extra_tags,
+    )
+    event = _check(misp.add_event(event, pythonify=True), "create collection source")
+    _check(misp.add_object(event.uuid, _collection_source_obj(data), pythonify=True),
+           "add collection source object")
+    return event.uuid
+
+
+def update_collection_source(uuid, data: dict):
+    """Update a collection source: replace the MISP object with new field values."""
+    misp = _misp()
+    ev = misp.get_event(uuid, pythonify=True)
+    if not ev or isinstance(ev, dict):
+        raise ValueError(f"Collection source {uuid} not found")
+    old_enabled = True
+    old_obj = _get_obj(ev, "zsazsa-collection-source")
+    if old_obj is not None:
+        old_enabled = _obj_attr(old_obj, "enabled") != "false"
+        misp.delete_object(old_obj.id)
+    _check(misp.add_object(uuid, _collection_source_obj(data, enabled=old_enabled),
+                            pythonify=True), "update collection source object")
+    new_info = f"Collection source: {(data.get('name') or '').strip()}"
+    misp.update_event({"Event": {"id": ev.id, "info": new_info}})
+    _apply_admiralty_tag(misp, uuid, data.get("source_reliability", ""))
+
+
+def toggle_collection_source(uuid, enabled: bool):
+    """Enable or disable a collection source."""
+    misp = _misp()
+    ev = misp.get_event(uuid, pythonify=True)
+    if not ev or isinstance(ev, dict):
+        raise ValueError(f"Collection source {uuid} not found")
+    old_obj = _get_obj(ev, "zsazsa-collection-source")
+    if old_obj is None:
+        raise ValueError("Object not found on collection source event")
+    data = {
+        "name": _obj_attr(old_obj, "name"),
+        "owner": _obj_attr(old_obj, "owner"),
+        "location": _obj_attr(old_obj, "location"),
+        "description": _obj_attr(old_obj, "description"),
+        "source_reliability": _obj_attr(old_obj, "source-reliability"),
+    }
+    misp.delete_object(old_obj.id)
+    _check(misp.add_object(uuid, _collection_source_obj(data, enabled=enabled),
+                            pythonify=True), "toggle collection source")
+
+
+def delete_collection_source(uuid):
+    """Delete a collection source registry event from MISP."""
+    misp = _misp()
+    _check(misp.delete_event(uuid), "delete collection source")
+
+
+def get_all_collection_source_labels() -> list[str]:
+    """Return a combined list of all collection source labels.
+
+    Includes the fixed scraper source, configured MISP servers (enabled only),
+    and MISP-stored manual sources (enabled only).
+    """
+    labels = ["misp-scraper"]
+    for s in getattr(config, "MISP_SERVERS", []) or []:
+        if s.get("enabled", True):
+            label = (s.get("label") or "").strip()
+            if label and label not in labels:
+                labels.append(label)
+    try:
+        for src in list_collection_sources():
+            if src.enabled and src.name and src.name not in labels:
+                labels.append(src.name)
+    except Exception:
+        pass
+    return labels
+
+
+def create_manual_collection_event(data: dict) -> str:
+    """Create a manually-entered collection event on the webapp MISP server.
+
+    Returns the new event UUID.
+    """
+    from pymisp import MISPEventReport
+    misp = _misp()
+
+    tlp = data.get("tlp", "amber")
+    source = (data.get("source") or "").strip()
+    source_slug = source.lower().replace(" ", "-").replace("/", "-")
+
+    info = (data.get("title") or "").strip()
+    event = _make_event(
+        info,
+        extra_tags=[f"tlp:{tlp}", 'zsazsa:source-type="manual"'],
+    )
+    if source_slug:
+        event.add_tag(f'zsazsa:source="{source_slug}"', local=True)
+    if data.get("date"):
+        event.date = data["date"]
+
+    created = misp.add_event(event, pythonify=True)
+    if isinstance(created, dict):
+        raise RuntimeError(f"MISP error: {created.get('errors') or created}")
+
+    uuid = created.uuid
+
+    for t in _build_scope_tags(data):
+        try:
+            misp.tag(uuid, t)
+        except Exception:
+            pass
+
+    try:
+        misp.tag(uuid, 'workflow:state="incomplete"', local=True)
+    except Exception:
+        pass
+
+    source_reference = (data.get("source_reference") or "").strip()
+    if source_reference:
+        a = MISPAttribute()
+        a.type = "link"
+        a.category = "External analysis"
+        a.value = source_reference
+        a.comment = "Source reference"
+        a.to_ids = False
+        misp.add_attribute(created.id, a)
+
+    source_provider = (data.get("source_provider") or "").strip()
+    if source_provider:
+        a = MISPAttribute()
+        a.type = "text"
+        a.category = "Other"
+        a.value = source_provider
+        a.comment = "Source provider"
+        a.to_ids = False
+        misp.add_attribute(created.id, a)
+
+    for url in data.get("references") or []:
+        url = url.strip()
+        if url:
+            a = MISPAttribute()
+            a.type = "url"
+            a.category = "External analysis"
+            a.value = url
+            a.to_ids = False
+            misp.add_attribute(created.id, a)
+
+    description = (data.get("description") or "").strip()
+    if description:
+        report = MISPEventReport()
+        report.name = info or "Manual entry"
+        report.content = description
+        report.distribution = 5
+        misp.add_event_report(created.id, report)
+
+    summary = (data.get("summary") or "").strip()
+    if summary:
+        ai_report = MISPEventReport()
+        ai_report.name = f"{AI_SUMMARY_PREFIX} {(info or 'Manual entry')[:80]}"
+        ai_report.content = summary
+        ai_report.distribution = 5
+        misp.add_event_report(created.id, ai_report)
+
+    return uuid
+
+
+def add_manual_collection_attachment(event_uuid: str, filename: str, file_bytes: bytes) -> str:
+    """Add a file attachment to a manually-entered collection event on the webapp MISP.
+
+    Returns the new attribute UUID.
+    """
+    import base64
+    misp = _misp()
+    attr = MISPAttribute()
+    attr.type = "attachment"
+    attr.category = "External analysis"
+    attr.value = filename
+    attr.data = base64.b64encode(file_bytes).decode("utf-8")
+    attr.to_ids = False
+    result = _check(misp.add_attribute(event_uuid, attr, pythonify=True), "add manual attachment")
+    return result.uuid
+
+
+def get_manual_collection_event(uuid: str):
+    """Fetch a manual collection event from the webapp MISP. Returns a plain dict or None."""
+    misp = _misp()
+    try:
+        event = misp.get_event(uuid, pythonify=True)
+    except Exception:
+        return None
+    if not event or isinstance(event, dict):
+        return None
+    tags = [t.name for t in getattr(event, "tags", []) or []]
+    attrs = []
+    for a in getattr(event, "attributes", []) or []:
+        attrs.append({
+            "uuid": a.uuid,
+            "type": a.type,
+            "category": getattr(a, "category", "") or "",
+            "value": a.value,
+            "comment": getattr(a, "comment", "") or "",
+        })
+    try:
+        reports = misp.get_event_reports(event.id, pythonify=True) or []
+    except Exception:
+        reports = []
+    source_provider = next(
+        (a["value"] for a in attrs if a.get("comment") == "Source provider"),
+        "",
+    )
+    return {
+        "uuid": event.uuid,
+        "id": event.id,
+        "info": event.info or "",
+        "date": str(event.date) if event.date else "",
+        "tags": tags,
+        "attributes": attrs,
+        "source_provider": source_provider,
+        "reports": [
+            {"name": getattr(r, "name", "") or "Report", "content": getattr(r, "content", "") or ""}
+            for r in reports
+        ],
+    }
+
+
+def _join_lines(items):
+    return "\n".join(items or [])
+
+
+def _fia_obj(data):
+    obj = _build_obj("zsazsa-flash-intel")
+    _oa(obj, "fia-id", data.get("fia_id"))
+    _oa(obj, "title", data.get("title"))
+    _oa(obj, "audience", data.get("audience"))
+    _oa(obj, "tlp", data.get("tlp", "amber"))
+    _oa(obj, "summary", data.get("summary"))
+    _oa(obj, "action-required", data.get("action_required"))
+    _oa(obj, "what-happened", _join_lines(data.get("what_happened")))
+    _oa(obj, "source-description", data.get("source_description"))
+    _oa(obj, "source-reliability", data.get("source_reliability"))
+    _oa(obj, "information-credibility", data.get("information_credibility"))
+    _oa(obj, "likely-impact", data.get("likely_impact"))
+    _oa(obj, "affected-assets", data.get("affected_assets"))
+    _oa(obj, "actor-context", data.get("actor_context"))
+    _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
+    _oa_json(obj, "sectors", data.get("sectors", []))
+    _oa_json(obj, "threat-actors", data.get("threat_actors", []))
+    _oa_json(obj, "threat-types", data.get("threat_types", []))
+    _oa_json(obj, "technology", data.get("technology", []))
+    _oa_json(obj, "vendor", data.get("vendor", []))
+    _oa_json(obj, "incident", data.get("incident", []))
+    _oa_json(obj, "campaign", data.get("campaign", []))
+    _oa(obj, "actions-immediate", _join_lines(data.get("actions_immediate")))
+    _oa(obj, "actions-near-term", _join_lines(data.get("actions_near_term")))
+    _oa(obj, "mitre-techniques", _join_lines(data.get("mitre_techniques")))
+    _oa(obj, "hunting-hypotheses", _join_lines(data.get("hunting_hypotheses")))
+    _oa(obj, "external-references", _join_lines(data.get("external_references")))
+    _oa(obj, "feedback-deadline", data.get("feedback_deadline"))
+    _oa(obj, "author", data.get("author"))
+    _oa(obj, "review-state", data.get("review_state", FIA_REVIEW_DRAFT))
+    _oa(obj, "rejection-reason", data.get("rejection_reason"))
+    src_uuids = data.get("source_event_uuids") or []
+    if not src_uuids and data.get("source_event_uuid"):
+        src_uuids = [data["source_event_uuid"]]
+    _oa_json(obj, "source-event-uuid", src_uuids)
+    _oa_json(obj, "context-tags", data.get("context_tags", []))
+    _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
+    return obj
+
+
+def _fia_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-flash-intel")
+
+    def g(rel):
+        return _obj_attr(obj, rel) or ""
+
+    review_state = g("review-state") or FIA_REVIEW_DRAFT
+    _src_raw = g("source-event-uuid")
+    try:
+        _src_parsed = json.loads(_src_raw) if _src_raw else []
+        source_event_uuids = _src_parsed if isinstance(_src_parsed, list) else ([str(_src_parsed)] if _src_parsed else [])
+    except Exception:
+        source_event_uuids = [_src_raw] if _src_raw else []
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        fia_id=g("fia-id"),
+        title=g("title"),
+        audience=g("audience"),
+        tlp=g("tlp") or "amber",
+        summary=g("summary"),
+        action_required=g("action-required"),
+        what_happened=g("what-happened").splitlines(),
+        source_description=g("source-description"),
+        source_reliability=g("source-reliability"),
+        information_credibility=g("information-credibility"),
+        likely_impact=g("likely-impact"),
+        affected_assets=g("affected-assets"),
+        actor_context=g("actor-context"),
+        geographic_scope=_json_list(g("geographic-scope")),
+        sectors=_json_list(g("sectors")),
+        threat_actors=_json_list(g("threat-actors")),
+        threat_types=_json_list(g("threat-types")),
+        technology=_json_list(g("technology")),
+        vendor=_json_list(g("vendor")),
+        incident=_json_list(g("incident")),
+        campaign=_json_list(g("campaign")),
+        actions_immediate=g("actions-immediate").splitlines(),
+        actions_near_term=g("actions-near-term").splitlines(),
+        mitre_techniques=g("mitre-techniques").splitlines(),
+        hunting_hypotheses=g("hunting-hypotheses").splitlines(),
+        external_references=g("external-references").splitlines(),
+        feedback_deadline=_parse_date(g("feedback-deadline")),
+        author=g("author"),
+        review_state=review_state,
+        rejection_reason=g("rejection-reason"),
+        source_event_uuids=source_event_uuids,
+        source_event_uuid=source_event_uuids[0] if source_event_uuids else "",
+        context_tags=_json_list(g("context-tags")),
+        linked_pir_uuid=g("linked-pir-uuid"),
+        published=bool(getattr(event, "published", False)),
+        created_at=_parse_dt(event.date.isoformat() if event.date else None),
+    )
+
+
+def _fia_id_from_event_id(event_id):
+    return f"FIA-{int(event_id):05d}"
+
+
+def render_fia_markdown(fia, fia_id=None):
+    """Render an FIA namespace into the markdown report content."""
+    fid = fia_id or fia.fia_id or "FIA-#####"
+    date_str = (fia.created_at or datetime.utcnow()).strftime("%Y-%m-%d %H:%M UTC")
+
+    def bullets(items):
+        return "\n".join(f"- {ln}" for ln in items) if items else "- (none recorded)"
+
+    parts = [
+        f"# Flash intel alert: {fia.title or '(untitled)'}",
+        "",
+        f"**ID:** {fid}",
+        f"**Classification:** tlp:{fia.tlp}",
+        f"**Date:** {date_str}",
+        f"**Author:** {fia.author or 'unknown'}",
+        f"**Audience:** {fia.audience or 'unspecified'}",
+        "",
+        "---",
+        "",
+        "## Summary",
+        "",
+        fia.summary or "_No summary provided._",
+        "",
+        f"**Action required:** {fia.action_required or '_To be defined._'}",
+        "",
+        "---",
+        "",
+        "## What happened",
+        "",
+        bullets(fia.what_happened),
+        "",
+        f"**Source:** {fia.source_description or 'unspecified'}",
+        f"**Source reliability:** {fia.source_reliability or 'F'}",
+        f"**Information credibility:** {fia.information_credibility or '6'}",
+        "",
+        "---",
+        "",
+        "## Why it matters",
+        "",
+        f"- **Likely impact:** {fia.likely_impact or 'unspecified'}",
+        f"- **Affected assets:** {fia.affected_assets or 'unspecified'}",
+        f"- **Threat actor context:** {fia.actor_context or 'unspecified'}",
+        "",
+        "---",
+        "",
+        "## Recommended actions",
+        "",
+        "### Immediate (0-24 hours)",
+        "",
+        bullets(fia.actions_immediate),
+        "",
+        "### Near-term (1-7 days)",
+        "",
+        bullets(fia.actions_near_term),
+        "",
+        "---",
+        "",
+        "## Detection guidance",
+        "",
+        "**Relevant MITRE ATT&CK techniques:**",
+        "",
+        bullets(fia.mitre_techniques),
+        "",
+        "**Hunting hypotheses:**",
+        "",
+        bullets(fia.hunting_hypotheses),
+        "",
+        "---",
+        "",
+        "## References",
+        "",
+        bullets(fia.external_references),
+    ]
+    for uid in (getattr(fia, "source_event_uuids", None) or ([fia.source_event_uuid] if getattr(fia, "source_event_uuid", None) else [])):
+        parts.append(f"- Source MISP event: {uid}")
+    if fia.feedback_deadline:
+        parts.extend([
+            "",
+            "---",
+            "",
+            "## Feedback requested",
+            "",
+            f"Please report findings to the CTI team by {fia.feedback_deadline.isoformat()}.",
+        ])
+    return "\n".join(parts)
+
+
+def _delete_fia_reports(misp, event):
+    """Remove rendered FIA reports (name starts with 'FIA-') from the event."""
+    for r in getattr(event, "event_reports", []) or []:
+        name = getattr(r, "name", "") or ""
+        if name.startswith("FIA-"):
+            try:
+                misp.delete_event_report(r.id)
+            except Exception as exc:
+                logger.warning("delete event report %s failed: %s", r.id, exc)
+
+
+def _write_fia_report(misp, event_uuid, fia_id, content):
+    from pymisp import MISPEventReport
+    er = MISPEventReport()
+    er.name = fia_id
+    er.content = content
+    er.distribution = 0
+    _check(misp.add_event_report(event_uuid, er), "add FIA report")
+
+
+def list_fias(review_state=None):
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_FLASH_INTEL], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_fia_ns(e) for e in events]
+    if review_state:
+        result = [f for f in result if f.review_state == review_state]
+    result.sort(key=lambda f: f.fia_id, reverse=True)
+    return result
+
+
+def get_fia(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return None
+    return _fia_ns(event)
+
+
+def create_fia(data):
+    """Create a Flash Intel Alert as a draft MISP event.
+
+    Returns (uuid, fia_id). The FIA id is derived from the MISP event id so
+    it is unique without a separate counter.
+    """
+    misp = _misp()
+    title = (data.get("title") or "").strip() or "Untitled"
+    info = f"[zsazsa:fia] {title}"
+    extra = [f'tlp:{data.get("tlp", "amber")}', 'workflow:state="draft"']
+    if data.get("source_reliability"):
+        extra.append(f'admiralty-scale:source-reliability="{data["source_reliability"].lower()}"')
+    if data.get("information_credibility"):
+        extra.append(f'admiralty-scale:information-credibility="{data["information_credibility"]}"')
+
+    event = _make_event(info, config.TAG_FLASH_INTEL, extra_tags=extra)
+    src_uuids = data.get("source_event_uuids") or ([data.get("source_event_uuid")] if data.get("source_event_uuid") else [])
+    if src_uuids:
+        event.extends_uuid = src_uuids[0]
+
+    result = _check(misp.add_event(event, pythonify=True), "create FIA")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create FIA: missing UUID in MISP response")
+
+    fia_id = _fia_id_from_event_id(result.id)
+    data["fia_id"] = fia_id
+    data.setdefault("review_state", FIA_REVIEW_DRAFT)
+    _check(misp.add_object(_event_ref(result), _fia_obj(data)), "add FIA object")
+
+    fia = _fia_ns(result)
+    fia.fia_id = fia_id
+    _write_fia_report(misp, uuid, fia_id, render_fia_markdown(fia, fia_id))
+    for src_uuid in src_uuids:
+        _tag_scraper_event_as_product_source(src_uuid, "flash-intel")
+    return uuid, fia_id
+
+
+def update_fia(uuid, data):
+    """Replace the FIA object on the event and re-render the report."""
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"FIA event {uuid} not found")
+
+    old = _get_obj(event, "zsazsa-flash-intel")
+    fia_id = (data.get("fia_id") or (_obj_attr(old, "fia-id") if old else None)
+              or _fia_id_from_event_id(event.id))
+    data["fia_id"] = fia_id
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _fia_obj(data)), "update FIA object")
+
+    title = (data.get("title") or "").strip() or "Untitled"
+    misp.update_event({"Event": {"id": event.id, "info": f"[zsazsa:fia] {title}"}})
+
+    # Sync TLP and admiralty tags
+    tlp = data.get("tlp", "amber")
+    for tag in list(getattr(event, "tags", []) or []):
+        if tag.name.startswith("tlp:"):
+            try:
+                misp.untag(event.uuid, tag.name)
+            except Exception as exc:
+                logger.warning("untag %s from %s failed: %s", tag.name, event.uuid, exc)
+    try:
+        misp.tag(event.uuid, f"tlp:{tlp}")
+    except Exception as exc:
+        logger.warning("tag tlp:%s on %s failed: %s", tlp, event.uuid, exc)
+    for tag in list(getattr(event, "tags", []) or []):
+        if tag.name.startswith("admiralty-scale:"):
+            try:
+                misp.untag(event.uuid, tag.name)
+            except Exception as exc:
+                logger.warning("untag %s from %s failed: %s", tag.name, event.uuid, exc)
+    if data.get("source_reliability"):
+        try:
+            misp.tag(event.uuid, f'admiralty-scale:source-reliability="{data["source_reliability"].lower()}"')
+        except Exception as exc:
+            logger.warning("tag admiralty source-reliability on %s failed: %s", event.uuid, exc)
+    if data.get("information_credibility"):
+        try:
+            misp.tag(event.uuid, f'admiralty-scale:information-credibility="{data["information_credibility"]}"')
+        except Exception as exc:
+            logger.warning("tag admiralty information-credibility on %s failed: %s", event.uuid, exc)
+
+    # Re-render report
+    refreshed = misp.get_event(uuid, pythonify=True)
+    _delete_fia_reports(misp, refreshed)
+    fia = _fia_ns(refreshed)
+    _write_fia_report(misp, uuid, fia_id, render_fia_markdown(fia, fia_id))
+    return uuid, fia_id
+
+
+def set_fia_review_state(uuid, state, reason=None):
+    """Update the FIA's review-state attribute and the workflow:state tag."""
+    if state not in FIA_REVIEW_STATES:
+        raise ValueError(f"invalid review state: {state}")
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"FIA event {uuid} not found")
+    fia = _fia_ns(event)
+    payload = {
+        "fia_id": fia.fia_id,
+        "title": fia.title,
+        "audience": fia.audience,
+        "tlp": fia.tlp,
+        "summary": fia.summary,
+        "action_required": fia.action_required,
+        "what_happened": fia.what_happened,
+        "source_description": fia.source_description,
+        "source_reliability": fia.source_reliability,
+        "information_credibility": fia.information_credibility,
+        "likely_impact": fia.likely_impact,
+        "affected_assets": fia.affected_assets,
+        "actor_context": fia.actor_context,
+        "actions_immediate": fia.actions_immediate,
+        "actions_near_term": fia.actions_near_term,
+        "mitre_techniques": fia.mitre_techniques,
+        "hunting_hypotheses": fia.hunting_hypotheses,
+        "external_references": fia.external_references,
+        "feedback_deadline": fia.feedback_deadline.isoformat() if fia.feedback_deadline else "",
+        "author": fia.author,
+        "source_event_uuids": list(getattr(fia, "source_event_uuids", []) or []),
+        "geographic_scope": list(getattr(fia, "geographic_scope", []) or []),
+        "sectors": list(getattr(fia, "sectors", []) or []),
+        "threat_actors": list(getattr(fia, "threat_actors", []) or []),
+        "threat_types": list(getattr(fia, "threat_types", []) or []),
+        "technology": list(getattr(fia, "technology", []) or []),
+        "vendor": list(getattr(fia, "vendor", []) or []),
+        "incident": list(getattr(fia, "incident", []) or []),
+        "campaign": list(getattr(fia, "campaign", []) or []),
+        "review_state": state,
+        "rejection_reason": reason or fia.rejection_reason,
+    }
+    update_fia(uuid, payload)
+
+    # Sync workflow:state tag
+    workflow_map = {
+        FIA_REVIEW_DRAFT: "draft",
+        FIA_REVIEW_PENDING: "ongoing",
+        FIA_REVIEW_APPROVED: "complete",
+        FIA_REVIEW_REJECTED: "rejected",
+    }
+    new_wf = f'workflow:state="{workflow_map[state]}"'
+    for tag in list(getattr(event, "tags", []) or []):
+        if tag.name.startswith("workflow:state="):
+            try:
+                misp.untag(event.uuid, tag.name)
+            except Exception as exc:
+                logger.warning("untag %s failed: %s", tag.name, exc)
+    try:
+        misp.tag(event.uuid, new_wf, local=True)
+    except Exception as exc:
+        logger.warning("tag %s with %s failed: %s", event.uuid, new_wf, exc)
+
+
+def publish_fia(uuid):
+    """Mark the FIA approved, set workflow=complete, publish the MISP event."""
+    set_fia_review_state(uuid, FIA_REVIEW_APPROVED)
+    misp = _misp()
+    try:
+        misp.publish(uuid)
+    except Exception as exc:
+        logger.warning("publish FIA %s failed: %s", uuid, exc)
+
+
+def reject_fia(uuid, reason=""):
+    set_fia_review_state(uuid, FIA_REVIEW_REJECTED, reason=reason)
+
+
+def delete_fia(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+def counts():
+    misp = _misp()
+
+    def _count(tag):
+        events = misp.search(tags=[tag], metadata=True, limit=1000, pythonify=True)
+        if not events or isinstance(events, dict):
+            return 0
+        return len(events)
+
+    return {
+        "pir": _count(config.TAG_PIR),
+        "gir": _count(config.TAG_GIR),
+        "stakeholder": _count(config.TAG_STAKEHOLDER),
+        "rfi": _count(config.TAG_RFI),
+        "fia": _count(config.TAG_FLASH_INTEL),
+    }
+
+
+# ── Stakeholder subscription helpers ────────────────────────────────────────
+
+def stakeholders_subscribed_to(product_type: str) -> list:
+    """Return stakeholders whose product list includes the given product type."""
+    return [s for s in list_stakeholders() if product_type in (s.products or [])]
+
+
+def recipient_preview(product_type: str, tlp: str, audience_str: str) -> list:
+    """Return eligibility data for all stakeholders for a given product.
+
+    Each entry is a dict with keys: name, role, uuid, status ('green'/'yellow'/'grey'), reason.
+    Green = all conditions met. Yellow = subscribed but TLP or audience blocks delivery.
+    Grey = not subscribed to this product type.
+    """
+    tlp_rank = {t: i for i, t in enumerate(FIA_TLP_LEVELS)}
+    product_rank = tlp_rank.get((tlp or "amber").lower(), 2)
+    audiences = [a.strip() for a in (audience_str or "").split(",") if a.strip()]
+    result = []
+    for s in list_stakeholders():
+        subscribed = product_type in (s.products or [])
+        s_rank = tlp_rank.get((s.tlp_clearance or "amber").lower(), 2)
+        tlp_ok = s_rank >= product_rank
+        audience_ok = bool(audiences) and (s.role in audiences)
+        if subscribed and tlp_ok and audience_ok:
+            status = "green"
+            reason = "Receives this product (subscribed, TLP ok, audience match)"
+        elif subscribed and not tlp_ok:
+            status = "yellow"
+            reason = f"Subscribed but TLP clearance ({s.tlp_clearance}) is below product TLP ({tlp or 'amber'})"
+        elif subscribed and not audience_ok:
+            status = "yellow"
+            reason = f"Subscribed but role '{s.role or 'none'}' not in product audience ({audience_str or 'none'})"
+        else:
+            status = "grey"
+            reason = f"Not subscribed to {product_type}"
+        result.append({
+            "name": s.name,
+            "role": s.role,
+            "uuid": s.uuid,
+            "status": status,
+            "reason": reason,
+        })
+    result.sort(key=lambda x: ({"green": 0, "yellow": 1, "grey": 2}[x["status"]], x["role"], x["name"]))
+    return result
+
+
+def export_focus_points_to_file():
+    """Build focus points from active PIR/GIR requirements.
+
+    Maps focus point categories to the organisation-wide keys used by AI helpers:
+      Geography  -> geographies
+      Sector     -> sectors
+      Technology -> technologies
+      Threat Type -> threat_types
+      Threat Actor -> threat_actors
+    """
+    cat_map = {
+        "Geography": "geographies",
+        "Sector": "sectors",
+        "Technology": "technologies",
+        "Threat Type": "threat_types",
+        "Threat Actor": "threat_actors",
+    }
+    result = {v: [] for v in cat_map.values()}
+    seen = {v: set() for v in cat_map.values()}
+
+    for req in list_pirs() + list_girs():
+        if getattr(req, "status", "") == "Retired":
+            continue
+        for fp in getattr(req, "focus_points", []):
+            key = cat_map.get(fp.category)
+            if not key:
+                continue
+            v = (fp.value or "").strip()
+            if v and v.lower() not in seen[key]:
+                seen[key].add(v.lower())
+                result[key].append(v)
+
+    logger.info("focus points rebuilt from requirements: %s", {k: len(v) for k, v in result.items()})
+    return result
+
+
+# ── Vulnerability Exploitation Advisory (VEA) ────────────────────────────────
+
+
+VEA_REVIEW_DRAFT = "draft"
+VEA_REVIEW_PENDING = "pending-review"
+VEA_REVIEW_APPROVED = "approved"
+VEA_REVIEW_REJECTED = "rejected"
+VEA_REVIEW_STATES = [VEA_REVIEW_DRAFT, VEA_REVIEW_PENDING, VEA_REVIEW_APPROVED, VEA_REVIEW_REJECTED]
+
+VEA_EXPLOIT_AVAILABILITY = ["Weaponised", "PoC public", "None known", "Unknown"]
+VEA_EXPLOIT_COMPLEXITY = ["Low", "Medium", "High", "Unknown"]
+VEA_ACTOR_INTEREST = ["Ransomware", "APT", "Opportunistic", "Multiple", "None observed", "Unknown"]
+VEA_CISA_KEV = ["Yes", "No", "Unknown"]
+
+
+def _vea_obj(data):
+    obj = _build_obj("zsazsa-vea")
+    _oa(obj, "vea-id", data.get("vea_id"))
+    _oa(obj, "cve-id", data.get("cve_id"))
+    _oa(obj, "summary", data.get("summary"))
+    _oa(obj, "cvss", data.get("cvss"))
+    _oa(obj, "cwe", data.get("cwe"))
+    _oa(obj, "title", data.get("title"))
+    _oa(obj, "tlp", data.get("tlp", "amber"))
+    _oa(obj, "author", data.get("author"))
+    _oa(obj, "audience", data.get("audience"))
+    _oa(obj, "affected-product", data.get("affected_product"))
+    _oa(obj, "affected-versions", data.get("affected_versions"))
+    _oa(obj, "fixed-version", data.get("fixed_version"))
+    _oa(obj, "exposure", data.get("exposure"))
+    _oa(obj, "observed-exploitation", data.get("observed_exploitation"))
+    _oa(obj, "exploit-availability", data.get("exploit_availability"))
+    _oa(obj, "exploitation-complexity", data.get("exploitation_complexity"))
+    _oa(obj, "threat-actor-interest", data.get("threat_actor_interest"))
+    _oa(obj, "cisa-kev", data.get("cisa_kev"))
+    _oa(obj, "source-description", data.get("source_description"))
+    _oa(obj, "source-reliability", data.get("source_reliability"))
+    _oa(obj, "information-credibility", data.get("information_credibility"))
+    _oa(obj, "worst-case", data.get("worst_case"))
+    _oa(obj, "most-likely", data.get("most_likely"))
+    _oa(obj, "immediate-actions", _join_lines(data.get("immediate_actions")))
+    _oa(obj, "patch-sla-internet", data.get("patch_sla_internet"))
+    _oa(obj, "patch-sla-internal", data.get("patch_sla_internal"))
+    _oa(obj, "target-patch-version", data.get("target_patch_version"))
+    _oa(obj, "exploitation-indicators", _join_lines(data.get("exploitation_indicators")))
+    _oa(obj, "detection-rules", _join_lines(data.get("detection_rules")))
+    _oa(obj, "references", _join_lines(data.get("references")))
+    _oa(obj, "review-state", data.get("review_state", VEA_REVIEW_DRAFT))
+    _oa(obj, "rejection-reason", data.get("rejection_reason"))
+    _oa(obj, "source-event-uuid", data.get("source_event_uuid"))
+    _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
+    _oa_json(obj, "context-tags", data.get("context_tags", []))
+    return obj
+
+
+def _vea_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-vea")
+
+    def g(rel):
+        return _obj_attr(obj, rel) or ""
+
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        vea_id=g("vea-id"),
+        cve_id=g("cve-id"),
+        summary=g("summary"),
+        cvss=g("cvss"),
+        cwe=g("cwe"),
+        title=g("title"),
+        tlp=g("tlp") or "amber",
+        author=g("author"),
+        audience=g("audience"),
+        affected_product=g("affected-product"),
+        affected_versions=g("affected-versions"),
+        fixed_version=g("fixed-version"),
+        exposure=g("exposure"),
+        observed_exploitation=g("observed-exploitation"),
+        exploit_availability=g("exploit-availability"),
+        exploitation_complexity=g("exploitation-complexity"),
+        threat_actor_interest=g("threat-actor-interest"),
+        cisa_kev=g("cisa-kev"),
+        source_description=g("source-description"),
+        source_reliability=g("source-reliability"),
+        information_credibility=g("information-credibility"),
+        worst_case=g("worst-case"),
+        most_likely=g("most-likely"),
+        immediate_actions=g("immediate-actions").splitlines(),
+        patch_sla_internet=g("patch-sla-internet"),
+        patch_sla_internal=g("patch-sla-internal"),
+        target_patch_version=g("target-patch-version"),
+        exploitation_indicators=g("exploitation-indicators").splitlines(),
+        detection_rules=g("detection-rules").splitlines(),
+        references=g("references").splitlines(),
+        review_state=g("review-state") or VEA_REVIEW_DRAFT,
+        rejection_reason=g("rejection-reason"),
+        source_event_uuid=g("source-event-uuid"),
+        linked_pir_uuid=g("linked-pir-uuid"),
+        context_tags=_json_list(g("context-tags")),
+        published=bool(getattr(event, "published", False)),
+        created_at=_parse_dt(event.date.isoformat() if event.date else None),
+    )
+
+
+def _vea_id_from_event_id(event_id):
+    return f"VEA-{int(event_id):05d}"
+
+
+def render_vea_markdown(vea, vea_id=None):
+    vid = vea_id or vea.vea_id or "VEA-#####"
+    date_str = (vea.created_at or datetime.utcnow()).strftime("%Y-%m-%d")
+
+    def bullets(items):
+        return "\n".join(f"- {ln}" for ln in items) if items else "- (none recorded)"
+
+    lines = [
+        f"# Vulnerability exploitation advisory: {vea.cve_id or vid}",
+        "",
+        f"**ID:** {vid}",
+        f"**Classification:** tlp:{vea.tlp}",
+        f"**Date:** {date_str}",
+        f"**Author:** {vea.author or 'unknown'}",
+        f"**Audience:** {vea.audience or 'vulnerability management, SOC, application owners'}",
+        "",
+        "---",
+        "",
+        "## Summary",
+        "",
+        f"{vea.cve_id or 'This vulnerability'} affects {vea.affected_product or 'affected product'}.",
+        f"We assess with confidence that this vulnerability {vea.observed_exploitation or 'status unknown'}.",
+        "",
+        f"**Action required:** {vea.most_likely or '_To be defined._'}",
+        "",
+        "---",
+        "",
+        "## Affected technology",
+        "",
+        "| Field | Details |",
+        "|-------|---------|",
+        f"| **Product** | {vea.affected_product or '-'} |",
+        f"| **Affected versions** | {vea.affected_versions or '-'} |",
+        f"| **Fixed version** | {vea.fixed_version or '-'} |",
+        f"| **Our exposure** | {vea.exposure or '-'} |",
+        "",
+        "---",
+        "",
+        "## Exploitation status",
+        "",
+        "| Factor | Assessment |",
+        "|--------|------------|",
+        f"| **Observed exploitation** | {vea.observed_exploitation or '-'} |",
+        f"| **Exploit availability** | {vea.exploit_availability or '-'} |",
+        f"| **Exploitation complexity** | {vea.exploitation_complexity or '-'} |",
+        f"| **Threat actor interest** | {vea.threat_actor_interest or '-'} |",
+        f"| **CISA KEV listed** | {vea.cisa_kev or '-'} |",
+        "",
+        f"**Source:** {vea.source_description or 'unspecified'}",
+        f"**Source reliability:** {vea.source_reliability or '-'}",
+        f"**Information credibility:** {vea.information_credibility or '-'}",
+        "",
+        "---",
+        "",
+        "## Risk assessment",
+        "",
+        f"**Worst case:** {vea.worst_case or '-'}",
+        "",
+        f"**Most likely:** {vea.most_likely or '-'}",
+        "",
+        "---",
+        "",
+        "## Recommended actions",
+        "",
+        "### Immediate",
+        "",
+        bullets(vea.immediate_actions),
+        "",
+        "### Patch timeline",
+        "",
+        "| Asset category | Target SLA | Owner |",
+        "|----------------|------------|-------|",
+        f"| Internet-facing production | {vea.patch_sla_internet or 'TBD'} | - |",
+        f"| Internal production | {vea.patch_sla_internal or 'TBD'} | - |",
+        "",
+        f"**Target patch version:** {vea.target_patch_version or '-'}",
+        "",
+        "---",
+        "",
+        "## Detection guidance",
+        "",
+        "**Indicators of exploitation:**",
+        "",
+        bullets(vea.exploitation_indicators),
+        "",
+        "**Detection rules:**",
+        "",
+        bullets(vea.detection_rules),
+        "",
+        "---",
+        "",
+        "## References",
+        "",
+        bullets(vea.references),
+    ]
+    if vea.source_event_uuid:
+        lines.append(f"- Source MISP event: {vea.source_event_uuid}")
+    return "\n".join(lines)
+
+
+def _delete_vea_reports(misp, event):
+    for r in getattr(event, "event_reports", []) or []:
+        name = getattr(r, "name", "") or ""
+        if name.startswith("VEA-"):
+            try:
+                misp.delete_event_report(r.id)
+            except Exception as exc:
+                logger.warning("delete VEA report %s failed: %s", r.id, exc)
+
+
+def _write_vea_report(misp, event_uuid, vea_id, content):
+    from pymisp import MISPEventReport
+    er = MISPEventReport()
+    er.name = vea_id
+    er.content = content
+    er.distribution = 0
+    _check(misp.add_event_report(event_uuid, er), "add VEA report")
+
+
+def list_veas(review_state=None):
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_VEA], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_vea_ns(e) for e in events]
+    if review_state:
+        result = [v for v in result if v.review_state == review_state]
+    result.sort(key=lambda v: v.vea_id, reverse=True)
+    return result
+
+
+def get_vea(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return None
+    return _vea_ns(event)
+
+
+def create_vea(data):
+    misp = _misp()
+    cve = (data.get("cve_id") or "").strip()
+    title = (data.get("title") or cve or "Untitled").strip()
+    info = f"[zsazsa:vea] {cve}: {title}" if cve else f"[zsazsa:vea] {title}"
+    extra = [f'tlp:{data.get("tlp", "amber")}', 'workflow:state="draft"']
+    if data.get("source_reliability"):
+        extra.append(f'admiralty-scale:source-reliability="{data["source_reliability"].lower()}"')
+
+    event = _make_event(info, config.TAG_VEA, extra_tags=extra)
+    if data.get("source_event_uuid"):
+        event.extends_uuid = data["source_event_uuid"]
+
+    result = _check(misp.add_event(event, pythonify=True), "create VEA")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create VEA: missing UUID in MISP response")
+
+    vea_id = _vea_id_from_event_id(result.id)
+    data["vea_id"] = vea_id
+    data.setdefault("review_state", VEA_REVIEW_DRAFT)
+    _check(misp.add_object(_event_ref(result), _vea_obj(data)), "add VEA object")
+
+    vea = _vea_ns(result)
+    vea.vea_id = vea_id
+    _write_vea_report(misp, uuid, vea_id, render_vea_markdown(vea, vea_id))
+    if data.get("source_event_uuid"):
+        _tag_scraper_event_as_product_source(data["source_event_uuid"], "vea")
+    return uuid, vea_id
+
+
+def update_vea(uuid, data):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"VEA event {uuid} not found")
+
+    old = _get_obj(event, "zsazsa-vea")
+    vea_id = (data.get("vea_id") or (_obj_attr(old, "vea-id") if old else None)
+              or _vea_id_from_event_id(event.id))
+    data["vea_id"] = vea_id
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _vea_obj(data)), "update VEA object")
+
+    cve = (data.get("cve_id") or "").strip()
+    title = (data.get("title") or cve or "Untitled").strip()
+    info = f"[zsazsa:vea] {cve}: {title}" if cve else f"[zsazsa:vea] {title}"
+    misp.update_event({"Event": {"id": event.id, "info": info}})
+
+    refreshed = misp.get_event(uuid, pythonify=True)
+    _delete_vea_reports(misp, refreshed)
+    vea = _vea_ns(refreshed)
+    _write_vea_report(misp, uuid, vea_id, render_vea_markdown(vea, vea_id))
+    return uuid, vea_id
+
+
+def set_vea_review_state(uuid, state, reason=None):
+    if state not in VEA_REVIEW_STATES:
+        raise ValueError(f"invalid VEA review state: {state}")
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"VEA event {uuid} not found")
+    vea = _vea_ns(event)
+
+    def _vea_data(v, state, reason):
+        return {
+            "vea_id": v.vea_id, "cve_id": v.cve_id, "title": v.title, "tlp": v.tlp,
+            "author": v.author, "audience": v.audience,
+            "affected_product": v.affected_product, "affected_versions": v.affected_versions,
+            "fixed_version": v.fixed_version, "exposure": v.exposure,
+            "observed_exploitation": v.observed_exploitation,
+            "exploit_availability": v.exploit_availability,
+            "exploitation_complexity": v.exploitation_complexity,
+            "threat_actor_interest": v.threat_actor_interest, "cisa_kev": v.cisa_kev,
+            "source_description": v.source_description,
+            "source_reliability": v.source_reliability,
+            "information_credibility": v.information_credibility,
+            "worst_case": v.worst_case, "most_likely": v.most_likely,
+            "immediate_actions": v.immediate_actions,
+            "patch_sla_internet": v.patch_sla_internet,
+            "patch_sla_internal": v.patch_sla_internal,
+            "target_patch_version": v.target_patch_version,
+            "exploitation_indicators": v.exploitation_indicators,
+            "detection_rules": v.detection_rules,
+            "references": v.references,
+            "source_event_uuid": v.source_event_uuid,
+            "linked_pir_uuid": v.linked_pir_uuid,
+            "review_state": state,
+            "rejection_reason": reason or v.rejection_reason,
+        }
+
+    update_vea(uuid, _vea_data(vea, state, reason))
+
+    workflow_map = {
+        VEA_REVIEW_DRAFT: "draft",
+        VEA_REVIEW_PENDING: "ongoing",
+        VEA_REVIEW_APPROVED: "complete",
+        VEA_REVIEW_REJECTED: "rejected",
+    }
+    new_wf = f'workflow:state="{workflow_map[state]}"'
+    for tag in list(getattr(event, "tags", []) or []):
+        if tag.name.startswith("workflow:state="):
+            try:
+                misp.untag(event.uuid, tag.name)
+            except Exception as exc:
+                logger.warning("untag %s failed: %s", tag.name, exc)
+    try:
+        misp.tag(event.uuid, new_wf, local=True)
+    except Exception as exc:
+        logger.warning("tag %s with %s failed: %s", event.uuid, new_wf, exc)
+
+
+def publish_vea(uuid):
+    set_vea_review_state(uuid, VEA_REVIEW_APPROVED)
+    misp = _misp()
+    try:
+        misp.publish(uuid)
+    except Exception as exc:
+        logger.warning("publish VEA %s failed: %s", uuid, exc)
+
+
+def reject_vea(uuid, reason=""):
+    set_vea_review_state(uuid, VEA_REVIEW_REJECTED, reason=reason)
+
+
+def delete_vea(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+# ── Daily Threat Briefing ────────────────────────────────────────────────────
+
+
+
+BRIEFING_REVIEW_DRAFT = "draft"
+BRIEFING_REVIEW_PUBLISHED = "published"
+BRIEFING_REVIEW_STATES = [BRIEFING_REVIEW_DRAFT, BRIEFING_REVIEW_PUBLISHED]
+
+_STORY_REPORT_PREFIX = "[story-"
+
+
+def _briefing_obj(data):
+    obj = _build_obj("zsazsa-daily-briefing")
+    _oa(obj, "date", data.get("date"))
+    _oa(obj, "title", data.get("title"))
+    _oa(obj, "author", data.get("author"))
+    _oa(obj, "tlp", data.get("tlp", "clear"))
+    _oa(obj, "review-state", data.get("review_state", BRIEFING_REVIEW_DRAFT))
+    _oa(obj, "story-count", str(len(data.get("stories", []))))
+    _oa(obj, "escalations", data.get("escalations"))
+    _oa(obj, "notes", data.get("notes"))
+    return obj
+
+
+def _briefing_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-daily-briefing")
+
+    def g(rel):
+        return _obj_attr(obj, rel) or ""
+
+    stories = []
+    for er in sorted(
+        [r for r in (getattr(event, "event_reports", []) or [])
+         if (getattr(r, "name", "") or "").startswith(_STORY_REPORT_PREFIX)],
+        key=lambda r: r.name,
+    ):
+        try:
+            s = json.loads(getattr(er, "content", "") or "{}")
+        except Exception:
+            s = {}
+        s["_report_id"] = er.id
+        stories.append(SimpleNamespace(**s) if isinstance(s, dict) else s)
+
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        date=g("date"),
+        title=g("title"),
+        author=g("author"),
+        tlp=g("tlp") or "clear",
+        review_state=g("review-state") or BRIEFING_REVIEW_DRAFT,
+        story_count=int(g("story-count") or "0"),
+        escalations=g("escalations"),
+        notes=g("notes"),
+        stories=stories,
+        published=bool(getattr(event, "published", False)),
+        created_at=_parse_dt(event.date.isoformat() if event.date else None),
+    )
+
+
+def render_briefing_markdown(briefing):
+    date_str = briefing.date or (briefing.created_at.strftime("%Y-%m-%d") if briefing.created_at else "unknown")
+    lines = [
+        f"# Daily threat briefing - {date_str}",
+        "",
+        f"**Prepared by:** {briefing.author or 'analyst'}",
+        f"**Classification:** tlp:{briefing.tlp}",
+        "",
+        "---",
+        "",
+        f"## Today's stories ({len(briefing.stories)} items)",
+        "",
+    ]
+    for i, s in enumerate(briefing.stories, 1):
+        title = getattr(s, "title", "") or f"Story {i}"
+        content = getattr(s, "content", "") or ""
+        source_url = getattr(s, "source_url", "") or ""
+        source_event_uuid = getattr(s, "source_event_uuid", "") or ""
+        correlation = getattr(s, "correlation", "") or "No"
+        lines.extend([
+            f"### {i}. {title}",
+            "",
+            content,
+            "",
+            f"**Source:** {source_url or '-'}",
+            f"**MISP event:** {source_event_uuid or '-'}",
+            f"**Correlation:** {correlation}",
+            "",
+            "---",
+            "",
+        ])
+    esc = briefing.escalations or "None today."
+    lines.extend([
+        "## Escalations",
+        "",
+        esc,
+        "",
+    ])
+    if briefing.notes:
+        lines.extend([
+            "## Notes",
+            "",
+            briefing.notes,
+        ])
+    return "\n".join(lines)
+
+
+def _delete_briefing_reports(misp, event):
+    for r in getattr(event, "event_reports", []) or []:
+        name = getattr(r, "name", "") or ""
+        if name.startswith(_STORY_REPORT_PREFIX) or name.startswith("briefing-"):
+            try:
+                misp.delete_event_report(r.id)
+            except Exception as exc:
+                logger.warning("delete briefing report %s failed: %s", r.id, exc)
+
+
+def _write_briefing_story_report(misp, event_uuid, index, story):
+    from pymisp import MISPEventReport
+    er = MISPEventReport()
+    er.name = f"{_STORY_REPORT_PREFIX}{index:02d}]"
+    er.content = json.dumps({
+        "title": story.get("title", ""),
+        "content": story.get("content", ""),
+        "source_url": story.get("source_url", ""),
+        "source_event_uuid": story.get("source_event_uuid", ""),
+        "correlation": story.get("correlation", ""),
+    })
+    er.distribution = 0
+    _check(misp.add_event_report(event_uuid, er), f"add briefing story {index}")
+
+
+def _write_briefing_summary_report(misp, event_uuid, briefing):
+    from pymisp import MISPEventReport
+    er = MISPEventReport()
+    er.name = f"briefing-{briefing.date or 'unknown'}"
+    er.content = render_briefing_markdown(briefing)
+    er.distribution = 0
+    try:
+        misp.add_event_report(event_uuid, er)
+    except Exception as exc:
+        logger.warning("add briefing summary report failed: %s", exc)
+
+
+def list_briefings():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_BRIEFING], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_briefing_ns(e) for e in events]
+    result.sort(key=lambda b: b.date or "", reverse=True)
+    return result
+
+
+def get_briefing(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return None
+    return _briefing_ns(event)
+
+
+def create_briefing(data):
+    misp = _misp()
+    bdate = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
+    info = f"[zsazsa:briefing] Daily threat briefing {bdate}"
+    extra = [f'tlp:{data.get("tlp", "clear")}', 'workflow:state="draft"']
+    event = _make_event(info, config.TAG_BRIEFING, extra_tags=extra)
+    result = _check(misp.add_event(event, pythonify=True), "create briefing")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create briefing: missing UUID in MISP response")
+
+    try:
+        data["date"] = bdate
+        data.setdefault("review_state", BRIEFING_REVIEW_DRAFT)
+        _check(misp.add_object(_event_ref(result), _briefing_obj(data)), "add briefing object")
+
+        for i, story in enumerate(data.get("stories", []), 1):
+            _write_briefing_story_report(misp, uuid, i, story)
+
+        refreshed = misp.get_event(uuid, pythonify=True)
+        briefing = _briefing_ns(refreshed)
+        _write_briefing_summary_report(misp, uuid, briefing)
+    except Exception:
+        # Clean up the shell event so it doesn't appear as a dateless entry.
+        try:
+            misp.delete_event(uuid)
+        except Exception:
+            pass
+        raise
+    for story in data.get("stories", []):
+        src = story.get("source_event_uuid", "")
+        if src:
+            _tag_scraper_event_as_product_source(src, "daily-briefing")
+    return uuid
+
+
+def update_briefing(uuid, data):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"Briefing event {uuid} not found")
+
+    old = _get_obj(event, "zsazsa-daily-briefing")
+    if old:
+        misp.delete_object(old.id)
+    _check(misp.add_object(_event_ref(event), _briefing_obj(data)), "update briefing object")
+
+    _delete_briefing_reports(misp, event)
+    for i, story in enumerate(data.get("stories", []), 1):
+        _write_briefing_story_report(misp, uuid, i, story)
+
+    refreshed = misp.get_event(uuid, pythonify=True)
+    briefing = _briefing_ns(refreshed)
+    _write_briefing_summary_report(misp, uuid, briefing)
+    return uuid
+
+
+def publish_briefing(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"Briefing event {uuid} not found")
+    briefing = _briefing_ns(event)
+
+    old = _get_obj(event, "zsazsa-daily-briefing")
+    if old:
+        misp.delete_object(old.id)
+    data = {
+        "date": briefing.date, "title": briefing.title, "author": briefing.author, "tlp": briefing.tlp,
+        "review_state": BRIEFING_REVIEW_PUBLISHED,
+        "story_count": briefing.story_count,
+        "escalations": briefing.escalations, "notes": briefing.notes,
+        "stories": [
+            {"title": getattr(s, "title", ""), "content": getattr(s, "content", ""),
+             "source_url": getattr(s, "source_url", ""),
+             "source_event_uuid": getattr(s, "source_event_uuid", ""),
+             "correlation": getattr(s, "correlation", "")}
+            for s in briefing.stories
+        ],
+    }
+    _check(misp.add_object(_event_ref(event), _briefing_obj(data)), "publish briefing object")
+    for tag in list(getattr(event, "tags", []) or []):
+        if tag.name.startswith("workflow:state="):
+            try:
+                misp.untag(event.uuid, tag.name)
+            except Exception:
+                pass
+    try:
+        misp.tag(event.uuid, 'workflow:state="complete"', local=True)
+    except Exception as exc:
+        logger.warning("tag briefing %s complete failed: %s", uuid, exc)
+    try:
+        misp.publish(uuid)
+    except Exception as exc:
+        logger.warning("publish briefing %s failed: %s", uuid, exc)
+
+
+def delete_briefing(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+def scraper_existing_uuids(uuids):
+    """Return subset of UUIDs that currently exist in scraper/analyser MISP."""
+    candidates = [u for u in set(uuids or []) if u]
+    if not candidates:
+        return set()
+
+    misp = _scraper_misp()
+    existing = set()
+    chunk_size = 100
+
+    for i in range(0, len(candidates), chunk_size):
+        chunk = candidates[i:i + chunk_size]
+        events = misp.search(uuid=chunk, metadata=True, pythonify=True)
+        if not events or isinstance(events, dict):
+            continue
+        for e in events:
+            ev_uuid = getattr(e, "uuid", None)
+            if ev_uuid:
+                existing.add(ev_uuid)
+
+    return existing
+
+
+# ── Scope preview against scraper collection ──────────────────────────────────
+
+def _event_text(ev):
+    parts = [ev.info or ""]
+    for r in getattr(ev, "event_reports", []) or []:
+        if getattr(r, "name", None):
+            parts.append(r.name)
+        if getattr(r, "content", None):
+            parts.append(r.content)
+    return " \n ".join(parts)
+
+
+def preview_scope_matches(scope_terms, limit=200, max_results=50, timeframe_hours=None):
+    """Return cached scraper events matching scope terms.
+
+    Cheap substring match (case-insensitive) over cached event fields. When
+    ``timeframe_hours`` is set, only events fetched into cache within that
+    window are considered.
+    """
+    from webapp import collection_cache
+
+    terms = []
+    seen = set()
+    for t in scope_terms or []:
+        t = (t or "").strip()
+        if not t or len(t) < 2:
+            continue
+        key = t.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(t)
+
+    if not terms:
+        return []
+
+    # Pull from local cache, this keeps the preview snappy and avoids live MISP
+    # calls each time the user opens the preview page.
+    events = collection_cache.get_events(["scraper"], [], limit=limit)
+    if not events:
+        return []
+
+    cutoff_ts = None
+    if timeframe_hours is not None:
+        cutoff_ts = time.time() - (float(timeframe_hours) * 3600.0)
+
+    rows = []
+    for e in events:
+        if cutoff_ts is not None:
+            fetched_at = e.get("fetched_at")
+            if not fetched_at or float(fetched_at) < cutoff_ts:
+                continue
+
+        text = " ".join([
+            e.get("info") or "",
+            e.get("org") or "",
+            e.get("orgc") or "",
+            " ".join(e.get("tags") or []),
+            " ".join(e.get("galaxy_names") or []),
+            " ".join(e.get("vulnerability_ids") or []),
+        ]).lower()
+        matched = [t for t in terms if t.lower() in text]
+        if not matched:
+            continue
+        rows.append({
+            "uuid": e.get("uuid"),
+            "id": e.get("id"),
+            "info": e.get("info"),
+            "date": e.get("date") or "",
+            "matched_terms": matched,
+            "score": len(matched),
+        })
+
+    rows.sort(key=lambda r: (-r["score"], r["info"] or ""))
+    return rows[:max_results]
+
+
+def pir_collection_gap(pir) -> dict:
+    """Return a coverage summary for a PIR against the recent scraper collection.
+
+    Uses the PIR's focus point values as search terms against the scraper MISP.
+    Returns a dict with total matching events, the most recent match date, and
+    up to 5 sample rows so the detail page can show a quick gap indicator without
+    a second page load.
+    """
+    fp_values = [fp.value for fp in getattr(pir, "focus_points", []) if fp.value]
+    if not fp_values:
+        return {"recent_matches": 0, "last_match_date": None, "sample": []}
+    matches = preview_scope_matches(fp_values)
+    last_date = None
+    if matches:
+        dates = [r["date"] for r in matches if r.get("date")]
+        last_date = max(dates) if dates else None
+    return {
+        "recent_matches": len(matches),
+        "last_match_date": last_date,
+        "sample": matches[:5],
+    }
+
+
+# ── Threat Landscape Report ──────────────────────────────────────────────────
+
+TLR_REVIEW_DRAFT = "draft"
+TLR_REVIEW_PUBLISHED = "published"
+TLR_REVIEW_STATES = [TLR_REVIEW_DRAFT, TLR_REVIEW_PUBLISHED]
+
+TLR_TLP_LEVELS = ["clear", "green", "amber", "amber+strict", "red"]
+
+
+def _tlr_obj(data):
+    obj = _build_obj("zsazsa-threat-landscape-report")
+    _oa(obj, "tlr-id", data.get("tlr_id"))
+    _oa(obj, "title", data.get("title"))
+    _oa(obj, "reporting-period", data.get("reporting_period"))
+    _oa(obj, "tlp", data.get("tlp", "amber"))
+    _oa(obj, "author", data.get("author"))
+    _oa(obj, "audience", data.get("audience"))
+    _oa(obj, "top-threats", data.get("top_threats"))
+    _oa(obj, "trending-actors", data.get("trending_actors"))
+    _oa(obj, "key-incidents", data.get("key_incidents"))
+    _oa(obj, "recommendations", data.get("recommendations"))
+    _oa(obj, "outlook", data.get("outlook"))
+    _oa(obj, "review-state", data.get("review_state", TLR_REVIEW_DRAFT))
+    return obj
+
+
+def _tlr_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-threat-landscape-report")
+
+    def g(rel):
+        return _obj_attr(obj, rel) or ""
+
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        tlr_id=g("tlr-id"),
+        title=g("title"),
+        reporting_period=g("reporting-period"),
+        tlp=g("tlp") or "amber",
+        author=g("author"),
+        audience=g("audience"),
+        top_threats=g("top-threats"),
+        trending_actors=g("trending-actors"),
+        key_incidents=g("key-incidents"),
+        recommendations=g("recommendations"),
+        outlook=g("outlook"),
+        review_state=g("review-state") or TLR_REVIEW_DRAFT,
+        published=bool(getattr(event, "published", False)),
+        created_at=_parse_dt(event.date.isoformat() if event.date else None),
+    )
+
+
+def render_tlr_markdown(tlr):
+    lines = [
+        f"# Threat Landscape Report - {tlr.reporting_period or tlr.tlr_id}",
+        "",
+        f"**Prepared by:** {tlr.author or 'analyst'}",
+        f"**Audience:** {tlr.audience or '-'}",
+        f"**Classification:** TLP:{(tlr.tlp or 'AMBER').upper()}",
+        "",
+        "---",
+        "",
+    ]
+    sections = [
+        ("Top threats", tlr.top_threats),
+        ("Trending threat actors", tlr.trending_actors),
+        ("Key incidents", tlr.key_incidents),
+        ("Recommendations", tlr.recommendations),
+        ("Outlook", tlr.outlook),
+    ]
+    for heading, content in sections:
+        if content:
+            lines += [f"## {heading}", "", content, ""]
+    return "\n".join(lines)
+
+
+def _next_tlr_id():
+    with _id_lock:
+        misp = _misp()
+        events = misp.search(tags=[config.TAG_TLR], metadata=True, pythonify=True)
+        if not events or isinstance(events, dict):
+            return "TLR-001"
+        max_n = 0
+        for e in events:
+            for token in (e.info or "").split():
+                clean = token.rstrip(":")
+                if clean.startswith("TLR-"):
+                    try:
+                        max_n = max(max_n, int(clean[4:]))
+                    except ValueError:
+                        pass
+        return f"TLR-{max_n + 1:03d}"
+
+
+def list_tlrs():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_TLR], limit=200, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_tlr_ns(e) for e in events]
+    result.sort(key=lambda t: t.tlr_id or "", reverse=True)
+    return result
+
+
+def get_tlr(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        return None
+    return _tlr_ns(event)
+
+
+def create_tlr(data):
+    misp = _misp()
+    tlr_id = data.get("tlr_id") or _next_tlr_id()
+    title = data.get("title", "")
+    info = f"[zsazsa:tlr] {tlr_id}: {title}"
+    extra = [f'tlp:{data.get("tlp", "amber")}', 'workflow:state="draft"']
+    event = _make_event(info, config.TAG_TLR, extra_tags=extra)
+    result = _check(misp.add_event(event, pythonify=True), "create TLR")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create TLR: missing UUID in MISP response")
+    data["tlr_id"] = tlr_id
+    data.setdefault("review_state", TLR_REVIEW_DRAFT)
+    _check(misp.add_object(_event_ref(result), _tlr_obj(data)), "add TLR object")
+    return uuid
+
+
+def update_tlr(uuid, data):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"TLR event {uuid} not found")
+    old = _get_obj(event, "zsazsa-threat-landscape-report")
+    if old:
+        misp.delete_object(old.id)
+    title = data.get("title", "")
+    tlr_id = data.get("tlr_id", "")
+    misp.edit_event(uuid, info=f"[zsazsa:tlr] {tlr_id}: {title}")
+    _check(misp.add_object(_event_ref(event), _tlr_obj(data)), "update TLR object")
+    return uuid
+
+
+def publish_tlr(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict) or event is None:
+        raise RuntimeError(f"TLR event {uuid} not found")
+    tlr = _tlr_ns(event)
+    old = _get_obj(event, "zsazsa-threat-landscape-report")
+    if old:
+        misp.delete_object(old.id)
+    data = {
+        "tlr_id": tlr.tlr_id, "title": tlr.title,
+        "reporting_period": tlr.reporting_period, "tlp": tlr.tlp,
+        "author": tlr.author, "audience": tlr.audience,
+        "top_threats": tlr.top_threats, "trending_actors": tlr.trending_actors,
+        "key_incidents": tlr.key_incidents, "recommendations": tlr.recommendations,
+        "outlook": tlr.outlook, "review_state": TLR_REVIEW_PUBLISHED,
+    }
+    _check(misp.add_object(_event_ref(event), _tlr_obj(data)), "publish TLR object")
+    for tag in list(getattr(event, "tags", []) or []):
+        name = getattr(tag, "name", "") or ""
+        if name.startswith('workflow:state='):
+            try:
+                misp.untag(uuid, name)
+            except Exception:
+                pass
+    misp.tag(uuid, 'workflow:state="published"', local=True)
+    misp.publish(event)
+
+
+def delete_tlr(uuid):
+    _misp().delete_event(uuid)

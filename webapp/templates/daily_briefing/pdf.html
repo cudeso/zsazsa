@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Daily Threat Briefing - {{ briefing.date or 'draft' }}</title>
+  <link rel="stylesheet" href="{{ css_url }}">
+</head>
+<body>
+
+<span class="briefing-id-anchor" style="display:none;">Briefing {{ briefing.date or 'draft' }}</span>
+<span class="tlp-label-anchor" style="display:none;">TLP:{{ briefing.tlp | upper }}</span>
+
+<h1>{{ briefing.title or ('Daily Threat Briefing - ' + (briefing.date or '(no date)')) }}</h1>
+
+<div class="meta-block">
+  <table>
+    <tr><td>Date:</td><td>{{ briefing.date or '-' }}</td></tr>
+    {% if briefing.title %}<tr><td>Title:</td><td>{{ briefing.title }}</td></tr>{% endif %}
+    <tr><td>Classification:</td>
+        <td><span class="tlp-pill tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</span></td></tr>
+    <tr><td>Author:</td><td>{{ briefing.author or '-' }}</td></tr>
+    <tr><td>Stories:</td><td>{{ briefing.stories | length }}</td></tr>
+  </table>
+</div>
+
+{% for story in briefing.stories %}
+{% set idx = loop.index %}
+<h2>Story {{ idx }}: {{ story.title or '(untitled)' }}</h2>
+<div class="section-box">
+  <p style="white-space: pre-wrap;">{{ story.content or '(no content)' }}</p>
+  {% if story.source_url or story.correlation %}
+  <div class="source-meta">
+    {% if story.source_url %}<strong>Source:</strong> {{ story.source_url }} · {% endif %}
+    <strong>Correlation:</strong> {{ story.correlation or 'No' }}
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<p class="no-content">No stories added yet.</p>
+{% endfor %}
+
+{% if briefing.escalations %}
+<h2>Escalations</h2>
+<div class="section-box">
+  <p style="white-space: pre-wrap;">{{ briefing.escalations }}</p>
+</div>
+{% endif %}
+
+{% if briefing.notes %}
+<h2>Notes</h2>
+<div class="section-box">
+  <p style="white-space: pre-wrap;">{{ briefing.notes }}</p>
+</div>
+{% endif %}
+
+</body>
+</html>

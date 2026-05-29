@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tlr.tlr_id }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ tlr.tlr_id }}: {{ tlr.title or '(no title)' }}{% endblock %}
+
+{% block misp_object_url %}{{ tlr.misp_url }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('threat_landscape.review') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back
+</a>
+<a href="{{ url_for('threat_landscape.wizard_edit', id=tlr.uuid) }}" class="btn btn-sm btn-outline-primary">
+  <i class="fas fa-pen me-1"></i> Edit
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <div class="col-lg-8">
+
+    {% if tlr.top_threats %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-triangle-exclamation me-2"></i>Top threats</div>
+      <div class="card-body">
+        <div style="white-space: pre-wrap;">{{ tlr.top_threats }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if tlr.trending_actors %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user-secret me-2"></i>Trending threat actors</div>
+      <div class="card-body">
+        <div style="white-space: pre-wrap;">{{ tlr.trending_actors }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if tlr.key_incidents %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-fire me-2"></i>Key incidents</div>
+      <div class="card-body">
+        <div style="white-space: pre-wrap;">{{ tlr.key_incidents }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if tlr.recommendations %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield me-2"></i>Recommendations</div>
+      <div class="card-body">
+        <div style="white-space: pre-wrap;">{{ tlr.recommendations }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if tlr.outlook %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-binoculars me-2"></i>Outlook</div>
+      <div class="card-body">
+        <div style="white-space: pre-wrap;">{{ tlr.outlook }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-info-circle me-2"></i>Metadata</div>
+      <div class="card-body small">
+        <dl class="row mb-0">
+          <dt class="col-5">ID</dt>
+          <dd class="col-7 font-monospace">{{ tlr.tlr_id }}</dd>
+
+          <dt class="col-5">Period</dt>
+          <dd class="col-7">{{ tlr.reporting_period or '-' }}</dd>
+
+          <dt class="col-5">Author</dt>
+          <dd class="col-7">{{ tlr.author or '-' }}</dd>
+
+          <dt class="col-5">Audience</dt>
+          <dd class="col-7">{{ tlr.audience or '-' }}</dd>
+
+          <dt class="col-5">TLP</dt>
+          <dd class="col-7"><span class="tlp-badge tlp-{{ tlr.tlp | slug }}">TLP:{{ tlr.tlp | upper }}</span></dd>
+
+          <dt class="col-5">State</dt>
+          <dd class="col-7">
+            {% if tlr.review_state == 'published' %}
+            <span class="badge bg-success">published</span>
+            {% else %}
+            <span class="badge bg-secondary">draft</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-5">Created</dt>
+          <dd class="col-7">{{ tlr.created_at.strftime('%d-%m-%Y') if tlr.created_at else '-' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    {% if tlr.review_state != 'published' %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-check-circle me-2"></i>Publish</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">Publishing marks this report as final and notifies MISP.</p>
+        <form method="post" action="{{ url_for('threat_landscape.publish', id=tlr.uuid) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success w-100">
+            <i class="fas fa-paper-plane me-1"></i> Publish report
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-comment-dots me-2"></i>Feedback</div>
+      <div class="card-body">
+        {% if feedback %}
+        {% for f in feedback %}
+        <div class="border rounded p-2 mb-2 small">
+          <div class="text-muted mb-1">{{ f.name }}</div>
+          <div class="report-md-body" data-md="{{ f.content | e }}"></div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-2"><em>No feedback recorded yet.</em></p>
+        {% endif %}
+        <hr>
+        <form method="post" action="{{ url_for('threat_landscape.add_feedback', id=tlr.uuid) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-2"><input type="text" name="author" class="form-control form-control-sm" placeholder="Your name (optional)"></div>
+          <div class="mb-2">
+            <select name="rating" class="form-select form-select-sm">
+              <option value="">- rating -</option>
+              <option value="Very useful">Very useful</option>
+              <option value="Useful">Useful</option>
+              <option value="Somewhat useful">Somewhat useful</option>
+              <option value="Not useful">Not useful</option>
+            </select>
+          </div>
+          <div class="mb-2"><textarea name="comment" class="form-control form-control-sm" rows="3" placeholder="Comments or suggestions…"></textarea></div>
+          <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-paper-plane me-1"></i> Submit feedback</button>
+        </form>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('threat_landscape.delete', id=tlr.uuid) }}"
+          onsubmit="return confirm('Delete {{ tlr.tlr_id }}?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-danger w-100">
+        <i class="fas fa-trash me-1"></i> Delete report
+      </button>
+    </form>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.report-md-body').forEach(el => {
+  const raw = el.getAttribute('data-md') || '';
+  if (typeof marked !== 'undefined') el.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(marked.parse(raw)) : marked.parse(raw);
+  else el.textContent = raw;
+});
+</script>
+{% endblock %}

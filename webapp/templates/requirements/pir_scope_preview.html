@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}{{ pir.pir_id }} scope preview | zsazsa CTI{% endblock %}
+{% block page_title %}Scope preview &mdash; <span class="req-id-badge ms-1">{{ pir.pir_id }}</span>{% endblock %}
+
+{% block misp_object_url %}{{ pir.misp_url }}{% endblock %}
+{% block topbar_actions %}{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info small">
+  <strong>What this shows.</strong> This page does a fast keyword check of the current
+  scope items against the latest scraper events. It is a sanity check, not the analyser:
+  the real analyser uses the LLM to judge relevance and may pick a subset of these or
+  flag others. Use this to see whether the current scope would historically have
+  surfaced anything from collection.
+</div>
+
+<div class="card content-card mb-4">
+  <div class="card-header"><i class="fas fa-list me-2"></i>Active scope terms ({{ terms | length }})</div>
+  <div class="card-body">
+    {% if terms %}
+    <div class="d-flex flex-wrap gap-1">
+      {% for t in terms %}<span class="source-tag">{{ t }}</span>{% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0 small">No scope items defined yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-magnifying-glass me-2"></i>Matches in collection</span>
+    <div class="d-flex align-items-center gap-2">
+      <form method="get" action="{{ url_for('requirements.pir_scope_preview', id=pir.uuid) }}" class="d-flex align-items-center gap-2">
+        <label class="small text-muted mb-0" for="pirScopeTimeframe">Timeframe</label>
+        <select id="pirScopeTimeframe" name="timeframe" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for value, label in timeframe_options %}
+          <option value="{{ value }}" {{ 'selected' if timeframe_key == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <span class="badge bg-secondary">{{ matches | length }} event{{ 's' if matches | length != 1 }}</span>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {% if matches %}
+    <table class="table table-sm mb-0 align-middle">
+      <thead>
+        <tr>
+          <th style="width: 4rem;">Hits</th>
+          <th>Event</th>
+          <th>Date</th>
+          <th>Matched terms</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in matches %}
+        <tr>
+          <td><span class="badge bg-primary">{{ m.score }}</span></td>
+          <td>{{ m.info }}</td>
+          <td class="text-muted small">{{ m.date }}</td>
+          <td>
+            <div class="d-flex flex-wrap gap-1">
+              {% for t in m.matched_terms %}<span class="source-tag">{{ t }}</span>{% endfor %}
+            </div>
+          </td>
+          <td>
+            <a href="{{ url_for('data_collection.detail', uuid=m.uuid) }}" class="btn btn-xs btn-outline-info">
+              <i class="fas fa-arrow-right"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% elif terms %}
+    <div class="empty-state py-4">
+      <i class="fas fa-magnifying-glass text-muted d-block mb-2"></i>
+      <p class="text-muted mb-0 small">No scraper events currently match these scope items.</p>
+    </div>
+    {% else %}
+    <div class="empty-state py-4">
+      <p class="text-muted mb-0 small">Add scope items first.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,570 @@
+{% extends "base.html" %}
+
+{% block title %}{{ browser_title }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ page_title_text }}{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ form_action }}" id="compose-form">
+
+  <div class="card content-card mb-3">
+    <div class="card-header"><i class="fas fa-sliders me-2"></i>Briefing metadata</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Title <span class="text-muted small">(optional)</span></label>
+          <input name="title" class="form-control" value="{{ briefing_title or '' }}" placeholder="e.g. Weekly Threat Digest #12">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Date</label>
+          <input type="date" name="date" class="form-control" value="{{ briefing_date }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Author</label>
+          <input name="author" class="form-control" value="{{ briefing_author or '' }}" placeholder="Analyst name">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">TLP</label>
+          <select name="tlp" class="form-select">
+            <option value="clear" {{ 'selected' if briefing_tlp == 'clear' }}>clear</option>
+            <option value="green" {{ 'selected' if briefing_tlp == 'green' }}>green</option>
+            <option value="amber" {{ 'selected' if briefing_tlp == 'amber' }}>amber</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-3 d-flex gap-2 align-items-center">
+    <button type="button" class="btn btn-outline-info btn-sm" id="btn-draft-all">
+      <i class="fas fa-wand-magic-sparkles me-1"></i> Draft all with AI
+    </button>
+    <button type="button" class="btn btn-outline-warning btn-sm" id="btn-check-overlap" disabled>
+      <i class="fas fa-layer-group me-1"></i> Check overlap
+    </button>
+    <button type="button" class="btn btn-outline-danger btn-sm" id="btn-auto-delete-excluded"
+            title="{% if story_title_exclusions %}Exclusion patterns: {{ story_title_exclusions | join(' | ') }}{% else %}No exclusion patterns configured in Configuration > Products.{% endif %}">
+      <i class="fas fa-filter-circle-xmark me-1"></i> Auto delete stories that match the exclusion
+    </button>
+    {% if page_mode == 'edit' %}
+    <button type="submit" class="btn btn-primary btn-sm">
+      <i class="fas fa-floppy-disk me-1"></i> {{ save_label }}
+    </button>
+    {% endif %}
+    <span id="draft-all-status" class="text-muted small"></span>
+  </div>
+
+  <div id="overlap-status" class="text-muted small mb-2" style="display:none"></div>
+  <div id="overlap-results" class="mb-3" style="display:none"></div>
+
+  <div id="stories-container" class="accordion">
+    {% for story in stories %}
+    {% set idx = loop.index %}
+    <div class="card content-card mb-3 story-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-link text-start text-decoration-none p-0 flex-grow-1 me-3 story-collapse-toggle {{ '' if loop.first else 'collapsed' }}"
+                data-bs-toggle="collapse"
+                data-bs-target="#story-collapse-{{ idx }}"
+                aria-expanded="{{ 'true' if loop.first else 'false' }}"
+                aria-controls="story-collapse-{{ idx }}">
+          <i class="fas fa-newspaper me-2"></i><span class="story-heading-text">Story {{ idx }}: </span><span class="story-title-preview">{{ story.title | truncate(50) if story.title else '(no title yet)' }}</span>
+        </button>
+        <div class="d-flex gap-2">
+          {% if story.ai_summary %}
+          <button type="button" class="btn btn-xs btn-outline-success btn-use-ai-summary"
+                  title="Paste the existing AI-generated MISP summary into the story field">
+            <i class="fas fa-robot me-1"></i> Use existing AI summary
+          </button>
+          {% endif %}
+          <button type="button" class="btn btn-xs btn-outline-info btn-draft-story"
+                  data-idx="{{ idx }}"
+                  data-event-uuid="{{ story.source_event_uuid }}"
+                  title="Draft a 5-line briefing story with AI from the original event content">
+            <i class="fas fa-wand-magic-sparkles me-1"></i> Draft with AI
+          </button>
+          <button type="button" class="btn btn-xs btn-outline-danger btn-remove-story">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+      <div id="story-collapse-{{ idx }}" class="accordion-collapse collapse {{ 'show' if loop.first else '' }}" data-bs-parent="#stories-container">
+      <div class="card-body">
+        <input type="hidden" name="story_{{ idx }}_source_event_uuid" value="{{ story.source_event_uuid }}">
+        {% if story.ai_summary %}<textarea class="story-ai-summary-data" style="display:none" tabindex="-1" readonly>{{ story.ai_summary | e }}</textarea>{% endif %}
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label">Title</label>
+            <input name="story_{{ idx }}_title" class="form-control story-title-input"
+                   value="{{ story.title }}" placeholder="Brief story title">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Source URL</label>
+            <input name="story_{{ idx }}_source_url" class="form-control"
+                   value="{{ story.source_url }}" placeholder="https://...">
+          </div>
+          <div class="col-12">
+            <label class="form-label d-flex align-items-center gap-2">
+              Story text
+              <small class="text-muted">(5 lines: what happened, who is affected, why it matters, indicators, what to do)</small>
+            </label>
+            <textarea name="story_{{ idx }}_content" class="form-control story-content"
+                      rows="6" placeholder="Write the 5-line story here...">{{ story.content }}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Correlation with known MISP events</label>
+            <input name="story_{{ idx }}_correlation" class="form-control"
+                   value="{{ story.correlation }}" placeholder="No / Yes: matches CCB event abc-123">
+          </div>
+        </div>
+        <div class="scope-chips-{{ idx }} mt-2" style="display:none">
+          <span class="text-muted small me-1">Scope:</span>
+        </div>
+        <div class="ai-status-{{ idx }} text-muted small mt-1" style="display:none"></div>
+      </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="mb-3">
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-add-story">
+      <i class="fas fa-plus me-1"></i> Add story
+    </button>
+  </div>
+
+  <div class="card content-card mb-3">
+    <div class="card-header"><i class="fas fa-arrow-up-right-dots me-2"></i>Escalations &amp; notes</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Escalations</label>
+          <textarea name="escalations" class="form-control" rows="3"
+                    placeholder="Items escalated to flash alert, or 'None today.'">{{ briefing_escalations or '' }}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Notes</label>
+          <textarea name="notes" class="form-control" rows="3"
+                    placeholder="Feedback, follow-up items, stand-up observations.">{{ briefing_notes or '' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">
+      <i class="fas fa-floppy-disk me-1"></i> {{ save_label }}
+    </button>
+    <a href="{{ cancel_url }}" class="btn btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i> {{ cancel_label }}
+    </a>
+  </div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var storyCount = {{ stories | length }};
+var isEditMode = {{ 'true' if page_mode == 'edit' else 'false' }};
+var storyTitleExclusions = {{ story_title_exclusions | tojson }};
+
+document.getElementById('btn-add-story').addEventListener('click', function() {
+  storyCount++;
+  addStoryCard(storyCount, '', '', '', '', '');
+  updateOverlapButtonState();
+});
+
+document.addEventListener('click', function(e) {
+  if (e.target.closest('.btn-remove-story')) {
+    if (isEditMode && !window.confirm('Delete this story from the briefing draft?')) {
+      return;
+    }
+    var card = e.target.closest('.story-card');
+    if (card) card.remove();
+    renumberStories();
+    updateOverlapButtonState();
+    clearOverlapVisuals();
+  }
+  if (e.target.closest('.btn-draft-story')) {
+    var btn = e.target.closest('.btn-draft-story');
+    var idx = btn.dataset.idx;
+    var eventUuid = btn.dataset.eventUuid;
+    draftStory(idx, eventUuid);
+  }
+  if (e.target.closest('.btn-use-ai-summary')) {
+    var btn = e.target.closest('.btn-use-ai-summary');
+    var card = btn.closest('.story-card');
+    var summaryEl = card.querySelector('.story-ai-summary-data');
+    var summary = summaryEl ? summaryEl.value : '';
+    if (!summary) return;
+    var textarea = card.querySelector('.story-content');
+    if (textarea) {
+      textarea.value = summary;
+      updateOverlapButtonState();
+      clearOverlapVisuals();
+      var statusEl = card.querySelector('[class^=ai-status]');
+      if (statusEl) {
+        statusEl.style.display = '';
+        statusEl.textContent = 'AI summary pasted. Review and edit before saving.';
+      }
+    }
+  }
+});
+
+document.addEventListener('input', function(e) {
+  if (e.target.classList.contains('story-title-input')) {
+    var card = e.target.closest('.story-card');
+    var preview = card.querySelector('.story-title-preview');
+    if (preview) preview.textContent = e.target.value.substring(0, 50) || '(no title yet)';
+  }
+  if (e.target.classList.contains('story-content')) {
+    updateOverlapButtonState();
+  }
+});
+
+function renumberStories() {
+  document.querySelectorAll('.story-card').forEach(function(card, i) {
+    var idx = i + 1;
+    card.querySelectorAll('[name]').forEach(function(el) {
+      el.name = el.name.replace(/story_\d+_/, 'story_' + idx + '_');
+    });
+    var draftBtn = card.querySelector('.btn-draft-story');
+    if (draftBtn) draftBtn.dataset.idx = idx;
+    var collapseEl = card.querySelector('.accordion-collapse');
+    if (collapseEl) {
+      collapseEl.id = 'story-collapse-' + idx;
+    }
+    var collapseBtn = card.querySelector('.story-collapse-toggle');
+    if (collapseBtn) {
+      collapseBtn.setAttribute('data-bs-target', '#story-collapse-' + idx);
+      collapseBtn.setAttribute('aria-controls', 'story-collapse-' + idx);
+    }
+    var scopeEl = card.querySelector('[class^=scope-chips]');
+    if (scopeEl) scopeEl.className = 'scope-chips-' + idx + ' mt-2';
+    var statusEl = card.querySelector('[class^=ai-status]');
+    if (statusEl) statusEl.className = 'ai-status-' + idx + ' text-muted small mt-1';
+    var heading = card.querySelector('.story-heading-text');
+    if (heading) heading.textContent = 'Story ' + idx + ': ';
+  });
+  storyCount = document.querySelectorAll('.story-card').length;
+}
+
+function _getStoryCards() {
+  return Array.prototype.slice.call(document.querySelectorAll('.story-card'));
+}
+
+function _collectStoriesForOverlap() {
+  return _getStoryCards().map(function(card, i) {
+    var titleEl = card.querySelector('[name="story_' + (i + 1) + '_title"]');
+    var contentEl = card.querySelector('[name="story_' + (i + 1) + '_content"]');
+    var sourceEl = card.querySelector('[name="story_' + (i + 1) + '_source_url"]');
+    return {
+      index: i + 1,
+      title: titleEl ? titleEl.value.trim() : '',
+      content: contentEl ? contentEl.value.trim() : '',
+      source_url: sourceEl ? sourceEl.value.trim() : '',
+    };
+  });
+}
+
+function _titleMatchesExclusion(title) {
+  var text = String(title || '').toLowerCase();
+  if (!text) return false;
+  return (storyTitleExclusions || []).some(function(pattern) {
+    var p = String(pattern || '').trim().toLowerCase();
+    return !!p && text.indexOf(p) !== -1;
+  });
+}
+
+function autoDeleteExcludedStories() {
+  var removed = 0;
+  _getStoryCards().forEach(function(card) {
+    var titleInput = card.querySelector('.story-title-input');
+    var title = titleInput ? titleInput.value : '';
+    if (_titleMatchesExclusion(title)) {
+      card.remove();
+      removed++;
+    }
+  });
+  if (removed > 0) {
+    renumberStories();
+    updateOverlapButtonState();
+    clearOverlapVisuals();
+  }
+  var statusEl = document.getElementById('overlap-status');
+  if (statusEl) {
+    statusEl.style.display = '';
+    statusEl.textContent = removed > 0
+      ? ('Auto-deleted ' + removed + ' stor' + (removed === 1 ? 'y' : 'ies') + ' matching configured exclusions.')
+      : 'No stories matched configured exclusion patterns.';
+  }
+}
+
+function updateOverlapButtonState() {
+  var btn = document.getElementById('btn-check-overlap');
+  if (!btn) return;
+  var stories = _collectStoriesForOverlap();
+  var hasEnoughStories = stories.length >= 2;
+  var allHaveText = stories.length > 0 && stories.every(function(s) { return !!s.content; });
+  btn.disabled = !(hasEnoughStories && allHaveText);
+  btn.title = btn.disabled
+    ? 'Requires at least 2 stories and text in every story.'
+    : 'Check whether stories overlap and may describe the same event.';
+}
+
+function clearOverlapVisuals() {
+  _getStoryCards().forEach(function(card) {
+    card.classList.remove('border', 'border-warning', 'border-2');
+  });
+  var resultEl = document.getElementById('overlap-results');
+  var statusEl = document.getElementById('overlap-status');
+  if (resultEl) {
+    resultEl.style.display = 'none';
+    resultEl.innerHTML = '';
+  }
+  if (statusEl) {
+    statusEl.style.display = 'none';
+    statusEl.textContent = '';
+  }
+}
+
+function _highlightOverlapStories(overlaps) {
+  var cards = _getStoryCards();
+  var toMark = new Set();
+  overlaps.forEach(function(item) {
+    if (item && item.a) toMark.add(item.a);
+    if (item && item.b) toMark.add(item.b);
+  });
+  toMark.forEach(function(idx) {
+    var card = cards[idx - 1];
+    if (!card) return;
+    card.classList.add('border', 'border-warning', 'border-2');
+  });
+}
+
+function _renderOverlapResult(data) {
+  var resultEl = document.getElementById('overlap-results');
+  var statusEl = document.getElementById('overlap-status');
+  if (!resultEl || !statusEl) return;
+
+  clearOverlapVisuals();
+
+  var overlaps = Array.isArray(data.overlaps) ? data.overlaps.slice() : [];
+  overlaps.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+
+  statusEl.style.display = '';
+  if (!overlaps.length) {
+    statusEl.textContent = 'No meaningful overlap found between stories.';
+    resultEl.style.display = 'none';
+    return;
+  }
+
+  var summary = data.summary ? String(data.summary) : '';
+  statusEl.textContent = 'Potential overlap found in ' + overlaps.length + ' pair' + (overlaps.length === 1 ? '' : 's') + '.' + (summary ? ' ' + summary : '');
+
+  var items = overlaps.map(function(item) {
+    var scorePct = Math.round((Number(item.score || 0)) * 100);
+    var reason = item.reason ? String(item.reason) : 'Similar event coverage detected.';
+    return '<li class="list-group-item d-flex justify-content-between align-items-start">'
+      + '<div>'
+      + '<div class="fw-semibold">Story ' + item.a + ' and Story ' + item.b + '</div>'
+      + '<div class="small text-muted">' + reason + '</div>'
+      + '</div>'
+      + '<span class="badge text-bg-warning">Overlap ' + scorePct + '%</span>'
+      + '</li>';
+  });
+
+  resultEl.style.display = '';
+  resultEl.innerHTML = '<div class="card content-card"><div class="card-header"><i class="fas fa-copy me-2"></i>Potential duplicate coverage</div><ul class="list-group list-group-flush">' + items.join('') + '</ul></div>';
+  _highlightOverlapStories(overlaps);
+}
+
+function addStoryCard(idx, title, content, sourceUrl, sourceUuid, correlation) {
+  var html = `
+    <div class="card content-card mb-3 story-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-link text-start text-decoration-none p-0 flex-grow-1 me-3 story-collapse-toggle"
+                data-bs-toggle="collapse"
+                data-bs-target="#story-collapse-${idx}"
+                aria-expanded="true"
+                aria-controls="story-collapse-${idx}">
+          <i class="fas fa-newspaper me-2"></i><span class="story-heading-text">Story ${idx}: </span><span class="story-title-preview">(no title yet)</span>
+        </button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-xs btn-outline-info btn-draft-story"
+                  data-idx="${idx}" data-event-uuid="${sourceUuid}" title="Draft with AI">
+            <i class="fas fa-wand-magic-sparkles me-1"></i> Draft with AI
+          </button>
+          <button type="button" class="btn btn-xs btn-outline-danger btn-remove-story">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+      <div id="story-collapse-${idx}" class="accordion-collapse collapse show" data-bs-parent="#stories-container">
+      <div class="card-body">
+        <input type="hidden" name="story_${idx}_source_event_uuid" value="${sourceUuid}">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label">Title</label>
+            <input name="story_${idx}_title" class="form-control story-title-input"
+                   value="${title}" placeholder="Brief story title">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Source URL</label>
+            <input name="story_${idx}_source_url" class="form-control" value="${sourceUrl}" placeholder="https://...">
+          </div>
+          <div class="col-12">
+            <label class="form-label d-flex align-items-center gap-2">
+              Story text
+              <small class="text-muted">(5 lines: what happened, who is affected, why it matters, indicators, what to do)</small>
+            </label>
+            <textarea name="story_${idx}_content" class="form-control story-content"
+                      rows="6" placeholder="Write the 5-line story here...">${content}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Correlation with known MISP events</label>
+            <input name="story_${idx}_correlation" class="form-control"
+                   value="${correlation}" placeholder="No / Yes: matches CCB event abc-123">
+          </div>
+        </div>
+        <div class="scope-chips-${idx} mt-2" style="display:none"><span class="text-muted small me-1">Scope:</span></div>
+        <div class="ai-status-${idx} text-muted small mt-1" style="display:none"></div>
+      </div>
+      </div>
+    </div>`;
+  document.getElementById('stories-container').insertAdjacentHTML('beforeend', html);
+}
+
+function _renderScopeChips(idx, scope) {
+  var el = document.querySelector('.scope-chips-' + idx);
+  if (!el || !scope) return;
+  var chips = [];
+  (scope.sectors || []).forEach(function(s) {
+    chips.push('<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 me-1" title="Sector">' + s + '</span>');
+  });
+  (scope.geo || []).forEach(function(s) {
+    chips.push('<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 me-1" title="Geography">' + s + '</span>');
+  });
+  (scope.techniques || []).forEach(function(s) {
+    chips.push('<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 me-1" title="MITRE">' + s + '</span>');
+  });
+  if (chips.length) {
+    el.style.display = '';
+    el.innerHTML = '<span class="text-muted small me-1">Scope:</span>' + chips.join('');
+  }
+}
+
+function draftStory(idx, eventUuid) {
+  var statusEl = document.querySelector('.ai-status-' + idx);
+  if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Drafting with AI...'; }
+
+  return fetch('/api/draft-story', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+    },
+    body: JSON.stringify({event_uuid: eventUuid}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      if (statusEl) statusEl.textContent = 'Error: ' + data.error;
+      return;
+    }
+    var textarea = document.querySelector('[name=story_' + idx + '_content]');
+    if (textarea) textarea.value = data.story;
+    updateOverlapButtonState();
+    _renderScopeChips(idx, data.scope);
+    if (statusEl) statusEl.textContent = 'AI draft applied. Review before saving.';
+  })
+  .catch(err => {
+    if (statusEl) statusEl.textContent = 'Request failed: ' + err;
+  });
+}
+
+document.getElementById('btn-draft-all').addEventListener('click', function() {
+  var cards = document.querySelectorAll('.story-card');
+  if (!cards.length) return;
+  var statusEl = document.getElementById('draft-all-status');
+  var btn = this;
+  btn.disabled = true;
+  var total = cards.length;
+  statusEl.textContent = 'Drafting story 1 of ' + total + '...';
+
+  function doNext(i) {
+    if (i >= cards.length) {
+      btn.disabled = false;
+      statusEl.textContent = 'All ' + total + ' stories drafted.';
+      updateOverlapButtonState();
+      return;
+    }
+    var card = cards[i];
+    var draftBtn = card.querySelector('.btn-draft-story');
+    var idx = draftBtn ? draftBtn.dataset.idx : (i + 1);
+    var uuid = draftBtn ? draftBtn.dataset.eventUuid : '';
+    statusEl.textContent = 'Drafting story ' + (i + 1) + ' of ' + total + '...';
+    var p = draftStory(idx, uuid);
+    (p || Promise.resolve()).then(function() {
+      doNext(i + 1);
+    });
+  }
+  doNext(0);
+});
+
+document.getElementById('btn-check-overlap').addEventListener('click', function() {
+  var btn = this;
+  var stories = _collectStoriesForOverlap();
+  var statusEl = document.getElementById('overlap-status');
+  if (!stories.length) return;
+  if (stories.some(function(s) { return !s.content; })) {
+    updateOverlapButtonState();
+    if (statusEl) {
+      statusEl.style.display = '';
+      statusEl.textContent = 'Add text to all stories before checking overlap.';
+    }
+    return;
+  }
+
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.style.display = '';
+    statusEl.textContent = 'Checking overlap across stories...';
+  }
+
+  fetch('/api/briefing-overlap-check', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+    },
+    body: JSON.stringify({stories: stories}),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        if (statusEl) {
+          statusEl.style.display = '';
+          statusEl.textContent = 'Error: ' + data.error;
+        }
+        return;
+      }
+      _renderOverlapResult(data || {});
+    })
+    .catch(function(err) {
+      if (statusEl) {
+        statusEl.style.display = '';
+        statusEl.textContent = 'Request failed: ' + err;
+      }
+    })
+    .finally(function() {
+      updateOverlapButtonState();
+    });
+});
+
+document.getElementById('btn-auto-delete-excluded').addEventListener('click', function() {
+  autoDeleteExcludedStories();
+});
+
+updateOverlapButtonState();
+</script>
+{% endblock %}

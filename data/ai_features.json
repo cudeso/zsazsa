@@ -1,0 +1,42 @@
+{
+  "check_relevance": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "flash_intel_relevance.md"
+  },
+  "generate_flash_intel": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "flash_intel_generate.md"
+  },
+  "generate_fia_draft": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "flash_intel_generate.md"
+  },
+  "draft_briefing_story": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "daily_briefing_story.md"
+  },
+  "review_briefing_relevance": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "daily_briefing_relevance.md"
+  },
+  "detect_story_overlaps": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "daily_briefing_overlap.md"
+  },
+  "summarise_report": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "summarise_misp_report.md"
+  },
+  "draft_vea_sections": {
+    "provider": "openai",
+    "model": "",
+    "prompt": "vea_draft.md"
+  }
+}

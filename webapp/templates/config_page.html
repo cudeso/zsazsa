@@ -1,0 +1,953 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration · zsazsa CTI{% endblock %}
+{% block page_title %}Configuration{% endblock %}
+
+{% block content %}
+<form method="post">
+
+  <ul class="nav nav-tabs mb-4" id="cfg-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-connections" type="button" role="tab">
+        <i class="fas fa-plug me-1"></i> Connections
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-products" type="button" role="tab">
+        <i class="fas fa-boxes-stacked me-1"></i> Products
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-system" type="button" role="tab">
+        <i class="fas fa-gears me-1"></i> System
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-prompts" type="button" role="tab">
+        <i class="fas fa-message me-1"></i> Prompts
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ai" type="button" role="tab">
+        <i class="fas fa-robot me-1"></i> AI
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-context" type="button" role="tab">
+        <i class="fas fa-tags me-1"></i> Context elements
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-notifications" type="button" role="tab">
+        <i class="fas fa-bell me-1"></i> Notifications
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+
+    <!-- ── Connections tab ────────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="tab-connections" role="tabpanel">
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-server me-2"></i>MISP webapp store</div>
+        <div class="card-body">
+          <div class="form-text mb-3">Stores stakeholders, PIRs, and GIRs.</div>
+          <div class="mb-3">
+            <label class="form-label">URL</label>
+            <input type="url" name="MISP_WEBAPP_URL" class="form-control font-monospace" value="{{ cfg.MISP_WEBAPP_URL }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">API key</label>
+            <div class="input-group">
+              <input type="password" name="MISP_WEBAPP_KEY" class="form-control font-monospace api-key-input" value="{{ cfg.MISP_WEBAPP_KEY }}">
+              <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Verify TLS certificate</label>
+            <select name="MISP_WEBAPP_VERIFYCERT" class="form-select">
+              <option value="true" {{ 'selected' if cfg.MISP_WEBAPP_VERIFYCERT }}>Yes</option>
+              <option value="false" {{ 'selected' if not cfg.MISP_WEBAPP_VERIFYCERT }}>No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-robot me-2"></i>OpenAI</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">API key</label>
+            <div class="input-group">
+              <input type="password" name="OPENAI_API_KEY" class="form-control font-monospace api-key-input" value="{{ cfg.OPENAI_API_KEY }}">
+              <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+          <div class="border-top pt-3">
+            <div class="mb-2">
+              <span class="text-muted small fw-semibold"><i class="fas fa-chart-bar me-1"></i>Token usage</span>
+            </div>
+            <div id="llm-usage-panel">
+              {% set u = cfg.llm_usage %}
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge bg-secondary">Today: {{ u.today_tokens }} tokens ({{ u.today_calls }} calls)</span>
+                <span class="badge bg-secondary">Last 7d: {{ u.week_tokens }} tokens ({{ u.week_calls }} calls)</span>
+                <span class="badge bg-primary">All time: {{ u.total_tokens }} tokens ({{ u.total_calls }} calls)</span>
+              </div>
+              {% if u.by_feature %}
+              <table class="table table-sm table-borderless mb-0" style="width:auto">
+                <thead>
+                  <tr>
+                    <th class="text-muted small py-1 pe-3">Feature</th>
+                    <th class="text-end text-muted small py-1 pe-3">Calls</th>
+                    <th class="text-end text-muted small py-1 pe-3">Input</th>
+                    <th class="text-end text-muted small py-1 pe-3">Output</th>
+                    <th class="text-end text-muted small py-1">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for f in u.by_feature %}
+                  <tr>
+                    <td class="text-muted small py-1 pe-3">{{ f.feature }}</td>
+                    <td class="text-end small py-1 pe-3">{{ f.calls }}</td>
+                    <td class="text-end small py-1 pe-3">{{ f.input_tokens }}</td>
+                    <td class="text-end small py-1 pe-3">{{ f.output_tokens }}</td>
+                    <td class="text-end small py-1 fw-semibold">{{ f.total_tokens }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              {% else %}
+              <span class="text-muted small">No usage recorded yet.</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── Products tab ───────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-products" role="tabpanel">
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-boxes-stacked me-2"></i>Product types</div>
+        <div class="card-body">
+          <label class="form-label">Used for stakeholder subscriptions and PIR output format</label>
+          <textarea name="PRODUCT_TYPES" class="form-control font-monospace" rows="{{ [cfg.PRODUCT_TYPES | length + 2, 5] | max }}"
+            placeholder="One product type per line">{{ cfg.PRODUCT_TYPES | join('\n') }}</textarea>
+          <div class="form-text">One entry per line. Shared between stakeholder subscriptions and PIR deliverables.</div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-filter me-2"></i>Daily briefing story title exclusions</div>
+        <div class="card-body">
+          <label class="form-label">Exclude stories with this in the title</label>
+          <textarea name="DAILY_BRIEFING_TITLE_EXCLUSIONS" class="form-control font-monospace" rows="{{ [cfg.DAILY_BRIEFING_TITLE_EXCLUSIONS | length + 2, 5] | max }}"
+            placeholder="One pattern per line">{{ cfg.DAILY_BRIEFING_TITLE_EXCLUSIONS | join('\n') }}</textarea>
+          <div class="form-text">One entry per line. Matching is case-insensitive and checks event titles and report titles.</div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-bullseye me-2"></i>Focus points (organisation-wide)</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Geographies</label>
+              <textarea name="FOCUS_POINTS_GEOGRAPHIES" class="form-control font-monospace" rows="{{ [cfg.FOCUS_POINTS_GEOGRAPHIES | length + 2, 4] | max }}"
+                placeholder="One geography per line">{{ cfg.FOCUS_POINTS_GEOGRAPHIES | join('\n') }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Sectors</label>
+              <textarea name="FOCUS_POINTS_SECTORS" class="form-control font-monospace" rows="{{ [cfg.FOCUS_POINTS_SECTORS | length + 2, 4] | max }}"
+                placeholder="One sector per line">{{ cfg.FOCUS_POINTS_SECTORS | join('\n') }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Technologies</label>
+              <textarea name="FOCUS_POINTS_TECHNOLOGIES" class="form-control font-monospace" rows="{{ [cfg.FOCUS_POINTS_TECHNOLOGIES | length + 2, 4] | max }}"
+                placeholder="One technology per line">{{ cfg.FOCUS_POINTS_TECHNOLOGIES | join('\n') }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Threat types</label>
+              <textarea name="FOCUS_POINTS_THREAT_TYPES" class="form-control font-monospace" rows="{{ [cfg.FOCUS_POINTS_THREAT_TYPES | length + 2, 4] | max }}"
+                placeholder="One threat type per line">{{ cfg.FOCUS_POINTS_THREAT_TYPES | join('\n') }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Threat actors</label>
+              <textarea name="FOCUS_POINTS_THREAT_ACTORS" class="form-control font-monospace" rows="{{ [cfg.FOCUS_POINTS_THREAT_ACTORS | length + 2, 4] | max }}"
+                placeholder="One threat actor per line">{{ cfg.FOCUS_POINTS_THREAT_ACTORS | join('\n') }}</textarea>
+            </div>
+          </div>
+          <div class="form-text mt-2">These focus points are global and used by AI-assisted briefing/relevance flows. One entry per line.</div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── System tab ─────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-system" role="tabpanel">
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-gears me-2"></i>Analyser</div>
+        <div class="card-body">
+          <label class="form-label">Poll window (hours)</label>
+          <input type="number" name="POLL_WINDOW_HOURS" class="form-control" value="{{ cfg.POLL_WINDOW_HOURS }}" min="1" max="168">
+          <div class="form-text">How far back to look for new scraper events on each run.</div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-file-lines me-2"></i>Logging</div>
+        <div class="card-body">
+          <label class="form-label">Log level</label>
+          <select name="LOG_LEVEL" class="form-select">
+            {% for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR'] %}
+            <option value="{{ level }}" {{ 'selected' if cfg.LOG_LEVEL == level }}>{{ level }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-globe me-2"></i>Web server</div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-8">
+              <label class="form-label">Hostname</label>
+              <input type="text" name="HOSTNAME" class="form-control font-monospace"
+                     value="{{ cfg.HOSTNAME }}"
+                     placeholder="zsazsa.example.com or 192.168.1.10">
+              <div class="form-text">DNS name or IP address used to reach this instance. Used in generated links.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Port</label>
+              <input type="number" name="PORT" class="form-control" value="{{ cfg.PORT }}"
+                     min="1" max="65535">
+              <div class="form-text">TCP port the application listens on.</div>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="SSL_ENABLED" id="ssl_enabled"
+                     value="true" {{ 'checked' if cfg.SSL_ENABLED }}>
+              <label class="form-check-label" for="ssl_enabled">Enable SSL / HTTPS</label>
+            </div>
+            <div class="form-text">
+              Enable only when zsazsa terminates TLS itself. Leave off if a reverse proxy (nginx, Caddy)
+              handles HTTPS in front of this application.
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">SSL certificate path</label>
+              <input type="text" name="SSL_CERT" class="form-control font-monospace"
+                     value="{{ cfg.SSL_CERT }}" placeholder="certs/zsazsa.crt">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">SSL private key path</label>
+              <input type="text" name="SSL_KEY" class="form-control font-monospace"
+                     value="{{ cfg.SSL_KEY }}" placeholder="certs/zsazsa.key">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── Prompts tab ──────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-prompts" role="tabpanel">
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <p class="text-muted small mb-0">
+          Prompt templates used by the LLM-assisted features. Files are stored in the <code>prompts/</code> directory.
+        </p>
+        <button class="btn btn-primary" id="save-prompts-btn" type="button">
+          <i class="fas fa-floppy-disk me-1"></i> Save all prompts
+        </button>
+      </div>
+
+      <div id="prompt-save-alert" class="alert d-none mb-3" role="alert"></div>
+
+      <div class="accordion mb-3" id="prompt-accordion">
+        {% for p in cfg.prompts %}
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="prompt-acc-heading-{{ loop.index }}">
+            <button class="accordion-button collapsed" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#prompt-acc-{{ loop.index }}"
+                    aria-expanded="false" aria-controls="prompt-acc-{{ loop.index }}">
+              <i class="fas fa-file-lines me-2"></i>
+              <code style="font-size:.85rem;">{{ p.filename }}</code>
+              {% if p.description %}
+              <span class="text-muted small ms-2">- {{ p.description }}</span>
+              {% endif %}
+            </button>
+          </h2>
+          <div id="prompt-acc-{{ loop.index }}" class="accordion-collapse collapse"
+               aria-labelledby="prompt-acc-heading-{{ loop.index }}"
+               data-bs-parent="#prompt-accordion">
+            <div class="accordion-body p-2">
+              <textarea class="form-control font-monospace prompt-textarea"
+                        data-filename="{{ p.filename }}"
+                        rows="{{ [p.content.count('\n') + 3, 6] | max }}"
+                        style="font-size:.82rem;">{{ p.content }}</textarea>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="card content-card mb-3">
+        <div class="card-header"><i class="fas fa-plus me-2"></i>New prompt file</div>
+        <div class="card-body">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Filename <span class="text-muted">(without .md extension)</span></label>
+            <input type="text" id="new-prompt-name" class="form-control form-control-sm font-monospace"
+                   placeholder="my_new_prompt">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Content</label>
+            <textarea id="new-prompt-content" class="form-control font-monospace" rows="6"
+                      style="font-size:.82rem;" placeholder="You are a CTI analyst…"></textarea>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" id="add-prompt-btn" type="button">
+            <i class="fas fa-plus me-1"></i>Create prompt file
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── AI tab ────────────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-ai" role="tabpanel">
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <p class="text-muted small mb-0">
+          Configure the LLM provider, model, and prompt for each AI-assisted feature.
+          Per-feature model fields override the default model; leave them empty to use the default.
+        </p>
+        <button class="btn btn-primary" id="save-ai-btn" type="button">
+          <i class="fas fa-floppy-disk me-1"></i> Save AI settings
+        </button>
+      </div>
+
+      <div id="ai-save-alert" class="alert d-none mb-3" role="alert"></div>
+
+      <div class="card content-card mb-3">
+        <div class="card-header"><i class="fas fa-robot me-2"></i>OpenAI</div>
+        <div class="card-body row g-3">
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Default model</label>
+            <input type="text" id="ai-default-model" class="form-control font-monospace"
+                   value="{{ cfg.OPENAI_MODEL }}" placeholder="gpt-4o-mini">
+            <div class="form-text">Used by any feature whose model field is left empty.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-list me-2"></i>Feature configuration</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 align-middle" id="ai-features-table">
+            <thead class="table-light">
+              <tr>
+                <th style="width:30%">Feature</th>
+                <th style="width:15%">Provider</th>
+                <th style="width:20%">Model</th>
+                <th style="width:35%">Prompt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for fid, feat in cfg.ai_features.items() %}
+              <tr data-feature-id="{{ fid }}">
+                <td class="py-2 ps-3">
+                  <div class="fw-semibold small">{{ feat.label }}</div>
+                  <div class="text-muted" style="font-size:.78rem;">{{ feat.description }}</div>
+                </td>
+                <td>
+                  <span class="badge bg-secondary">OpenAI</span>
+                </td>
+                <td>
+                  <input type="text" class="form-control form-control-sm font-monospace ai-model-input"
+                         placeholder="{{ cfg.OPENAI_MODEL }}"
+                         value="{{ feat.model }}"
+                         title="Leave empty to use the global model ({{ cfg.OPENAI_MODEL }})">
+                </td>
+                <td>
+                  <select class="form-select form-select-sm ai-prompt-select">
+                    {% for p in cfg.prompts %}
+                    <option value="{{ p.filename }}"
+                      {% if p.filename == feat.prompt %}selected{% endif %}>
+                      {{ p.filename }}
+                    </option>
+                    {% endfor %}
+                  </select>
+                  {% if feat.prompt not in cfg.prompts | map(attribute='filename') | list %}
+                  <div class="text-warning small mt-1">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    Configured file <code>{{ feat.prompt }}</code> not found in prompts/
+                  </div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="alert alert-warning small py-2">
+        <i class="fas fa-triangle-exclamation me-1"></i>
+        <strong>Prompt injection risk.</strong>
+        AI features send raw MISP event content (titles, report text, attribute values) to the configured LLM.
+        An adversary who can write to a connected MISP instance could craft event content to manipulate AI-generated drafts.
+        Only connect to MISP servers you trust, and review all AI-generated output before publishing or acting on it.
+      </div>
+
+    </div>
+
+    <!-- ── Context elements tab ───────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-context" role="tabpanel">
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <p class="text-muted small mb-0">
+          MISP tags used by zsazsa. The <code>zsazsa</code> namespace is custom and must exist on
+          your MISP instance. Edit the tag strings below if you need to align with a different
+          taxonomy layout, then save.
+        </p>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-tag me-2"></i>Entity type markers</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Every zsazsa object stored in MISP carries a <code>zsazsa:type</code> tag so the
+            application can retrieve it by type.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Stakeholder</label>
+              <input type="text" name="TAG_STAKEHOLDER" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_STAKEHOLDER }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Priority Intelligence Requirement (PIR)</label>
+              <input type="text" name="TAG_PIR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_PIR }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">General Intelligence Requirement (GIR)</label>
+              <input type="text" name="TAG_GIR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_GIR }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Request for Information (RFI)</label>
+              <input type="text" name="TAG_RFI" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_RFI }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-boxes-stacked me-2"></i>Product classification</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Published CTI products carry a <code>zsazsa:ctiproduct</code> tag. This tag serves as
+            both the type marker and the product label for filtering in the Products catalogue.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Flash Intel Alert</label>
+              <input type="text" name="TAG_FLASH_INTEL" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_FLASH_INTEL }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Vulnerability Exploitation Advisory</label>
+              <input type="text" name="TAG_VEA" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_VEA }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Daily Threat Briefing</label>
+              <input type="text" name="TAG_BRIEFING" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_BRIEFING }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Threat Landscape Report</label>
+              <input type="text" name="TAG_TLR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_TLR }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-spider me-2"></i>Scraper source marking</div>
+        <div class="card-body">
+          <label class="form-label">Scraper marker tag</label>
+          <input type="text" name="SCRAPER_MARKER_TAG" class="form-control font-monospace" value="{{ cfg.SCRAPER_MARKER_TAG }}">
+          <div class="form-text">
+            The analyser only processes MISP events that carry this tag. The misp-scraper service
+            applies it when it ingests events.
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-database me-2"></i>Collection workflow</div>
+        <div class="card-body">
+          <label class="form-label">Follow-up flag tag</label>
+          <input type="text" name="TAG_COLLECTION_FOLLOWUP" class="form-control font-monospace" value="{{ cfg.TAG_COLLECTION_FOLLOWUP }}">
+          <div class="form-text">
+            Added as a <strong>local</strong> tag when an analyst flags an event for follow-up from the data-collection page.
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-list-check me-2"></i>Recommended actions</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Predefined actions shown as checkboxes in the flash intel and VEA wizards. One action per line.
+            Users can still add free-text actions on top of these.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Immediate actions (0–24h) / VEA immediate</label>
+              <textarea name="RECOMMENDED_ACTIONS_IMMEDIATE" class="form-control font-monospace" rows="8"
+                        placeholder="One action per line">{{ cfg.RECOMMENDED_ACTIONS_IMMEDIATE | join('\n') }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Near-term actions (1–7d)</label>
+              <textarea name="RECOMMENDED_ACTIONS_NEAR_TERM" class="form-control font-monospace" rows="8"
+                        placeholder="One action per line">{{ cfg.RECOMMENDED_ACTIONS_NEAR_TERM | join('\n') }}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── Notifications tab ──────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-notifications" role="tabpanel">
+
+      <p class="text-muted small mb-4">
+        Configure notification channels for product publishing and requirement updates. Each channel can be enabled or disabled independently and assigned to specific stakeholders.
+      </p>
+
+      <!-- Channel list -->
+      <div id="notification-channel-list">
+        {% for ch in cfg.NOTIFICATION_CHANNELS %}
+        <div class="notification-channel-row card content-card mb-3" data-original-id="{{ ch.id }}">
+          <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
+            <i class="fas fa-comment-dots text-muted"></i>
+            <span class="fw-semibold channel-display-name">{{ ch.name }}</span>
+            <span class="badge {{ 'bg-success' if ch.enabled else 'bg-secondary' }} ms-1 channel-display-enabled">
+              {{ 'Enabled' if ch.enabled else 'Disabled' }}
+            </span>
+            <div class="ms-auto d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-channel-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-danger delete-channel-btn">Delete</button>
+            </div>
+          </div>
+          <div class="card-body channel-form" style="display:none;">
+            <div class="row g-3">
+              <div class="col-sm-5">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control ch-name" value="{{ ch.name }}" placeholder="e.g. SOC Mattermost">
+              </div>
+              <div class="col-sm-7">
+                <label class="form-label">Webhook URL</label>
+                <div class="input-group">
+                  <input type="password" class="form-control font-monospace api-key-input ch-url" value="{{ ch.url }}"
+                         placeholder="https://mattermost.example.com/hooks/…">
+                  <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide">
+                    <i class="fas fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="col-sm-5">
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input ch-enabled" type="checkbox" {{ 'checked' if ch.enabled }}>
+                  <label class="form-check-label">Enabled</label>
+                </div>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input ch-verify-tls" type="checkbox" {{ 'checked' if ch.verify_tls is not defined or ch.verify_tls }}>
+                  <label class="form-check-label">Verify TLS certificate</label>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-primary save-channel-btn">Save</button>
+              <span class="save-channel-result small align-self-center"></span>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted small" id="no-channels-msg">No notification channels configured yet.</p>
+        {% endfor %}
+        {% if cfg.NOTIFICATION_CHANNELS %}<p class="text-muted small d-none" id="no-channels-msg">No notification channels configured yet.</p>{% endif %}
+      </div>
+
+      <!-- Add new channel -->
+      <div class="card content-card mb-4 border-dashed">
+        <div class="card-header"><i class="fas fa-plus me-2"></i>Add Mattermost channel</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-5">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control" id="new-ch-name" placeholder="e.g. SOC Mattermost">
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label">Webhook URL</label>
+              <div class="input-group">
+                <input type="password" class="form-control font-monospace api-key-input" id="new-ch-url"
+                       placeholder="https://mattermost.example.com/hooks/…">
+                <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-sm-5">
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="new-ch-enabled" checked>
+                <label class="form-check-label" for="new-ch-enabled">Enabled</label>
+              </div>
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="new-ch-verify-tls" checked>
+                <label class="form-check-label" for="new-ch-verify-tls">Verify TLS certificate</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-primary" id="add-channel-btn">Add channel</button>
+            <span class="small align-self-center" id="add-channel-result"></span>
+          </div>
+          <div class="form-text mt-2"><strong>Triggers:</strong> product published (flash intel, VEA, briefing), PIR/GIR shared, PIR intake status change.</div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+</form>
+
+<script>
+(function() {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  // Keep tab state across save reloads
+  const lastTab = sessionStorage.getItem('cfg-active-tab');
+  if (lastTab) {
+    const trigger = document.querySelector('[data-bs-target="' + lastTab + '"]');
+    try { if (trigger) new bootstrap.Tab(trigger).show(); } catch(e) {}
+  }
+  document.querySelectorAll('#cfg-tabs button').forEach(btn => {
+    btn.addEventListener('shown.bs.tab', e => {
+      sessionStorage.setItem('cfg-active-tab', e.target.dataset.bsTarget);
+    });
+  });
+
+  // API key toggles for non-server fields (scraper, webapp, openai, mattermost)
+  document.querySelectorAll('.api-key-toggle').forEach((btn) => {
+    if (btn.closest('.misp-server-row')) return; // handled per-row above
+    btn.addEventListener('click', () => {
+      const input = btn.closest('.input-group').querySelector('.api-key-input');
+      const icon = btn.querySelector('i');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+      } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+      }
+    });
+  });
+
+  // ── Prompts tab save / add ────────────────────────────────────────────
+  const savePromptsBtn = document.getElementById('save-prompts-btn');
+  const promptAlert = document.getElementById('prompt-save-alert');
+
+  function showPromptAlert(msg, type) {
+    if (!promptAlert) return;
+    promptAlert.textContent = msg;
+    promptAlert.className = 'alert alert-' + type + ' mb-3';
+    promptAlert.classList.remove('d-none');
+    setTimeout(() => { promptAlert.classList.add('d-none'); }, 4000);
+  }
+
+  if (savePromptsBtn) {
+    savePromptsBtn.addEventListener('click', () => {
+      const prompts = [];
+      document.querySelectorAll('.prompt-textarea').forEach((ta) => {
+        prompts.push({filename: ta.dataset.filename, content: ta.value});
+      });
+      savePromptsBtn.disabled = true;
+      fetch('/config/prompts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({prompts: prompts}),
+      })
+      .then(r => r.json())
+      .then(data => {
+        savePromptsBtn.disabled = false;
+        if (data.ok) {
+          showPromptAlert('Prompts saved.', 'success');
+        } else {
+          showPromptAlert('Error: ' + (data.error || 'unknown'), 'warning');
+        }
+      })
+      .catch(() => {
+        savePromptsBtn.disabled = false;
+        showPromptAlert('Request failed.', 'danger');
+      });
+    });
+  }
+
+  // ── AI tab save ──────────────────────────────────────────────────────
+  const saveAiBtn = document.getElementById('save-ai-btn');
+  const aiAlert = document.getElementById('ai-save-alert');
+
+  function showAiAlert(msg, type) {
+    if (!aiAlert) return;
+    aiAlert.textContent = msg;
+    aiAlert.className = 'alert alert-' + type + ' mb-3';
+    aiAlert.classList.remove('d-none');
+    setTimeout(() => { aiAlert.classList.add('d-none'); }, 4000);
+  }
+
+  if (saveAiBtn) {
+    saveAiBtn.addEventListener('click', () => {
+      const defaultModel = (document.getElementById('ai-default-model')?.value || '').trim();
+      const features = {};
+      document.querySelectorAll('#ai-features-table tbody tr[data-feature-id]').forEach(row => {
+        const fid = row.dataset.featureId;
+        features[fid] = {
+          provider: 'openai',
+          model: (row.querySelector('.ai-model-input')?.value || '').trim(),
+          prompt: row.querySelector('.ai-prompt-select')?.value || '',
+        };
+      });
+      saveAiBtn.disabled = true;
+      fetch('/config/save-ai-features', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({default_model: defaultModel, features}),
+      })
+      .then(r => r.json())
+      .then(data => {
+        saveAiBtn.disabled = false;
+        if (data.ok) {
+          showAiAlert('AI settings saved.', 'success');
+        } else {
+          showAiAlert('Error: ' + (data.error || 'unknown'), 'warning');
+        }
+      })
+      .catch(() => {
+        saveAiBtn.disabled = false;
+        showAiAlert('Request failed.', 'danger');
+      });
+    });
+  }
+
+  const addPromptBtn = document.getElementById('add-prompt-btn');
+  if (addPromptBtn) {
+    addPromptBtn.addEventListener('click', () => {
+      const nameInput = document.getElementById('new-prompt-name');
+      const contentInput = document.getElementById('new-prompt-content');
+      const name = (nameInput.value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const content = contentInput.value || '';
+      if (!name) { showPromptAlert('Enter a filename.', 'warning'); return; }
+      addPromptBtn.disabled = true;
+      fetch('/config/prompts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({prompts: [{filename: name + '.md', content: content}]}),
+      })
+      .then(r => r.json())
+      .then(data => {
+        addPromptBtn.disabled = false;
+        if (data.ok) {
+          showPromptAlert('Prompt file created. Reload to see it.', 'success');
+          nameInput.value = '';
+          contentInput.value = '';
+        } else {
+          showPromptAlert('Error: ' + (data.error || 'unknown'), 'warning');
+        }
+      })
+      .catch(() => {
+        addPromptBtn.disabled = false;
+        showPromptAlert('Request failed.', 'danger');
+      });
+    });
+  }
+})();
+
+// ── Notification channels ──────────────────────────────────────────────────
+(function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const list = document.getElementById('notification-channel-list');
+  if (!list) return;
+
+  function bindRow(row) {
+    const toggleBtn = row.querySelector('.toggle-channel-form');
+    const form = row.querySelector('.channel-form');
+    const deleteBtn = row.querySelector('.delete-channel-btn');
+    const saveBtn = row.querySelector('.save-channel-btn');
+    const saveResult = row.querySelector('.save-channel-result');
+
+    if (toggleBtn && form) {
+      toggleBtn.addEventListener('click', () => {
+        const open = form.style.display !== 'none';
+        form.style.display = open ? 'none' : '';
+        toggleBtn.textContent = open ? 'Edit' : 'Close';
+      });
+    }
+
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        const originalId = row.dataset.originalId;
+        if (!confirm('Delete this notification channel?')) return;
+        const resp = await fetch('/config/delete-notification-channel', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({channel_id: originalId}),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          row.remove();
+          const noMsg = document.getElementById('no-channels-msg');
+          if (noMsg && !list.querySelector('.notification-channel-row')) noMsg.classList.remove('d-none');
+        } else {
+          alert('Delete failed: ' + (data.error || 'unknown'));
+        }
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const originalId = row.dataset.originalId;
+        const name = row.querySelector('.ch-name').value.trim();
+        const url = row.querySelector('.ch-url').value.trim();
+        const enabled = row.querySelector('.ch-enabled').checked;
+        const verifyTls = row.querySelector('.ch-verify-tls').checked;
+        if (!name) { saveResult.textContent = 'Name required'; saveResult.className = 'save-channel-result small text-danger'; return; }
+        const resp = await fetch('/config/save-notification-channel', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({original_id: originalId, name, url, enabled, verify_tls: verifyTls, type: 'mattermost'}),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          row.dataset.originalId = data.new_id;
+          row.querySelector('.channel-display-name').textContent = name;
+          const badge = row.querySelector('.channel-display-enabled');
+          badge.textContent = enabled ? 'Enabled' : 'Disabled';
+          badge.className = 'badge ms-1 channel-display-enabled ' + (enabled ? 'bg-success' : 'bg-secondary');
+          saveResult.textContent = 'Saved';
+          saveResult.className = 'save-channel-result small text-success';
+          setTimeout(() => { saveResult.textContent = ''; }, 3000);
+        } else {
+          saveResult.textContent = data.error || 'Save failed';
+          saveResult.className = 'save-channel-result small text-danger';
+        }
+      });
+    }
+  }
+
+  list.querySelectorAll('.notification-channel-row').forEach(bindRow);
+
+  const addBtn = document.getElementById('add-channel-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', async () => {
+      const nameEl = document.getElementById('new-ch-name');
+      const urlEl = document.getElementById('new-ch-url');
+      const enabledEl = document.getElementById('new-ch-enabled');
+      const resultEl = document.getElementById('add-channel-result');
+      const name = nameEl.value.trim();
+      const url = urlEl.value.trim();
+      const enabled = enabledEl.checked;
+      const verifyTlsEl = document.getElementById('new-ch-verify-tls');
+      const verifyTls = verifyTlsEl ? verifyTlsEl.checked : true;
+      if (!name) { resultEl.textContent = 'Name required'; resultEl.className = 'small text-danger'; return; }
+      const resp = await fetch('/config/save-notification-channel', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({name, url, enabled, verify_tls: verifyTls, type: 'mattermost'}),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        const noMsg = document.getElementById('no-channels-msg');
+        if (noMsg) noMsg.classList.add('d-none');
+        const tpl = document.createElement('div');
+        tpl.className = 'notification-channel-row card content-card mb-3';
+        tpl.dataset.originalId = data.new_id;
+        tpl.innerHTML = `
+          <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
+            <i class="fas fa-comment-dots text-muted"></i>
+            <span class="fw-semibold channel-display-name">${name}</span>
+            <span class="badge ${enabled ? 'bg-success' : 'bg-secondary'} ms-1 channel-display-enabled">${enabled ? 'Enabled' : 'Disabled'}</span>
+            <div class="ms-auto d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-channel-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-danger delete-channel-btn">Delete</button>
+            </div>
+          </div>
+          <div class="card-body channel-form" style="display:none;">
+            <div class="row g-3">
+              <div class="col-sm-5"><label class="form-label">Name</label><input type="text" class="form-control ch-name" value="${name}"></div>
+              <div class="col-sm-7"><label class="form-label">Webhook URL</label>
+                <div class="input-group"><input type="password" class="form-control font-monospace api-key-input ch-url" value="${url}">
+                <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button></div>
+              </div>
+              <div class="col-sm-5"><div class="form-check form-switch mt-2"><input class="form-check-input ch-enabled" type="checkbox" ${enabled ? 'checked' : ''}><label class="form-check-label">Enabled</label></div></div>
+              <div class="col-sm-5"><div class="form-check form-switch mt-2"><input class="form-check-input ch-verify-tls" type="checkbox" ${verifyTls ? 'checked' : ''}><label class="form-check-label">Verify TLS certificate</label></div></div>
+            </div>
+            <div class="d-flex gap-2 mt-3"><button type="button" class="btn btn-sm btn-primary save-channel-btn">Save</button><span class="save-channel-result small align-self-center"></span></div>
+          </div>`;
+        list.insertBefore(tpl, list.firstChild);
+        bindRow(tpl);
+        nameEl.value = ''; urlEl.value = ''; enabledEl.checked = true;
+        if (verifyTlsEl) verifyTlsEl.checked = true;
+        resultEl.textContent = 'Channel added';
+        resultEl.className = 'small text-success';
+        setTimeout(() => { resultEl.textContent = ''; }, 3000);
+      } else {
+        resultEl.textContent = data.error || 'Failed';
+        resultEl.className = 'small text-danger';
+      }
+    });
+  }
+})();
+
+</script>
+{% endblock %}

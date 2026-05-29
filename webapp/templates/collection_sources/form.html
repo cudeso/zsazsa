@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{{ ('Edit ' ~ source.name) if source else 'New collection source' }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ 'Edit collection source' if source else 'Add collection source' }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('collection_sources.index') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card content-card">
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" value="{{ data.get('name', '') }}"
+                   placeholder="e.g. Weekly sector newsletter" required autofocus>
+            <div class="form-text">This name will appear in PIR/GIR collection source dropdowns.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Owner</label>
+            <input type="text" name="owner" class="form-control" value="{{ data.get('owner', '') }}"
+                   placeholder="Person or team responsible for monitoring this source">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Location</label>
+            <input type="text" name="location" class="form-control" value="{{ data.get('location', '') }}"
+                   placeholder="URL, file path, or physical location">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Source reliability (Admiralty scale)</label>
+            <select name="source_reliability" class="form-select">
+              <option value="">- not rated -</option>
+              {% for code, label in admiralty_options %}
+              <option value="{{ code }}" {{ 'selected' if data.get('source_reliability') == code }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Applies the <code>admiralty-scale:source-reliability</code> tag to the source's MISP event.</div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="3"
+                      placeholder="What this source covers and why it is relevant">{{ data.get('description', '') }}</textarea>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save me-1"></i> {{ 'Save changes' if source else 'Create source' }}
+            </button>
+            <a href="{{ url_for('collection_sources.index') }}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

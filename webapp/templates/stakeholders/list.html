@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Stakeholders | zsazsa CTI{% endblock %}
+{% block page_title %}Stakeholders{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('stakeholders.new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> Add stakeholder
+</a>
+<a href="{{ url_for('export.stakeholders') }}" class="btn btn-sm btn-outline-secondary ms-2" title="Export as Markdown">
+  <i class="fas fa-download me-1"></i> Export
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if stakeholders %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Organisation</th>
+          <th>TLP clearance</th>
+          <th>Products</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in stakeholders %}
+        <tr>
+          <td>
+            <a href="{{ url_for('stakeholders.detail', id=s.id) }}" class="fw-semibold text-decoration-none">{{ s.name }}</a>
+            {% if s.stakeholder_type == 'Internal' %}
+            <span class="badge text-bg-primary ms-1" style="font-size:.65rem;vertical-align:middle;"><i class="fas fa-building me-1"></i>Internal</span>
+            {% else %}
+            <span class="badge text-bg-secondary ms-1" style="font-size:.65rem;vertical-align:middle;"><i class="fas fa-globe me-1"></i>External</span>
+            {% endif %}
+            {% if s.email %}<div class="text-muted small">{{ s.email }}</div>{% endif %}
+          </td>
+          <td><span class="text-muted">{{ s.role or '-' }}</span></td>
+          <td>{{ org_map.get(s.organization, s.organization) or '-' }}</td>
+          <td><span class="tlp-badge tlp-{{ s.tlp_clearance | slug }}">TLP:{{ s.tlp_clearance | upper }}</span></td>
+          <td>
+            {% if s.products %}
+            <span class="text-muted small">{{ s.products | length }} product{{ 's' if s.products | length != 1 }}</span>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('stakeholders.edit', id=s.id) }}" class="btn btn-xs btn-outline-secondary me-1" title="Edit">
+              <i class="fas fa-pen"></i>
+            </a>
+            <form method="post" action="{{ url_for('stakeholders.delete', id=s.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ s.name }}?')">
+              <button class="btn btn-xs btn-outline-danger" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state py-5">
+      <i class="fas fa-users fa-2x text-muted mb-3 d-block"></i>
+      <p class="text-muted mb-3">No stakeholders yet.</p>
+      <a href="{{ url_for('stakeholders.new') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-plus me-1"></i> Add first stakeholder
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

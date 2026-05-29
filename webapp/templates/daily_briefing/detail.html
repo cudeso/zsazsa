@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Briefing {{ briefing.date }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ briefing.title or ('Daily briefing - ' + (briefing.date or '(no date)')) }}{% endblock %}
+
+{% block misp_object_url %}{{ briefing.misp_url }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('daily_briefing.list_briefings') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-8">
+
+    {% for story in briefing.stories %}
+    {% set idx = loop.index %}
+    <div class="card content-card mb-3">
+      <div class="card-header">
+        <i class="fas fa-newspaper me-2"></i>
+        <strong>Story {{ idx }}:</strong> {{ story.title or '(untitled)' }}
+      </div>
+      <div class="card-body">
+        <p style="white-space: pre-wrap;">{{ story.content or '(no content)' }}</p>
+        <div class="text-muted small mt-2">
+          {% if story.source_url %}
+          <strong>Source:</strong> <a href="{{ story.source_url }}" target="_blank" rel="noopener">{{ story.source_url }}</a> ·
+          {% endif %}
+          {% if story.source_event_uuid %}
+          <strong>MISP event:</strong> <code>{{ story.source_event_uuid }}</code> ·
+          {% endif %}
+          <strong>Correlation:</strong> {{ story.correlation or 'No' }}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card content-card mb-3">
+      <div class="card-body text-muted">No stories added yet.</div>
+    </div>
+    {% endfor %}
+
+    {% if briefing.escalations %}
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-arrow-up-right-dots me-2"></i>Escalations</div>
+      <div class="card-body">
+        <p style="white-space: pre-wrap;">{{ briefing.escalations }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if briefing.notes %}
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-note-sticky me-2"></i>Notes</div>
+      <div class="card-body">
+        <p style="white-space: pre-wrap;">{{ briefing.notes }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="col-md-4">
+    <div class="card content-card mb-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <strong>Metadata</strong>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                data-bs-toggle="modal" data-bs-target="#recipientsModal"
+                title="Preview recipients">
+          <i class="fas fa-users me-1"></i> Recipients
+        </button>
+      </div>
+      <div class="card-body small">
+        <p class="mb-1"><strong>Date:</strong> {{ briefing.date or '-' }}</p>
+        {% if briefing.title %}<p class="mb-1"><strong>Title:</strong> {{ briefing.title }}</p>{% endif %}
+        <p class="mb-1"><strong>Author:</strong> {{ briefing.author or '-' }}</p>
+        <p class="mb-1"><strong>TLP:</strong> <span class="tlp-badge tlp-{{ briefing.tlp | slug }}">TLP:{{ briefing.tlp | upper }}</span></p>
+        <p class="mb-1"><strong>Stories:</strong> {{ briefing.stories | length }}</p>
+        <p class="mb-1">
+          <strong>State:</strong>
+          {% if briefing.review_state == 'published' %}<span class="badge bg-success">published</span>
+          {% else %}<span class="badge bg-secondary">draft</span>{% endif %}
+        </p>
+        {% if notify_status %}
+        <p class="mb-1">
+          <strong>Last notification:</strong>
+          <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
+          <span class="text-muted">{{ notify_status.timestamp }}</span>
+        </p>
+        {% if notify_status.details %}
+        <p class="mb-1 text-muted" style="font-size:.78rem;">{{ notify_status.details }}</p>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if briefing.review_state == 'draft' %}
+    <div class="card content-card mb-3">
+      <div class="card-header"><strong>Publish</strong></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('daily_briefing.publish', id=briefing.uuid) }}">
+          <p class="small text-muted mb-2">Publishing will notify subscribed stakeholders.</p>
+          <button class="btn btn-success w-100">
+            <i class="fas fa-paper-plane me-1"></i> Publish briefing
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-comment-dots me-2"></i>Feedback</div>
+      <div class="card-body">
+        {% if feedback %}
+        {% for f in feedback %}
+        <div class="border rounded p-2 mb-2 small">
+          <div class="text-muted mb-1">{{ f.name }}</div>
+          <div class="report-md-body" data-md="{{ f.content | e }}"></div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-2"><em>No feedback recorded yet.</em></p>
+        {% endif %}
+        <hr>
+        <form method="post" action="{{ url_for('daily_briefing.add_feedback', id=briefing.uuid) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-2"><input type="text" name="author" class="form-control form-control-sm" placeholder="Your name (optional)"></div>
+          <div class="mb-2">
+            <select name="rating" class="form-select form-select-sm">
+              <option value="">- rating -</option>
+              <option value="Very useful">Very useful</option>
+              <option value="Useful">Useful</option>
+              <option value="Somewhat useful">Somewhat useful</option>
+              <option value="Not useful">Not useful</option>
+            </select>
+          </div>
+          <div class="mb-2"><textarea name="comment" class="form-control form-control-sm" rows="3" placeholder="Comments or suggestions…"></textarea></div>
+          <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-paper-plane me-1"></i> Submit feedback</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('daily_briefing.edit', id=briefing.uuid) }}" class="btn btn-sm btn-outline-secondary flex-fill">
+        <i class="fas fa-pen me-1"></i> Edit
+      </a>
+      <form method="post" action="{{ url_for('daily_briefing.delete', id=briefing.uuid) }}"
+            onsubmit="return confirm('Delete this briefing?');" class="flex-fill">
+        <button class="btn btn-sm btn-outline-danger w-100">
+          <i class="fas fa-trash me-1"></i> Delete
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="recipientsModal" tabindex="-1" aria-labelledby="recipientsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="recipientsModalLabel">
+          <i class="fas fa-users me-2"></i>Who gets this briefing?
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Showing stakeholders currently subscribed to <strong>Daily threat briefing</strong>.
+        </p>
+        {% if recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle-check text-success me-1"></i>Will receive <span class="badge bg-success rounded-pill">{{ recipients | length }}</span></h6>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          {% for r in recipients %}
+          <span class="badge rounded-pill px-3 py-2"
+                style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-size:.82rem;cursor:default;"
+                title="Subscribed to Daily threat briefing">
+            {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No stakeholders are currently subscribed to Daily threat briefing.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.report-md-body').forEach(el => {
+  const raw = el.getAttribute('data-md') || '';
+  if (typeof marked !== 'undefined') el.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(marked.parse(raw)) : marked.parse(raw);
+  else el.textContent = raw;
+});
+</script>
+{% endblock %}
