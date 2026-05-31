@@ -1,0 +1,22 @@
+# Copy this file to /etc/systemd/system/zsazsa.service and adapt the paths.
+# Example:
+#   sudo cp docs/zsazsa.service.template /etc/systemd/system/zsazsa.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zsazsa.service
+
+[Unit]
+Description=zsazsa CTI web application
+After=network.target
+
+[Service]
+Type=simple
+User=CHANGE_ME_USER
+Group=CHANGE_ME_GROUP
+WorkingDirectory=/opt/zsazsa
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/zsazsa/venv/bin/python /opt/zsazsa/run_webapp.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

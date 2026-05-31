@@ -29,6 +29,8 @@ echo "============================================================"
 echo " zsazsa installer"
 echo "============================================================"
 echo ""
+echo "This installer uses ./venv as the project virtual environment."
+echo ""
 
 # ── 1. Python version check ────────────────────────────────────────────────────
 
@@ -206,5 +208,5 @@ echo ""
 echo "Or with the venv path explicit (no activation needed):"
 echo "  $VENV_DIR/bin/python run_webapp.py"
 echo ""
-echo "To install as a systemd service, see: zsazsa.service.template"
+echo "To install as a systemd service, see: docs/zsazsa.service.template"
 echo ""

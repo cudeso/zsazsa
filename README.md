@@ -105,6 +105,20 @@ You can configure:
 
 The configuration page organises settings across tabs (Connections, Products, System, Prompts, Context elements, Notifications). Collection sources - the MISP scraper connection, additional MISP servers, and manual sources - are managed at `/config/sources/`. MISP connections can be tested live. Each server entry can be saved individually. Manual sources have per-source enable/disable with an in-use guard against PIR/GIR references. The config file is backed up automatically before each save.
 
+## Installation
+
+zsazsa depends on a working MISP instance and a working misp-scraper deployment. This repository does not cover how to install MISP or misp-scraper themselves. Please follow the official installation guides for those projects first.
+
+Then install zsazsa from the project root:
+
+```bash
+bash docs/install.sh
+```
+
+The installer creates and uses `venv` in the project root, installs Python dependencies, prepares the data directory, and creates `config/__init__.py` if needed.
+
+After installation, edit `config/__init__.py` and set your MISP and API settings. If you want to run zsazsa as a service, use `docs/zsazsa.service.template` as your systemd starting point.
+
 ## Running the application
 
 ```bash
