@@ -9,10 +9,18 @@ logger = logging.getLogger(__name__)
 _client = None
 
 
+def _api_key() -> str:
+    return getattr(config, "OPENAI_API_KEY", getattr(config, "ANTHROPIC_API_KEY", ""))
+
+
+def _default_model() -> str:
+    return getattr(config, "OPENAI_MODEL", getattr(config, "ANTHROPIC_MODEL", ""))
+
+
 def _get_client() -> openai.OpenAI:
     global _client
     if _client is None:
-        _client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
+        _client = openai.OpenAI(api_key=_api_key())
     return _client
 
 
@@ -29,7 +37,7 @@ def _resolve_prompt(filename: str) -> str:
 
 
 def _call(system: str, user: str, max_tokens: int, feature: str = "unknown", model: str = None) -> str:
-    effective_model = (model or "").strip() or config.OPENAI_MODEL
+    effective_model = (model or "").strip() or _default_model()
     response = _get_client().chat.completions.create(
         model=effective_model,
         max_tokens=max_tokens,

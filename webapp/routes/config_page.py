@@ -105,6 +105,8 @@ def _read() -> dict:
     focus_points_technologies = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_TECHNOLOGIES", []) or []) if str(p).strip()]
     focus_points_threat_types = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_THREAT_TYPES", []) or []) if str(p).strip()]
     focus_points_threat_actors = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_THREAT_ACTORS", []) or []) if str(p).strip()]
+    openai_api_key = getattr(_config, "OPENAI_API_KEY", getattr(_config, "ANTHROPIC_API_KEY", ""))
+    openai_model = getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", ""))
     return {
         "MISP_URL": _config.MISP_URL,
         "MISP_KEY": _config.MISP_KEY,
@@ -112,8 +114,8 @@ def _read() -> dict:
         "MISP_WEBAPP_URL": _config.MISP_WEBAPP_URL,
         "MISP_WEBAPP_KEY": _config.MISP_WEBAPP_KEY,
         "MISP_WEBAPP_VERIFYCERT": _config.MISP_WEBAPP_VERIFYCERT,
-        "OPENAI_API_KEY": _config.OPENAI_API_KEY,
-        "OPENAI_MODEL": _config.OPENAI_MODEL,
+        "OPENAI_API_KEY": openai_api_key,
+        "OPENAI_MODEL": openai_model,
         "NOTIFICATION_CHANNELS": _read_notification_channels(),
         "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []),
         "PRODUCT_TYPES": _config.PRODUCT_TYPES,
@@ -314,7 +316,7 @@ def index():
             "MISP_WEBAPP_KEY": request.form.get("MISP_WEBAPP_KEY", ""),
             "MISP_WEBAPP_VERIFYCERT": request.form.get("MISP_WEBAPP_VERIFYCERT") == "true",
             "OPENAI_API_KEY": request.form.get("OPENAI_API_KEY", ""),
-            "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", ""),
+            "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", "")),
             "NOTIFICATION_CHANNELS": _read_notification_channels(),
             "PRODUCT_TYPES": products,
             "DAILY_BRIEFING_TITLE_EXCLUSIONS": exclusions,

@@ -102,9 +102,9 @@ MISP_WEBAPP_URL = 'https://your-misp-instance.example.com'
 MISP_WEBAPP_KEY = 'your-misp-api-key-here'
 MISP_WEBAPP_VERIFYCERT = False
 
-# Anthropic
-ANTHROPIC_API_KEY = 'sk-ant-your-key-here'
-ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+# OpenAI
+OPENAI_API_KEY = 'sk-your-openai-key-here'
+OPENAI_MODEL = 'gpt-4.1-mini'
 
 # Mattermost (leave empty to disable notifications)
 MATTERMOST_WEBHOOK_URL = ''
@@ -172,7 +172,7 @@ EOF
         echo "Created config/__init__.py with a generated SECRET_KEY."
         echo ""
         echo "  >>> ACTION REQUIRED: edit config/__init__.py and fill in your MISP_URL,"
-        echo "      MISP_KEY, and ANTHROPIC_API_KEY before starting the application."
+        echo "      MISP_KEY, and OPENAI_API_KEY before starting the application."
         echo ""
     fi
 fi
