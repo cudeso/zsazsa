@@ -10,6 +10,7 @@ import config
 STAKEHOLDER_ROLES = [
     "SOC",
     "Incident Response",
+    "Cyber Threat Intelligence",
     "Threat Hunting",
     "Detection Engineering",
     "Vulnerability Management",
