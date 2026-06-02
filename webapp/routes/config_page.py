@@ -1,13 +1,16 @@
 import importlib
 import logging
+import mimetypes
 import os
 import shutil
 import ast
 import tempfile
 from pathlib import Path
 
+import requests
+
 import config as _config
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 from webapp import audit, misp_store
 from webapp.rate_limit import rate_limited
 from webapp.utils import (
@@ -20,9 +23,10 @@ bp = Blueprint("config_page", __name__)
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).parent.parent.parent
+_UPLOADS_DIR = _ROOT / "data" / "uploads"
 _CONFIG_FILE = _ROOT / "config" / "__init__.py"
 _BACKUP_FILE = _ROOT / "config" / "__init__.py.backup"
-_PROMPTS_DIR = _ROOT / "prompts"
+_PROMPTS_DIR = _ROOT / "zsazsaprompts"
 
 
 def _llm_usage_stats() -> dict:
@@ -148,6 +152,12 @@ def _read() -> dict:
         "prompts": _list_prompts(),
         "llm_usage": _llm_usage_stats(),
         "ai_features": _load_ai_features(),
+        "BRAND_COMPANY": getattr(_config, "BRAND_COMPANY", ""),
+        "BRAND_DEPARTMENT": getattr(_config, "BRAND_DEPARTMENT", ""),
+        "BRAND_COLOR_1": getattr(_config, "BRAND_COLOR_1", "#0f2d52"),
+        "BRAND_COLOR_2": getattr(_config, "BRAND_COLOR_2", "#0078f1"),
+        "BRAND_COLOR_3": getattr(_config, "BRAND_COLOR_3", "#64748b"),
+        "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
     }
 
 
@@ -279,6 +289,14 @@ PORT = {int(values['PORT'])}
 SSL_ENABLED = {bool(values['SSL_ENABLED'])}
 SSL_CERT = {values['SSL_CERT']!r}
 SSL_KEY = {values['SSL_KEY']!r}
+
+# Branding (used for PDF outputs and channel notifications)
+BRAND_COMPANY    = {values.get('BRAND_COMPANY', '')!r}
+BRAND_DEPARTMENT = {values.get('BRAND_DEPARTMENT', '')!r}
+BRAND_COLOR_1    = {values.get('BRAND_COLOR_1', '#0f2d52')!r}
+BRAND_COLOR_2    = {values.get('BRAND_COLOR_2', '#0078f1')!r}
+BRAND_COLOR_3    = {values.get('BRAND_COLOR_3', '#64748b')!r}
+BRAND_LOGO       = {values.get('BRAND_LOGO', '')!r}
 """
     cfg_path = str(_CONFIG_FILE)
     cfg_dir = os.path.dirname(cfg_path)
@@ -344,6 +362,12 @@ def index():
             "SSL_ENABLED": request.form.get("SSL_ENABLED") == "true",
             "SSL_CERT": request.form.get("SSL_CERT", "certs/zsazsa.crt").strip(),
             "SSL_KEY": request.form.get("SSL_KEY", "certs/zsazsa.key").strip(),
+            "BRAND_COMPANY": request.form.get("BRAND_COMPANY", "").strip(),
+            "BRAND_DEPARTMENT": request.form.get("BRAND_DEPARTMENT", "").strip(),
+            "BRAND_COLOR_1": request.form.get("BRAND_COLOR_1", "#0f2d52").strip() or "#0f2d52",
+            "BRAND_COLOR_2": request.form.get("BRAND_COLOR_2", "#0078f1").strip() or "#0078f1",
+            "BRAND_COLOR_3": request.form.get("BRAND_COLOR_3", "#64748b").strip() or "#64748b",
+            "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
         }
         try:
             _write(values)
@@ -588,6 +612,64 @@ def delete_notification_channel():
     except Exception:
         logger.exception("delete_notification_channel failed")
         return jsonify({"ok": False, "error": "Could not delete notification channel."}), 500
+
+
+@bp.route("/config/ping-notification-channel", methods=["POST"])
+@rate_limited("config_ping_notification_channel", limit=10, window_s=60)
+def ping_notification_channel():
+    data, err = _json_object()
+    if err:
+        return err
+    channel_id = (data.get("channel_id") or "").strip()
+    if not channel_id:
+        return jsonify({"ok": False, "error": "channel_id required"}), 400
+    channels = _read_notification_channels()
+    ch = next((c for c in channels if c.get("id") == channel_id), None)
+    if not ch:
+        return jsonify({"ok": False, "error": "Channel not found"}), 404
+    url = (ch.get("url") or "").strip()
+    if not url:
+        return jsonify({"ok": False, "error": "Channel has no webhook URL configured"}), 400
+    verify_tls = bool(ch.get("verify_tls", True))
+    try:
+        r = requests.post(url, json={"text": "zsazsa test notification — channel is reachable."}, timeout=10, verify=verify_tls)
+        r.raise_for_status()
+        return jsonify({"ok": True})
+    except requests.RequestException as exc:
+        return jsonify({"ok": False, "error": str(exc)})
+
+
+@bp.route("/config/upload-logo", methods=["POST"])
+@rate_limited("config_upload_logo", limit=10, window_s=60)
+def upload_logo():
+    f = request.files.get("logo")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in (".png", ".jpg", ".jpeg"):
+        return jsonify({"ok": False, "error": "Only PNG and JPG files are accepted"}), 400
+    _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    for old in _UPLOADS_DIR.glob("logo.*"):
+        old.unlink(missing_ok=True)
+    dest = _UPLOADS_DIR / f"logo{ext}"
+    f.save(str(dest))
+    current = _read()
+    current["BRAND_LOGO"] = dest.name
+    _write(current)
+    importlib.reload(_config)
+    return jsonify({"ok": True, "filename": dest.name})
+
+
+@bp.route("/config/logo")
+def serve_logo():
+    logo = getattr(_config, "BRAND_LOGO", "")
+    if not logo:
+        return "", 404
+    path = _UPLOADS_DIR / logo
+    if not path.exists():
+        return "", 404
+    mime = mimetypes.guess_type(str(path))[0] or "image/png"
+    return send_file(str(path), mimetype=mime)
 
 
 @bp.route("/config/prompts", methods=["POST"])

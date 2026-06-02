@@ -5,9 +5,12 @@ selects relevant stories, drafts a 5-line summary per story (optionally
 with LLM assistance), then publishes the briefing.
 """
 
+import base64
 import logging
+import mimetypes
 import os
 from datetime import datetime
+from pathlib import Path
 
 import config
 import weasyprint
@@ -130,8 +133,12 @@ def _parse_stories_from_form(form):
 
 
 def _briefing_markdown(briefing, preview_url: str = "") -> str:
+    company = getattr(config, "BRAND_COMPANY", "")
+    dept = getattr(config, "BRAND_DEPARTMENT", "")
+    sender = " · ".join(p for p in [company, dept] if p) or "zsazsa CTI"
     lines = [
         f"# Daily threat briefing {briefing.date or ''}".strip(),
+        f"*{sender}*",
         "",
         f"**Date:** {briefing.date or '-'}",
         f"**Author:** {briefing.author or '-'}",
@@ -333,6 +340,20 @@ def detail(id):
     )
 
 
+_UPLOADS_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
+
+
+def _logo_data_uri():
+    logo = getattr(config, "BRAND_LOGO", "")
+    if not logo:
+        return ""
+    path = _UPLOADS_DIR / logo
+    if not path.exists():
+        return ""
+    mime = mimetypes.guess_type(str(path))[0] or "image/png"
+    return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
+
+
 @bp.route("/<string:id>/pdf")
 def pdf(id):
     briefing = misp_store.get_briefing(id)
@@ -340,7 +361,15 @@ def pdf(id):
         return "Briefing not found", 404
     css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "briefing_pdf.css")
     css_url = "file://" + os.path.abspath(css_path)
-    html = render_template("daily_briefing/pdf.html", briefing=briefing, css_url=css_url)
+    brand = {
+        "company": getattr(config, "BRAND_COMPANY", ""),
+        "department": getattr(config, "BRAND_DEPARTMENT", ""),
+        "color1": getattr(config, "BRAND_COLOR_1", "#0f2d52"),
+        "color2": getattr(config, "BRAND_COLOR_2", "#0078f1"),
+        "color3": getattr(config, "BRAND_COLOR_3", "#64748b"),
+        "logo_uri": _logo_data_uri(),
+    }
+    html = render_template("daily_briefing/pdf.html", briefing=briefing, css_url=css_url, brand=brand)
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     filename = f"briefing-{briefing.date or 'draft'}.pdf"
     return Response(pdf_bytes, mimetype="application/pdf",

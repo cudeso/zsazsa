@@ -78,6 +78,12 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS events_date ON events(date DESC);
         """)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS flagged_events (
+                uuid TEXT PRIMARY KEY,
+                flagged_at REAL NOT NULL
+            );
+        """)
         # Migrations: add columns to existing databases that lack them
         for _col_ddl in [
             "ALTER TABLE events ADD COLUMN has_ai_summary INTEGER DEFAULT 0",
@@ -473,3 +479,41 @@ def mark_ai_summary(uuid: str, source_id: str) -> None:
             )
     except Exception as exc:
         logger.warning("mark_ai_summary failed for %s: %s", uuid, exc)
+
+
+def flag_event(uuid: str) -> None:
+    try:
+        with _db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO flagged_events (uuid, flagged_at) VALUES (?, ?)",
+                (uuid, time.time()),
+            )
+    except Exception as exc:
+        logger.warning("flag_event failed for %s: %s", uuid, exc)
+
+
+def unflag_event(uuid: str) -> None:
+    try:
+        with _db() as conn:
+            conn.execute("DELETE FROM flagged_events WHERE uuid = ?", (uuid,))
+    except Exception as exc:
+        logger.warning("unflag_event failed for %s: %s", uuid, exc)
+
+
+def is_flagged(uuid: str) -> bool:
+    try:
+        with _db() as conn:
+            row = conn.execute("SELECT 1 FROM flagged_events WHERE uuid = ?", (uuid,)).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
+def get_flagged_uuids() -> set:
+    try:
+        with _db() as conn:
+            rows = conn.execute("SELECT uuid FROM flagged_events").fetchall()
+        return {r["uuid"] for r in rows}
+    except Exception as exc:
+        logger.warning("get_flagged_uuids failed: %s", exc)
+        return set()

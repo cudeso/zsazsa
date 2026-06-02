@@ -71,10 +71,11 @@
             </form>
             {% endif %}
             {% if b.review_state == 'published' %}
-            <button type="button" class="btn btn-sm btn-outline-danger" disabled
-                    title="Published briefings cannot be deleted">
-              <i class="fas fa-trash"></i>
-            </button>
+            <span title="Published briefings cannot be deleted" style="cursor:not-allowed;">
+              <button type="button" class="btn btn-sm btn-outline-danger" disabled style="pointer-events:none;">
+                <i class="fas fa-trash"></i>
+              </button>
+            </span>
             {% else %}
             <form method="post" action="{{ url_for('daily_briefing.delete', id=b.uuid) }}"
                   class="d-inline m-0"

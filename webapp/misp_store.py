@@ -3618,3 +3618,48 @@ def publish_tlr(uuid):
 
 def delete_tlr(uuid):
     _misp().delete_event(uuid)
+
+
+def find_products_using_source(src_uuid: str) -> list:
+    """Return all products (briefings, FIAs, VEAs) that reference src_uuid as a source event."""
+    results = []
+    try:
+        for b in list_briefings():
+            for s in (b.stories or []):
+                if getattr(s, "source_event_uuid", "") == src_uuid:
+                    results.append({
+                        "type": "daily-briefing",
+                        "uuid": b.uuid,
+                        "title": b.title or f"Daily briefing {b.date}",
+                        "date": b.date or "",
+                        "url": f"/briefing/{b.uuid}",
+                    })
+                    break
+    except Exception as exc:
+        logger.warning("find_products_using_source briefings failed: %s", exc)
+    try:
+        for f in list_fias():
+            uuids = list(getattr(f, "source_event_uuids", []) or [])
+            if src_uuid in uuids:
+                results.append({
+                    "type": "flash-intel",
+                    "uuid": f.uuid,
+                    "title": f.title or f"Flash Intel {f.fia_id}",
+                    "date": (f.created_at.strftime("%Y-%m-%d") if f.created_at else ""),
+                    "url": f"/products/flash-intel/{f.uuid}",
+                })
+    except Exception as exc:
+        logger.warning("find_products_using_source FIAs failed: %s", exc)
+    try:
+        for v in list_veas():
+            if getattr(v, "source_event_uuid", "") == src_uuid:
+                results.append({
+                    "type": "vea",
+                    "uuid": v.uuid,
+                    "title": v.title or f"VEA {v.vea_id}",
+                    "date": (v.created_at.strftime("%Y-%m-%d") if v.created_at else ""),
+                    "url": f"/products/vea/{v.uuid}",
+                })
+    except Exception as exc:
+        logger.warning("find_products_using_source VEAs failed: %s", exc)
+    return results

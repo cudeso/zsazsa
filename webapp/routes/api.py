@@ -762,6 +762,13 @@ def cve_lookup():
     return jsonify({"ok": True, "results": results})
 
 
+@bp.route("/collection/<string:uuid>/used-in", methods=["GET"])
+@rate_limited("api_collection_used_in", limit=30, window_s=60)
+def collection_used_in(uuid):
+    products = misp_store.find_products_using_source(uuid)
+    return jsonify({"ok": True, "products": products})
+
+
 @bp.route("/summarise-content", methods=["POST"])
 @rate_limited("api_summarise_content", limit=15, window_s=60)
 def summarise_content():

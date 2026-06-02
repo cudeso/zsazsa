@@ -75,9 +75,30 @@
           <i class="fas fa-play me-1"></i>Start analyser
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
-          <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="daily-briefing">Daily briefing</button></li>
-          <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="flash-intel">Flash intel alert</button></li>
-          <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="vea">Vuln advisory</button></li>
+          <li>
+            <button class="dropdown-item pipeline-action-btn d-flex align-items-center justify-content-between gap-3" type="button" data-action="daily-briefing">
+              Daily briefing
+              <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" style="flex-shrink:0;"
+                 data-bs-toggle="tooltip" data-bs-placement="left"
+                 title="Scans today&apos;s scraper events with workflow:state=incomplete. Applies title exclusions, then uses the LLM to judge relevance against your configured focus points. Relevant events are summarised and assembled into a daily briefing draft."></i>
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item pipeline-action-btn d-flex align-items-center justify-content-between gap-3" type="button" data-action="flash-intel">
+              Flash intel alert
+              <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" style="flex-shrink:0;"
+                 data-bs-toggle="tooltip" data-bs-placement="left"
+                 title="Scans today&apos;s scraper events with workflow:state=incomplete. Matches each event against active PIRs and GIRs. Events with a requirement match are turned into flash intel alert drafts for analyst review."></i>
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item pipeline-action-btn d-flex align-items-center justify-content-between gap-3" type="button" data-action="vea">
+              Vuln advisory
+              <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" style="flex-shrink:0;"
+                 data-bs-toggle="tooltip" data-bs-placement="left"
+                 title="Scans today&apos;s scraper events with workflow:state=incomplete. Detects CVE identifiers in event titles and attributes. Events with a CVE match are turned into vulnerability advisory drafts for analyst review."></i>
+            </button>
+          </li>
         </ul>
       </div>
       <button class="btn btn-sm btn-outline-secondary" id="pipeline-progress-open" type="button" data-bs-toggle="modal" data-bs-target="#pipelineProgressModal" disabled>
@@ -316,6 +337,9 @@
 
 {% block scripts %}
 <script>
+document.querySelectorAll('.analyser-info-icon').forEach(function(el) {
+  new bootstrap.Tooltip(el, {trigger: 'hover focus'});
+});
 (function() {
   var csrfMeta = document.querySelector('meta[name="csrf-token"]');
   var csrfToken = csrfMeta ? csrfMeta.content : '';

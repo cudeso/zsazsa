@@ -105,6 +105,12 @@
                 <i class="fas fa-trash-can"></i>
               </button>
             </form>
+            {% else %}
+            <span title="Approved advisories cannot be deleted" style="cursor:not-allowed;">
+              <button type="button" class="btn btn-sm btn-outline-danger" disabled style="pointer-events:none;">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </span>
             {% endif %}
             </div>
           </td>

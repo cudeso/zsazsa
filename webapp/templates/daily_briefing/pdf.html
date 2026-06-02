@@ -4,52 +4,87 @@
   <meta charset="utf-8">
   <title>Daily Threat Briefing - {{ briefing.date or 'draft' }}</title>
   <link rel="stylesheet" href="{{ css_url }}">
+  <style>
+    :root {
+      --c1: {{ brand.color1 }};
+      --c2: {{ brand.color2 }};
+      --c3: {{ brand.color3 }};
+    }
+  </style>
 </head>
 <body>
 
+{# Running header/footer string anchors #}
 <span class="briefing-id-anchor" style="display:none;">Briefing {{ briefing.date or 'draft' }}</span>
 <span class="tlp-label-anchor" style="display:none;">TLP:{{ briefing.tlp | upper }}</span>
 
-<h1>{{ briefing.title or ('Daily Threat Briefing - ' + (briefing.date or '(no date)')) }}</h1>
-
-<div class="meta-block">
-  <table>
-    <tr><td>Date:</td><td>{{ briefing.date or '-' }}</td></tr>
-    {% if briefing.title %}<tr><td>Title:</td><td>{{ briefing.title }}</td></tr>{% endif %}
-    <tr><td>Classification:</td>
-        <td><span class="tlp-pill tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</span></td></tr>
-    <tr><td>Author:</td><td>{{ briefing.author or '-' }}</td></tr>
-    <tr><td>Stories:</td><td>{{ briefing.stories | length }}</td></tr>
-  </table>
+{# ── Cover header ─────────────────────────────────────────────── #}
+<div class="cover-header">
+  <div class="cover-header-inner">
+    {% if brand.logo_uri %}
+    <img class="cover-logo" src="{{ brand.logo_uri }}" alt="logo">
+    {% endif %}
+    <div class="cover-identity">
+      {% if brand.company %}<div class="cover-company">{{ brand.company }}</div>{% endif %}
+      {% if brand.department %}<div class="cover-department">{{ brand.department }}</div>{% endif %}
+    </div>
+    <div class="cover-tlp-badge tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</div>
+  </div>
+  <div class="cover-accent-bar"></div>
 </div>
 
+{# ── Document title block ─────────────────────────────────────── #}
+<div class="doc-title-block">
+  <div class="doc-label">Daily Threat Briefing</div>
+  <h1 class="doc-title">{{ briefing.title or briefing.date or 'Briefing' }}</h1>
+</div>
+
+{# ── Meta summary ─────────────────────────────────────────────── #}
+<div class="meta-block">
+  <div class="meta-row">
+    <span class="meta-key">Date</span><span class="meta-val">{{ briefing.date or '—' }}</span>
+    <span class="meta-key">Author</span><span class="meta-val">{{ briefing.author or '—' }}</span>
+    <span class="meta-key">Stories</span><span class="meta-val">{{ briefing.stories | length }}</span>
+    <span class="meta-key">Classification</span>
+    <span class="meta-val"><span class="tlp-pill tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</span></span>
+  </div>
+</div>
+
+{# ── Stories ──────────────────────────────────────────────────── #}
 {% for story in briefing.stories %}
 {% set idx = loop.index %}
-<h2>Story {{ idx }}: {{ story.title or '(untitled)' }}</h2>
-<div class="section-box">
-  <p style="white-space: pre-wrap;">{{ story.content or '(no content)' }}</p>
-  {% if story.source_url or story.correlation %}
-  <div class="source-meta">
-    {% if story.source_url %}<strong>Source:</strong> {{ story.source_url }} · {% endif %}
-    <strong>Correlation:</strong> {{ story.correlation or 'No' }}
+<div class="story-block">
+  <div class="story-header">
+    <span class="story-number">{{ idx }}</span>
+    <span class="story-title">{{ story.title or '(untitled)' }}</span>
   </div>
-  {% endif %}
+  <div class="story-body">
+    <p style="white-space:pre-wrap;">{{ story.content or '' }}</p>
+    {% if story.source_url or story.correlation %}
+    <div class="story-meta">
+      {% if story.source_url %}<span><strong>Source:</strong> {{ story.source_url }}</span>{% endif %}
+      <span><strong>Correlation:</strong> {{ story.correlation or 'No' }}</span>
+    </div>
+    {% endif %}
+  </div>
 </div>
 {% else %}
-<p class="no-content">No stories added yet.</p>
+<p class="no-content">No stories added.</p>
 {% endfor %}
 
+{# ── Escalations ──────────────────────────────────────────────── #}
 {% if briefing.escalations %}
-<h2>Escalations</h2>
+<div class="section-heading">Escalations</div>
 <div class="section-box">
-  <p style="white-space: pre-wrap;">{{ briefing.escalations }}</p>
+  <p style="white-space:pre-wrap;">{{ briefing.escalations }}</p>
 </div>
 {% endif %}
 
+{# ── Notes ────────────────────────────────────────────────────── #}
 {% if briefing.notes %}
-<h2>Notes</h2>
+<div class="section-heading">Notes</div>
 <div class="section-box">
-  <p style="white-space: pre-wrap;">{{ briefing.notes }}</p>
+  <p style="white-space:pre-wrap;">{{ briefing.notes }}</p>
 </div>
 {% endif %}
 

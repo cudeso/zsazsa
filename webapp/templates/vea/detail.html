@@ -233,12 +233,21 @@
       </div>
     </div>
 
+    {% if vea.published %}
+    <span title="Published advisories cannot be deleted" style="cursor:not-allowed;">
+      <button class="btn btn-sm btn-outline-danger w-100" disabled style="pointer-events:none;">
+        <i class="fas fa-trash me-1"></i> Delete VEA
+      </button>
+    </span>
+    {% else %}
     <form method="post" action="{{ url_for('vea.delete', id=vea.uuid) }}"
           onsubmit="return confirm('Delete {{ vea.vea_id }}?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-sm btn-outline-danger w-100">
         <i class="fas fa-trash me-1"></i> Delete VEA
       </button>
     </form>
+    {% endif %}
   </div>
 </div>
 

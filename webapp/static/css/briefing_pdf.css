@@ -1,19 +1,32 @@
-/* Daily Threat Briefing - PDF stylesheet (weasyprint)
-   Customise this file to control the PDF layout and branding. */
+/* Daily Threat Briefing — PDF stylesheet (WeasyPrint)
+   Brand colours are injected as CSS custom properties from the template:
+   --c1  primary (header background, headings)
+   --c2  accent  (rules, story number chips)
+   --c3  secondary (labels, footer, meta text)
+*/
 
 @page {
   size: A4;
-  margin: 20mm 18mm 20mm 18mm;
-  @bottom-center {
-    content: "ZSAZSA CTI  ·  " string(briefing-id) "  ·  Page " counter(page) " of " counter(pages);
-    font-size: 8pt;
-    color: #64748b;
+  margin: 0 0 18mm 0;
+  @bottom-left {
+    content: string(briefing-id);
+    font-size: 7.5pt;
+    color: var(--c3, #64748b);
+    margin-left: 18mm;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-size: 7.5pt;
+    color: var(--c3, #64748b);
+    margin-right: 18mm;
   }
   @top-right {
     content: string(tlp-label);
-    font-size: 8pt;
+    font-size: 7.5pt;
     font-weight: 700;
     color: #b45309;
+    margin-right: 18mm;
+    margin-top: 5mm;
   }
 }
 
@@ -21,34 +34,138 @@ body {
   font-family: "DejaVu Sans", Arial, sans-serif;
   font-size: 10pt;
   color: #1e293b;
-  line-height: 1.5;
+  line-height: 1.55;
+  margin: 0;
+  padding: 0;
 }
 
 .briefing-id-anchor { string-set: briefing-id content(); }
 .tlp-label-anchor   { string-set: tlp-label content(); }
 
-h1 { font-size: 16pt; margin: 0 0 6pt; color: #0f2d52; }
-h2 { font-size: 12pt; margin: 14pt 0 4pt; color: #0f2d52; border-bottom: 1pt solid #cbd5e1; padding-bottom: 2pt; }
-p  { margin: 0 0 6pt; }
-ul { margin: 0 0 6pt 16pt; padding: 0; }
-li { margin-bottom: 2pt; }
+/* ── Cover header ──────────────────────────────────────────────── */
+
+.cover-header {
+  background: var(--c1, #0f2d52);
+  padding: 0;
+  margin: 0;
+}
+
+.cover-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 14pt;
+  padding: 14pt 18mm 12pt;
+}
+
+.cover-logo {
+  max-height: 40pt;
+  max-width: 120pt;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cover-identity {
+  flex: 1;
+}
+
+.cover-company {
+  font-size: 13pt;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.03em;
+}
+
+.cover-department {
+  font-size: 8.5pt;
+  color: rgba(255,255,255,0.65);
+  margin-top: 1pt;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cover-tlp-badge {
+  font-size: 7.5pt;
+  font-weight: 700;
+  padding: 3pt 8pt;
+  border-radius: 3pt;
+  flex-shrink: 0;
+}
+
+/* TLP badge colours inside the dark header */
+.cover-tlp-badge.tlp-red    { background: #991b1b; color: #fff; }
+.cover-tlp-badge.tlp-amber  { background: #92400e; color: #fff; }
+.cover-tlp-badge.tlp-green  { background: #166534; color: #fff; }
+.cover-tlp-badge.tlp-clear  { background: rgba(255,255,255,0.15); color: #fff; }
+
+.cover-accent-bar {
+  height: 3pt;
+  background: var(--c2, #0078f1);
+}
+
+/* ── Document title block ──────────────────────────────────────── */
+
+.doc-title-block {
+  padding: 16pt 18mm 10pt;
+  border-bottom: 0.5pt solid #e2e8f0;
+  margin-bottom: 12pt;
+}
+
+.doc-label {
+  font-size: 7.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c2, #0078f1);
+  margin-bottom: 3pt;
+}
+
+h1.doc-title {
+  font-size: 17pt;
+  font-weight: 700;
+  color: var(--c1, #0f2d52);
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* ── Meta block ────────────────────────────────────────────────── */
 
 .meta-block {
-  background: #f1f5f9;
-  border-left: 4pt solid #0f2d52;
-  padding: 6pt 10pt;
-  margin-bottom: 14pt;
-  font-size: 8.5pt;
+  background: #f8fafc;
+  border-left: 3pt solid var(--c1, #0f2d52);
+  padding: 7pt 12pt;
+  margin: 0 18mm 16pt;
+  border-radius: 0 3pt 3pt 0;
 }
-.meta-block table { width: 100%; border-collapse: collapse; }
-.meta-block td { padding: 1pt 6pt 1pt 0; vertical-align: top; }
-.meta-block td:first-child { font-weight: 700; white-space: nowrap; width: 110pt; }
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2pt 0;
+}
+
+.meta-key {
+  font-size: 7.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c3, #64748b);
+  width: 90pt;
+  padding: 1.5pt 0;
+}
+
+.meta-val {
+  font-size: 8.5pt;
+  color: #1e293b;
+  flex: 1;
+  padding: 1.5pt 12pt 1.5pt 0;
+  min-width: 80pt;
+}
 
 .tlp-pill {
   display: inline-block;
   padding: 1pt 6pt;
   border-radius: 3pt;
-  font-size: 8pt;
+  font-size: 7.5pt;
   font-weight: 700;
 }
 .tlp-red    { background: #fee2e2; color: #991b1b; }
@@ -56,13 +173,90 @@ li { margin-bottom: 2pt; }
 .tlp-green  { background: #dcfce7; color: #166534; }
 .tlp-clear  { background: #f1f5f9; color: #334155; }
 
+/* ── Story blocks ──────────────────────────────────────────────── */
+
+.story-block {
+  margin: 0 18mm 10pt;
+  border: 0.5pt solid #e2e8f0;
+  border-radius: 4pt;
+  page-break-inside: avoid;
+  overflow: hidden;
+}
+
+.story-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8pt;
+  padding: 6pt 10pt;
+  background: #f8fafc;
+  border-bottom: 0.5pt solid #e2e8f0;
+}
+
+.story-number {
+  display: inline-block;
+  width: 16pt;
+  height: 16pt;
+  line-height: 16pt;
+  text-align: center;
+  background: var(--c2, #0078f1);
+  color: #fff;
+  font-size: 7.5pt;
+  font-weight: 700;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.story-title {
+  font-size: 10.5pt;
+  font-weight: 700;
+  color: var(--c1, #0f2d52);
+}
+
+.story-body {
+  padding: 8pt 10pt 6pt;
+}
+
+.story-body p {
+  margin: 0 0 6pt;
+  font-size: 9.5pt;
+  line-height: 1.55;
+}
+
+.story-meta {
+  font-size: 7.5pt;
+  color: var(--c3, #64748b);
+  margin-top: 4pt;
+  display: flex;
+  gap: 12pt;
+  flex-wrap: wrap;
+}
+
+/* ── Escalations / Notes sections ──────────────────────────────── */
+
+.section-heading {
+  font-size: 10pt;
+  font-weight: 700;
+  color: var(--c1, #0f2d52);
+  border-bottom: 1pt solid var(--c2, #0078f1);
+  padding: 0 18mm 3pt;
+  margin: 10pt 18mm 6pt;
+}
+
 .section-box {
+  margin: 0 18mm 10pt;
   border: 0.5pt solid #e2e8f0;
   border-radius: 4pt;
   padding: 8pt 10pt;
-  margin-bottom: 10pt;
   page-break-inside: avoid;
 }
 
-.source-meta { font-size: 8.5pt; color: #64748b; margin-top: 6pt; }
-.no-content  { color: #94a3b8; font-style: italic; }
+.section-box p {
+  margin: 0;
+  font-size: 9.5pt;
+}
+
+.no-content {
+  color: #94a3b8;
+  font-style: italic;
+  margin: 0 18mm;
+}

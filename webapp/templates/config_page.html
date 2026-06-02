@@ -42,6 +42,11 @@
         <i class="fas fa-bell me-1"></i> Notifications
       </button>
     </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-styling" type="button" role="tab">
+        <i class="fas fa-palette me-1"></i> Styling
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content">
@@ -285,7 +290,7 @@
 
       <div class="d-flex justify-content-between align-items-center mb-3">
         <p class="text-muted small mb-0">
-          Prompt templates used by the LLM-assisted features. Files are stored in the <code>prompts/</code> directory.
+          Prompt templates used by the LLM-assisted features. Files are stored in the <code>zsazsaprompts/</code> directory.
         </p>
         <button class="btn btn-primary" id="save-prompts-btn" type="button">
           <i class="fas fa-floppy-disk me-1"></i> Save all prompts
@@ -410,7 +415,7 @@
                   {% if feat.prompt not in cfg.prompts | map(attribute='filename') | list %}
                   <div class="text-warning small mt-1">
                     <i class="fas fa-triangle-exclamation me-1"></i>
-                    Configured file <code>{{ feat.prompt }}</code> not found in prompts/
+                    Configured file <code>{{ feat.prompt }}</code> not found in zsazsaprompts/
                   </div>
                   {% endif %}
                 </td>
@@ -433,6 +438,7 @@
 
     <!-- ── Context elements tab ───────────────────────────────────────────── -->
     <div class="tab-pane fade" id="tab-context" role="tabpanel">
+    {% set misp_browse_base = cfg.MISP_WEBAPP_URL or cfg.MISP_URL %}
 
       <div class="d-flex justify-content-between align-items-center mb-3">
         <p class="text-muted small mb-0">
@@ -455,19 +461,31 @@
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label small mb-1">Stakeholder</label>
-              <input type="text" name="TAG_STAKEHOLDER" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_STAKEHOLDER }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_STAKEHOLDER" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_STAKEHOLDER }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_STAKEHOLDER | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small mb-1">Priority Intelligence Requirement (PIR)</label>
-              <input type="text" name="TAG_PIR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_PIR }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_PIR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_PIR }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_PIR | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small mb-1">General Intelligence Requirement (GIR)</label>
-              <input type="text" name="TAG_GIR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_GIR }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_GIR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_GIR }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_GIR | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small mb-1">Request for Information (RFI)</label>
-              <input type="text" name="TAG_RFI" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_RFI }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_RFI" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_RFI }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_RFI | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
           </div>
         </div>
@@ -483,19 +501,31 @@
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label small mb-1">Flash Intel Alert</label>
-              <input type="text" name="TAG_FLASH_INTEL" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_FLASH_INTEL }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_FLASH_INTEL" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_FLASH_INTEL }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_FLASH_INTEL | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small mb-1">Vulnerability Exploitation Advisory</label>
-              <input type="text" name="TAG_VEA" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_VEA }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_VEA" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_VEA }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_VEA | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small mb-1">Daily Threat Briefing</label>
-              <input type="text" name="TAG_BRIEFING" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_BRIEFING }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_BRIEFING" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_BRIEFING }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_BRIEFING | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
             <div class="col-md-6">
               <label class="form-label small mb-1">Threat Landscape Report</label>
-              <input type="text" name="TAG_TLR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_TLR }}">
+              <div class="input-group input-group-sm">
+                <input type="text" name="TAG_TLR" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_TLR }}">
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_TLR | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
             </div>
           </div>
         </div>
@@ -505,7 +535,10 @@
         <div class="card-header"><i class="fas fa-spider me-2"></i>Scraper source marking</div>
         <div class="card-body">
           <label class="form-label">Scraper marker tag</label>
-          <input type="text" name="SCRAPER_MARKER_TAG" class="form-control font-monospace" value="{{ cfg.SCRAPER_MARKER_TAG }}">
+          <div class="input-group">
+            <input type="text" name="SCRAPER_MARKER_TAG" class="form-control font-monospace" value="{{ cfg.SCRAPER_MARKER_TAG }}">
+            {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.SCRAPER_MARKER_TAG | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+          </div>
           <div class="form-text">
             The analyser only processes MISP events that carry this tag. The misp-scraper service
             applies it when it ingests events.
@@ -517,9 +550,45 @@
         <div class="card-header"><i class="fas fa-database me-2"></i>Collection workflow</div>
         <div class="card-body">
           <label class="form-label">Follow-up flag tag</label>
-          <input type="text" name="TAG_COLLECTION_FOLLOWUP" class="form-control font-monospace" value="{{ cfg.TAG_COLLECTION_FOLLOWUP }}">
+          <div class="input-group">
+            <input type="text" name="TAG_COLLECTION_FOLLOWUP" class="form-control font-monospace" value="{{ cfg.TAG_COLLECTION_FOLLOWUP }}">
+            {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_COLLECTION_FOLLOWUP | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+          </div>
           <div class="form-text">
             Added as a <strong>local</strong> tag when an analyst flags an event for follow-up from the data-collection page.
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-box-open me-2"></i>Product source markers</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            These local tags are applied to scraper events when they are used as a source for a CTI product.
+            They are read-only and not configurable.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Used for Daily Briefing</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control form-control-sm font-monospace" value='zsazsa:product="daily-briefing"' readonly>
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:zsazsa:product=%22daily-briefing%22" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Used for Flash Intel Alert</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control form-control-sm font-monospace" value='zsazsa:product="flash-intel"' readonly>
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:zsazsa:product=%22flash-intel%22" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Used for Vulnerability Exploitation Advisory</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control form-control-sm font-monospace" value='zsazsa:product="vea"' readonly>
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:zsazsa:product=%22vea%22" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -571,8 +640,12 @@
             <span class="badge {{ 'bg-success' if ch.enabled else 'bg-secondary' }} ms-1 channel-display-enabled">
               {{ 'Enabled' if ch.enabled else 'Disabled' }}
             </span>
-            <div class="ms-auto d-flex gap-2">
+            <div class="ms-auto d-flex gap-2 align-items-center">
               <button type="button" class="btn btn-sm btn-outline-secondary toggle-channel-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ping-channel-btn" title="Send a test message to this channel">
+                <i class="fas fa-bell"></i>
+              </button>
+              <span class="ping-channel-result small"></span>
               <button type="button" class="btn btn-sm btn-outline-danger delete-channel-btn">Delete</button>
             </div>
           </div>
@@ -656,6 +729,106 @@
       <div class="d-flex justify-content-end">
         <button type="submit" class="btn btn-primary">
           <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ── Styling tab ────────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tab-styling" role="tabpanel">
+
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <p class="text-muted small mb-0">
+          Branding applied to PDF outputs and channel notifications.
+        </p>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save styling
+        </button>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-building me-2"></i>Organisation</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Company name</label>
+              <input type="text" name="BRAND_COMPANY" class="form-control" value="{{ cfg.BRAND_COMPANY }}"
+                     placeholder="e.g. Acme Corp">
+              <div class="form-text">Used to brand PDF reports and notifications.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Department</label>
+              <input type="text" name="BRAND_DEPARTMENT" class="form-control" value="{{ cfg.BRAND_DEPARTMENT }}"
+                     placeholder="e.g. Cyber Threat Intelligence">
+              <div class="form-text">Shown below the company name on reports.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-image me-2"></i>Logo</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">PNG or JPG, maximum 2 MB. The logo is placed in the PDF header.</p>
+          {% if cfg.BRAND_LOGO %}
+          <div class="mb-3">
+            <img src="{{ url_for('config_page.serve_logo') }}" alt="Current logo"
+                 style="max-height:60px;max-width:240px;object-fit:contain;border:1px solid #e2e8f0;border-radius:4px;padding:6px;">
+            <div class="form-text mt-1">Current: {{ cfg.BRAND_LOGO }}</div>
+          </div>
+          {% endif %}
+          <div class="d-flex gap-2 align-items-center">
+            <input type="file" id="logo-file-input" accept=".png,.jpg,.jpeg" class="form-control" style="max-width:320px;">
+            <button type="button" class="btn btn-outline-secondary" id="logo-upload-btn">
+              <i class="fas fa-upload me-1"></i>Upload
+            </button>
+            <span id="logo-upload-result" class="small"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-palette me-2"></i>Brand colours</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            These three colours form the palette used in PDF outputs. Colour 1 is the primary (header, headings),
+            colour 2 is the accent (rules, highlights), colour 3 is secondary (labels, footer text).
+          </p>
+          <div class="row g-3">
+            <div class="col-sm-4">
+              <label class="form-label">Colour 1 — primary</label>
+              <div class="d-flex gap-2 align-items-center">
+                <input type="color" name="BRAND_COLOR_1" class="form-control form-control-color"
+                       value="{{ cfg.BRAND_COLOR_1 }}" title="Primary colour">
+                <input type="text" class="form-control form-control-sm font-monospace color-hex-input"
+                       value="{{ cfg.BRAND_COLOR_1 }}" data-target="BRAND_COLOR_1" maxlength="7">
+              </div>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Colour 2 — accent</label>
+              <div class="d-flex gap-2 align-items-center">
+                <input type="color" name="BRAND_COLOR_2" class="form-control form-control-color"
+                       value="{{ cfg.BRAND_COLOR_2 }}" title="Accent colour">
+                <input type="text" class="form-control form-control-sm font-monospace color-hex-input"
+                       value="{{ cfg.BRAND_COLOR_2 }}" data-target="BRAND_COLOR_2" maxlength="7">
+              </div>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Colour 3 — secondary</label>
+              <div class="d-flex gap-2 align-items-center">
+                <input type="color" name="BRAND_COLOR_3" class="form-control form-control-color"
+                       value="{{ cfg.BRAND_COLOR_3 }}" title="Secondary colour">
+                <input type="text" class="form-control form-control-sm font-monospace color-hex-input"
+                       value="{{ cfg.BRAND_COLOR_3 }}" data-target="BRAND_COLOR_3" maxlength="7">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save styling
         </button>
       </div>
 
@@ -826,6 +999,8 @@
     const toggleBtn = row.querySelector('.toggle-channel-form');
     const form = row.querySelector('.channel-form');
     const deleteBtn = row.querySelector('.delete-channel-btn');
+    const pingBtn = row.querySelector('.ping-channel-btn');
+    const pingResult = row.querySelector('.ping-channel-result');
     const saveBtn = row.querySelector('.save-channel-btn');
     const saveResult = row.querySelector('.save-channel-result');
 
@@ -853,6 +1028,29 @@
         } else {
           alert('Delete failed: ' + (data.error || 'unknown'));
         }
+      });
+    }
+
+    if (pingBtn && pingResult) {
+      pingBtn.addEventListener('click', async () => {
+        const channelId = row.dataset.originalId;
+        pingBtn.disabled = true;
+        pingResult.textContent = 'Sending…';
+        pingResult.className = 'ping-channel-result small text-muted';
+        const resp = await fetch('/config/ping-notification-channel', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({channel_id: channelId}),
+        });
+        const data = await resp.json();
+        pingBtn.disabled = false;
+        if (data.ok) {
+          pingResult.textContent = 'Sent';
+          pingResult.className = 'ping-channel-result small text-success';
+        } else {
+          pingResult.textContent = data.error || 'Failed';
+          pingResult.className = 'ping-channel-result small text-danger';
+        }
+        setTimeout(() => { pingResult.textContent = ''; }, 4000);
       });
     }
 
@@ -917,8 +1115,10 @@
             <i class="fas fa-comment-dots text-muted"></i>
             <span class="fw-semibold channel-display-name">${name}</span>
             <span class="badge ${enabled ? 'bg-success' : 'bg-secondary'} ms-1 channel-display-enabled">${enabled ? 'Enabled' : 'Disabled'}</span>
-            <div class="ms-auto d-flex gap-2">
+            <div class="ms-auto d-flex gap-2 align-items-center">
               <button type="button" class="btn btn-sm btn-outline-secondary toggle-channel-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ping-channel-btn" title="Send a test message to this channel"><i class="fas fa-bell"></i></button>
+              <span class="ping-channel-result small"></span>
               <button type="button" class="btn btn-sm btn-outline-danger delete-channel-btn">Delete</button>
             </div>
           </div>
@@ -944,6 +1144,49 @@
       } else {
         resultEl.textContent = data.error || 'Failed';
         resultEl.className = 'small text-danger';
+      }
+    });
+  }
+})();
+
+// ── Styling tab ─────────────────────────────────────────────────────────────
+(function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  // Sync colour picker ↔ hex text input
+  document.querySelectorAll('.color-hex-input').forEach(function(hexInput) {
+    const targetName = hexInput.dataset.target;
+    const picker = document.querySelector('input[type="color"][name="' + targetName + '"]');
+    if (!picker) return;
+    picker.addEventListener('input', function() { hexInput.value = picker.value; });
+    hexInput.addEventListener('change', function() {
+      if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value)) picker.value = hexInput.value;
+    });
+  });
+
+  // Logo upload
+  const uploadBtn = document.getElementById('logo-upload-btn');
+  const fileInput = document.getElementById('logo-file-input');
+  const uploadResult = document.getElementById('logo-upload-result');
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener('click', async function() {
+      const file = fileInput.files[0];
+      if (!file) { uploadResult.textContent = 'Select a file first'; uploadResult.className = 'small text-warning'; return; }
+      const fd = new FormData();
+      fd.append('logo', file);
+      fd.append('csrf_token', csrfToken);
+      uploadBtn.disabled = true;
+      uploadResult.textContent = 'Uploading…';
+      uploadResult.className = 'small text-muted';
+      const resp = await fetch('/config/upload-logo', {method: 'POST', headers: {'X-CSRF-Token': csrfToken}, body: fd});
+      const data = await resp.json();
+      uploadBtn.disabled = false;
+      if (data.ok) {
+        uploadResult.textContent = 'Saved — reload the page to see the preview';
+        uploadResult.className = 'small text-success';
+      } else {
+        uploadResult.textContent = data.error || 'Upload failed';
+        uploadResult.className = 'small text-danger';
       }
     });
   }

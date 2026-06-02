@@ -30,10 +30,10 @@ def _build_system_prompt(prompt_file: str, extra: str = "") -> str:
 
 
 def _resolve_prompt(filename: str) -> str:
-    """Convert a bare filename to its prompts/ path."""
+    """Convert a bare filename to its zsazsaprompts/ path."""
     if "/" in filename or "\\" in filename:
         return filename
-    return str(Path("prompts") / filename)
+    return str(Path("zsazsaprompts") / filename)
 
 
 def _call(system: str, user: str, max_tokens: int, feature: str = "unknown", model: str = None) -> str:

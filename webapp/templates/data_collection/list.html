@@ -203,25 +203,9 @@
       </div>
     </div>
 
-    <!-- Row 1b: Date filter -->
-    <div class="row g-3 mb-3 pb-3 border-bottom align-items-center">
-      <div class="col-12">
-        <label class="form-label small fw-semibold mb-2">
-          <i class="fas fa-calendar-days me-1"></i>Date
-          <span class="text-muted fw-normal ms-1" style="font-size:.77rem;">- filters on the MISP event date field</span>
-        </label>
-        <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-secondary date-filter-btn" data-date-filter="none">No date filter</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="today">Today</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="48h">Last 48h</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="7d">Last 7d</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Row 2: Sort -->
-    <div class="row g-3 mb-3 pb-3 border-bottom align-items-end">
-      <div class="col-md-12">
+    <!-- Row 2: Sort + Date -->
+    <div class="row g-3 mb-3 pb-3 border-bottom align-items-start">
+      <div class="col-md-5">
         <label class="form-label small fw-semibold mb-1">
           <i class="fas fa-sort me-1"></i>Sort
         </label>
@@ -235,6 +219,18 @@
           <button class="btn btn-sm btn-outline-secondary sort-btn" data-col="orgc" data-dir="asc">
             <i class="fas fa-building me-1"></i>Creator org <i class="fas fa-sort sort-icon ms-1 text-muted"></i>
           </button>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <label class="form-label small fw-semibold mb-1">
+          <i class="fas fa-calendar-days me-1"></i>Date
+          <span class="text-muted fw-normal ms-1" style="font-size:.77rem;">- filters on the MISP event date field</span>
+        </label>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn active" data-date-filter="none">No filter</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="today">Today</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="48h">Last 48h</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="7d">Last 7d</button>
         </div>
       </div>
     </div>
@@ -253,8 +249,24 @@
             click again to clear
           </span>
           <input type="text" id="tag-search" class="form-control form-control-sm"
-                 placeholder="Find tag…" style="width:12rem;">
+                 placeholder="Find tag…" style="width:11rem;">
         </div>
+      </div>
+
+      <!-- Quick filters: Used in products -->
+      <div class="mb-1 d-flex align-items-center flex-wrap gap-1">
+        <span class="fw-semibold me-1" style="font-size:.72rem;white-space:nowrap;color:#7c3aed;">Used in products:</span>
+        <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="daily-briefing"' data-state="neutral"><i class="fas fa-newspaper fa-xs me-1"></i>daily briefing</button>
+        <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="flash-intel"' data-state="neutral"><i class="fas fa-bolt fa-xs me-1"></i>flash intel</button>
+        <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="vea"' data-state="neutral"><i class="fas fa-shield-halved fa-xs me-1"></i>vuln advisory</button>
+      </div>
+
+      <!-- Quick filters: Product events -->
+      <div class="mb-2 d-flex align-items-center flex-wrap gap-1">
+        <span class="fw-semibold me-1" style="font-size:.72rem;white-space:nowrap;color:#0078f1;">Products:</span>
+        <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_briefing }}" data-state="neutral"><i class="fas fa-newspaper fa-xs me-1"></i>daily threat briefing</button>
+        <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_flash_intel }}" data-state="neutral"><i class="fas fa-bolt fa-xs me-1"></i>flash intel product</button>
+        <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_vea }}" data-state="neutral"><i class="fas fa-shield-halved fa-xs me-1"></i>vulnerability advisory product</button>
       </div>
 
       <!-- Active tag filters -->
@@ -263,7 +275,7 @@
         <span id="active-tag-chips"></span>
       </div>
 
-      <!-- Tag cloud - capped at 4 lines with expand toggle -->
+      <!-- Tag cloud -->
       <div id="tag-cloud" class="d-flex flex-wrap gap-1" style="max-height:7rem;overflow:hidden;">
         {% for t in all_tags %}
         <button type="button" class="tag-pill tag-pill-neutral"
@@ -284,46 +296,44 @@
       </div>
     </div>
 
-    <!-- Row 4: Creator organisation filter -->
-    <div class="mb-3 pb-3 border-bottom">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <label class="form-label small fw-semibold mb-0">
-          <i class="fas fa-building me-1"></i>Creator organisation
-          <span class="text-muted fw-normal" id="org-count-label" style="font-size:.78rem;"></span>
-        </label>
-        <button type="button" class="btn btn-xs btn-link text-muted p-0" id="deselect-all-orgs-btn"
-                style="font-size:.78rem;" title="Remove all active organisation filters">
-          <i class="fas fa-xmark me-1"></i>Deselect all
-        </button>
-      </div>
-      <div id="active-org-summary" class="mb-2" style="display:none;">
-        <span class="text-muted small me-1">Active:</span>
-        <span id="active-org-chips"></span>
-      </div>
-      <div id="org-cloud" class="d-flex flex-wrap gap-1">
-        {% if org_list %}
-          {% for o in org_list %}
-          <button type="button" class="tag-pill tag-pill-neutral org-pill"
-                  data-org="{{ o.name }}"
-                  data-sources='{{ o.sources.keys() | list | tojson }}'
-                  data-state="neutral"
-                  title="Sources: {{ o.sources.values() | join(', ') }}">
-            {{ o.name }}<span class="ms-1" style="font-size:.62rem;opacity:.6;font-weight:400;">({{ o.sources.values() | join(', ') }})</span>
+    <!-- Row 4: Creator organisation + Search title -->
+    <div class="row g-3 mb-3 pb-3 border-bottom align-items-start">
+      <div class="col-md-7">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <label class="form-label small fw-semibold mb-0">
+            <i class="fas fa-building me-1"></i>Creator organisation
+            <span class="text-muted fw-normal" id="org-count-label" style="font-size:.78rem;"></span>
+          </label>
+          <button type="button" class="btn btn-xs btn-link text-muted p-0" id="deselect-all-orgs-btn"
+                  style="font-size:.78rem;" title="Remove all active organisation filters">
+            <i class="fas fa-xmark me-1"></i>Deselect all
           </button>
-          {% endfor %}
-        {% else %}
-          <p class="text-muted small mb-0"><em>No organisations in cache yet.</em></p>
-        {% endif %}
+        </div>
+        <div id="active-org-summary" class="mb-2" style="display:none;">
+          <span class="text-muted small me-1">Active:</span>
+          <span id="active-org-chips"></span>
+        </div>
+        <div id="org-cloud" class="d-flex flex-wrap gap-1">
+          {% if org_list %}
+            {% for o in org_list %}
+            <button type="button" class="tag-pill tag-pill-neutral org-pill"
+                    data-org="{{ o.name }}"
+                    data-sources='{{ o.sources.keys() | list | tojson }}'
+                    data-state="neutral"
+                    title="Sources: {{ o.sources.values() | join(', ') }}">
+              {{ o.name }}<span class="ms-1" style="font-size:.62rem;opacity:.6;font-weight:400;">({{ o.sources.values() | join(', ') }})</span>
+            </button>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted small mb-0"><em>No organisations in cache yet.</em></p>
+          {% endif %}
+        </div>
       </div>
-    </div>
-
-    <!-- Row 5: Search title + Flagged + AI/Reports filters -->
-    <div class="d-flex flex-wrap align-items-end gap-3">
-      <div>
+      <div class="col-md-5">
         <label class="form-label small fw-semibold mb-1">
           <i class="fas fa-magnifying-glass me-1"></i>Search title
         </label>
-        <div class="input-group input-group-sm" style="max-width:32rem;">
+        <div class="input-group input-group-sm">
           <span class="input-group-text"><i class="fas fa-search"></i></span>
           <input type="text" id="search-input" class="form-control"
                  placeholder="Filter by event title…" autocomplete="off">
@@ -332,50 +342,40 @@
           </button>
         </div>
       </div>
-      <div class="pb-1">
+    </div>
+
+    <!-- Row 5: Event properties -->
+    <div class="mb-3 pb-3 border-bottom">
+      <label class="form-label small fw-semibold mb-2">
+        <i class="fas fa-sliders me-1"></i>Event properties
+      </label>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary filter-toggle-btn" data-toggle-key="vulnFilter"
+                title="Show only events covering a CVE or vulnerability">
+          <i class="fas fa-shield-halved me-1"></i>Covers a CVE
+        </button>
         <button type="button" class="btn btn-sm btn-outline-warning" id="flagged-only-btn"
                 title="Show only events flagged for follow-up">
           <i class="fas fa-flag me-1"></i>Flagged only
         </button>
-      </div>
-      <div class="pb-1">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-wand-magic-sparkles me-1"></i>AI summary
-        </label>
-        <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-secondary ai-filter-btn" data-ai-filter="any">Any</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary ai-filter-btn" data-ai-filter="with">With</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary ai-filter-btn" data-ai-filter="without">Without</button>
+        <span class="text-muted" style="font-size:.8rem;">|</span>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-wand-magic-sparkles fa-xs me-1"></i>AI summary</span>
+          <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="any">Any</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="with">With</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="without">Without</button>
         </div>
-      </div>
-      <div class="pb-1">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-file-lines me-1"></i>Reports
-        </label>
-        <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-secondary reports-filter-btn" data-reports-filter="any">Any</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary reports-filter-btn" data-reports-filter="with">With</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary reports-filter-btn" data-reports-filter="without">Without</button>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-file-lines fa-xs me-1"></i>Has reports</span>
+          <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="any">Any</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="with">With</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="without">Without</button>
         </div>
-      </div>
-      <div class="pb-1">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-crosshairs me-1"></i>PIR/GIR match
-        </label>
-        <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-secondary req-match-filter-btn" data-req-match-filter="any">Any</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary req-match-filter-btn" data-req-match-filter="with">With matches</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary req-match-filter-btn" data-req-match-filter="without">Without</button>
-        </div>
-      </div>
-      <div class="pb-1">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-shield-halved me-1"></i>Vuln advisory
-        </label>
-        <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-secondary vuln-filter-btn" data-vuln-filter="any">Any</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary vuln-filter-btn" data-vuln-filter="with">With</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary vuln-filter-btn" data-vuln-filter="without">Without</button>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-crosshairs fa-xs me-1"></i>PIR/GIR match</span>
+          <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="any">Any</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="with">With</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="without">Without</button>
         </div>
       </div>
     </div>
@@ -425,14 +425,14 @@
         <p class="text-muted small mb-1">Choose a predicate, then filter by threshold or by events without that predicate.</p>
       </div>
       <div class="col-12">
-        <div class="d-flex flex-wrap gap-1 align-items-center">
-          <span class="text-muted small me-1">Quick presets:</span>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" data-predicate="overall-score" data-operator="gte" data-value="high">Overall score >= High</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" data-predicate="overall-score" data-operator="lte" data-value="low">Overall score <= Low</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" data-predicate="relevance" data-operator="gte" data-value="moderate">Relevance >= Moderate</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" data-predicate="confidence" data-operator="gte" data-value="high">Confidence >= High</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" data-predicate="overall-score" data-operator="without">No overall score</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary" id="cti-preset-clear">Clear</button>
+        <div class="d-flex flex-wrap gap-1 align-items-center" style="font-size:.65rem;">
+          <span class="text-muted me-1">Quick presets:</span>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="overall-score" data-operator="gte" data-value="high">Overall score >= High</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="overall-score" data-operator="lte" data-value="low">Overall score <= Low</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="relevance" data-operator="gte" data-value="moderate">Relevance >= Moderate</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="confidence" data-operator="gte" data-value="high">Confidence >= High</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="overall-score" data-operator="without">No overall score</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary" style="font-size:.65rem;" id="cti-preset-clear">Clear</button>
         </div>
       </div>
     </div>
@@ -544,7 +544,7 @@
         </thead>
         <tbody id="events-tbody">
           {% for e in events %}
-          <tr class="event-row"
+          <tr class="event-row{% if 'workflow:state="rejected"' in e.tags %} wf-rejected-row{% endif %}"
               data-date="{{ e.date or '' }}"
               data-title="{{ e.info or '' | lower }}"
               data-search-text="{{ ((e.info or '') ~ ' ' ~ (e.galaxy_names | join(' ')) ~ ' ' ~ (e.req_matches | map(attribute='id') | join(' '))) | lower | e }}"
@@ -556,7 +556,8 @@
               data-has-ai-summary="{{ 1 if e.has_ai_summary else 0 }}"
               data-report-count="{{ e.report_count }}"
               data-has-req-match="{{ 1 if e.req_matches else 0 }}"
-              data-has-vuln="{{ 1 if e.vulnerability_ids else 0 }}">
+              data-has-vuln="{{ 1 if e.vulnerability_ids else 0 }}"
+              data-flagged="{{ 'true' if e.uuid in flagged_uuids else 'false' }}">
             <td>
               <input type="checkbox" class="form-check-input event-row-cb" value="{{ e.uuid }}"
                      data-source-id="{{ e.source_id }}">
@@ -683,10 +684,17 @@
                       </span>
                     {% elif t.startswith('zsazsa:product=') %}
                       {% set product_label = t[16:-1] %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#f0e6ff;color:#5a0a8a;border:1px solid #c9a0e8;cursor:pointer;"
-                            title="Used for: {{ product_label }} · Click to filter">
-                        <i class="fas fa-box-open fa-xs me-1"></i>{{ product_label }}
+                      <span style="display:inline-flex;align-items:stretch;background:#7c3aed;border:1px solid #6d28d9;border-radius:.3rem;overflow:hidden;vertical-align:middle;font-size:.62rem;font-weight:600;line-height:1;">
+                        <span class="product-tag-main-btn" data-tag="{{ t }}"
+                              style="color:#fff;padding:.18rem .35rem;cursor:pointer;"
+                              title="Used for: {{ product_label }} · Click to see linked products">
+                          <i class="fas fa-box-open fa-xs me-1"></i>{{ product_label }}
+                        </span>
+                        <span class="product-tag-filter-btn" data-tag="{{ t }}"
+                              style="color:rgba(255,255,255,.65);border-left:1px solid rgba(255,255,255,.25);padding:.18rem .3rem;cursor:pointer;display:flex;align-items:center;"
+                              title="Filter: show only events used for {{ product_label }}">
+                          <i class="fas fa-filter fa-xs"></i>
+                        </span>
                       </span>
                     {% elif t.startswith('cti-evaluation:') %}
                       {% set eval_raw = t[15:] %}
@@ -761,9 +769,11 @@
             </td>
             <td class="text-end" style="white-space:nowrap;">
               <div class="d-inline-flex gap-1 justify-content-end align-items-center">
-                <button class="btn btn-xs btn-outline-warning flag-review-btn"
+                {% set _flagged = e.uuid in flagged_uuids %}
+                <button class="btn btn-xs {{ 'btn-warning' if _flagged else 'btn-outline-warning' }} flag-review-btn"
                         data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
-                        title="Flag for follow-up review">
+                        data-flagged="{{ 'true' if _flagged else 'false' }}"
+                        title="{{ 'Remove follow-up flag' if _flagged else 'Flag for follow-up review' }}">
                   <i class="fas fa-flag"></i>
                 </button>
                 <button class="btn btn-xs btn-outline-primary cti-eval-btn"
@@ -772,11 +782,11 @@
                         title="Apply CTI evaluation tags to MISP">
                   <i class="fas fa-microscope fa-xs"></i>
                 </button>
-                {% if e.source_kind == 'scraper' %}
+                {% if e.source_kind == 'scraper' and not e.has_ai_summary %}
                 <button class="btn btn-xs btn-outline-secondary create-summary-btn"
                         data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
-                        {% if e.has_ai_summary %}disabled title="AI summary already exists"{% else %}title="Generate LLM summary from first MISP report"{% endif %}>
-                  {% if e.has_ai_summary %}<i class="fas fa-check text-success"></i>{% else %}<i class="fas fa-wand-magic-sparkles"></i>{% endif %}
+                        title="Generate LLM summary from first MISP report">
+                  <i class="fas fa-wand-magic-sparkles"></i>
                 </button>
                 {% endif %}
               </div>
@@ -1016,6 +1026,20 @@
   </div>
 </div>
 
+<div class="modal fade" id="used-in-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-box-open me-2"></i>Used in products</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="used-in-modal-body">
+        <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -1066,9 +1090,9 @@
 
 .tag-pill {
   display: inline-block;
-  padding: .2rem .55rem;
+  padding: .15rem .45rem;
   border-radius: 999px;
-  font-size: .75rem;
+  font-size: .7rem;
   font-weight: 500;
   border: 1.5px solid #dee2e6;
   background: #f8f9fa;
@@ -1082,7 +1106,7 @@
 .tag-pill-exclude { background: #f8d7da; border-color: #dc3545; color: #58151c; }
 .tag-pill-exclude:hover { background: #f1aeb5; }
 .tag-pill-hidden { display: none !important; }
-.sort-btn.active { background: #0078f1; border-color: #0078f1; color: #fff; }
+.sort-btn.active, .date-filter-btn.active { background: #0078f1; border-color: #0078f1; color: #fff; }
 /* Workflow state badges */
 .wf-badge { border: 1px solid; font-weight: 600; }
 .wf-draft     { background:#f0f0f0; color:#6c757d; border-color:#ced4da; }
@@ -1091,6 +1115,8 @@
 .wf-complete  { background:#d1ecf1; color:#0c5460; border-color:#bee5eb; }
 .wf-published { background:#d3e5ef; color:#0c4a6e; border-color:#a8c8e0; }
 .wf-other     { background:#e9ecef; color:#495057; border-color:#dee2e6; }
+.wf-rejected-row { opacity:.45; }
+.wf-rejected-row:hover { opacity:.8; }
 /* CTI evaluation modal predicate rows */
 .cti-pred-row {
   display: flex;
@@ -1267,6 +1293,14 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     badge.addEventListener('click', function(e) {
       e.preventDefault();
       var tag = badge.dataset.tag;
+      if (tag && tag.startsWith('zsazsa:product=')) {
+        var row = badge.closest('tr');
+        var uuid = row ? row.dataset.uuid : null;
+        if (uuid) {
+          showUsedInModal(uuid);
+          return;
+        }
+      }
       if (state.include.has(tag)) {
         state.include.delete(tag);
       } else {
@@ -1288,6 +1322,78 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       applyAll();
     });
   }
+
+  function showUsedInModal(uuid) {
+    var body = document.getElementById('used-in-modal-body');
+    body.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>';
+    new bootstrap.Modal(document.getElementById('used-in-modal')).show();
+    fetch('/api/collection/' + uuid + '/used-in')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok || !data.products || data.products.length === 0) {
+          body.innerHTML = '<p class="text-muted mb-0">No products found that reference this event.</p>';
+          return;
+        }
+        var icons = {'daily-briefing': 'fa-newspaper', 'flash-intel': 'fa-bolt', 'vea': 'fa-shield-halved'};
+        var html = '<ul class="list-group list-group-flush">';
+        data.products.forEach(function(p) {
+          var icon = icons[p.type] || 'fa-box-open';
+          html += '<li class="list-group-item px-0">' +
+            '<a href="' + p.url + '" class="d-flex align-items-center gap-2 text-decoration-none">' +
+            '<i class="fas ' + icon + ' text-secondary fa-fw"></i>' +
+            '<span>' + (p.title || p.type) + '</span>' +
+            (p.date ? '<span class="text-muted small ms-auto">' + p.date + '</span>' : '') +
+            '</a></li>';
+        });
+        html += '</ul>';
+        body.innerHTML = html;
+      })
+      .catch(function() {
+        body.innerHTML = '<p class="text-danger mb-0">Failed to load product links.</p>';
+      });
+  }
+
+  function bindProductFilterBtnClick(btn) {
+    if (!btn || btn.dataset.boundFilterClick === '1') return;
+    btn.dataset.boundFilterClick = '1';
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var tag = btn.dataset.tag;
+      if (!tag) return;
+      var active;
+      if (state.include.has(tag)) {
+        state.include.delete(tag);
+        active = false;
+      } else {
+        state.include.add(tag);
+        state.exclude.delete(tag);
+        active = true;
+      }
+      btn.style.color = active ? '#fff' : 'rgba(255,255,255,.65)';
+      document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
+        if (pill.dataset.tag !== tag) return;
+        pill.dataset.state = active ? 'include' : 'neutral';
+        pill.className = active ? 'tag-pill tag-pill-include' : 'tag-pill tag-pill-neutral';
+      });
+      updateTagSummary();
+      applyAll();
+    });
+  }
+
+  function bindProductMainBtnClick(btn) {
+    if (!btn || btn.dataset.boundMainClick === '1') return;
+    btn.dataset.boundMainClick = '1';
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var row = btn.closest('tr');
+      var uuid = row ? row.dataset.uuid : null;
+      if (uuid) showUsedInModal(uuid);
+    });
+  }
+
+  document.querySelectorAll('.product-tag-filter-btn').forEach(bindProductFilterBtnClick);
+  document.querySelectorAll('.product-tag-main-btn').forEach(bindProductMainBtnClick);
 
   function ensureCtiBadgeContainer(row) {
     if (!row) return null;
@@ -1371,7 +1477,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       if (ok) state.exclude.forEach(function(t) { if (tagSet.has(t)) ok = false; });
       if (ok && state.includeOrgs.size && !state.includeOrgs.has(orgc)) ok = false;
       if (ok && state.excludeOrgs.has(orgc)) ok = false;
-      if (ok && state.showFlaggedOnly && !tagSet.has(followupTag)) ok = false;
+      if (ok && state.showFlaggedOnly && row.dataset.flagged !== 'true') ok = false;
       if (ok && state.aiFilter !== 'any') {
         var hasAi = row.dataset.hasAiSummary === '1';
         if (state.aiFilter === 'with' && !hasAi) ok = false;
@@ -1438,10 +1544,6 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
         }
         if (t && t.startsWith('cti-evaluation:')) {
           _applyCtiBadgeStyle(b, t);
-          return;
-        }
-        if (t && t.startsWith('zsazsa:product=')) {
-          b.style.background = '#f0e6ff'; b.style.color = '#5a0a8a';
           return;
         }
         // Check VALUE_CHIP_CONFIG for chip-type tags
@@ -1662,7 +1764,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     var active = state.include.size + state.exclude.size;
     var text = totalTagCount + ' tags';
     if (visible < totalTagCount) text += ', ' + visible + ' shown';
-    if (active) text += ', ' + active + ' active filter' + (active > 1 ? 's' : '');
+    if (active) text += ', ' + active + ' active filter' + (active > 1 ? 's' : '') + ' (AND)';
     if (tagCountLabel) tagCountLabel.textContent = text;
   }
 
@@ -1713,33 +1815,19 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       state.aiFilter = 'any';
       state.reportsFilter = 'any';
       state.reqMatchFilter = 'any';
+      state.vulnFilter = 'any';
       state.ctiPredicate = '';
       state.ctiOperator = 'gte';
       state.ctiValue = 'moderate';
       state.displayLimit = 100;
       document.querySelectorAll('.date-filter-btn').forEach(function(b) {
-        var isNone = b.dataset.dateFilter === 'none';
-        b.classList.toggle('btn-secondary', isNone);
-        b.classList.toggle('btn-outline-secondary', !isNone);
+        b.classList.toggle('active', b.dataset.dateFilter === 'none');
       });
-      document.querySelectorAll('.ai-filter-btn').forEach(function(b) {
-        var isAny = b.dataset.aiFilter === 'any';
-        b.classList.toggle('btn-secondary', isAny);
-        b.classList.toggle('btn-outline-secondary', !isAny);
+      document.querySelectorAll('.filter-toggle-btn').forEach(function(b) {
+        b.classList.remove('btn-secondary'); b.classList.add('btn-outline-secondary');
       });
-      document.querySelectorAll('.reports-filter-btn').forEach(function(b) {
-        var isAny = b.dataset.reportsFilter === 'any';
-        b.classList.toggle('btn-secondary', isAny);
-        b.classList.toggle('btn-outline-secondary', !isAny);
-      });
-      document.querySelectorAll('.req-match-filter-btn').forEach(function(b) {
-        var isAny = b.dataset.reqMatchFilter === 'any';
-        b.classList.toggle('btn-secondary', isAny);
-        b.classList.toggle('btn-outline-secondary', !isAny);
-      });
-      state.vulnFilter = 'any';
-      document.querySelectorAll('.vuln-filter-btn').forEach(function(b) {
-        var isAny = b.dataset.vulnFilter === 'any';
+      document.querySelectorAll('.tristate-filter-btn').forEach(function(b) {
+        var isAny = b.dataset.filterValue === 'any';
         b.classList.toggle('btn-secondary', isAny);
         b.classList.toggle('btn-outline-secondary', !isAny);
       });
@@ -1894,12 +1982,23 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   document.querySelectorAll('.date-filter-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
       state.dateFilter = btn.dataset.dateFilter;
-      document.querySelectorAll('.date-filter-btn').forEach(function(b) {
-        b.classList.remove('btn-secondary');
-        b.classList.add('btn-outline-secondary');
+      document.querySelectorAll('.date-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      applyAll();
+    });
+  });
+
+  document.querySelectorAll('.tristate-filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var key = btn.dataset.filterKey;
+      var val = btn.dataset.filterValue;
+      if (!key) return;
+      state[key] = val;
+      document.querySelectorAll('.tristate-filter-btn[data-filter-key="' + key + '"]').forEach(function(b) {
+        var isActive = b.dataset.filterValue === val;
+        b.classList.toggle('btn-secondary', isActive);
+        b.classList.toggle('btn-outline-secondary', !isActive);
       });
-      btn.classList.remove('btn-outline-secondary');
-      btn.classList.add('btn-secondary');
       applyAll();
     });
   });
@@ -1960,13 +2059,14 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     });
   });
 
-  document.querySelectorAll('.vuln-filter-btn').forEach(function(btn) {
+  document.querySelectorAll('.filter-toggle-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      state.vulnFilter = btn.dataset.vulnFilter;
-      document.querySelectorAll('.vuln-filter-btn').forEach(function(b) {
-        b.classList.remove('btn-secondary'); b.classList.add('btn-outline-secondary');
-      });
-      btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-secondary');
+      var key = btn.dataset.toggleKey;
+      if (!key || !(key in state)) return;
+      var active = state[key] === 'with';
+      state[key] = active ? 'any' : 'with';
+      btn.classList.toggle('btn-secondary', !active);
+      btn.classList.toggle('btn-outline-secondary', active);
       applyAll();
     });
   });
@@ -2166,9 +2266,6 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.ok) {
-          btn.disabled = true;
-          btn.innerHTML = '<i class="fas fa-check text-success"></i>';
-          btn.title = 'AI summary already exists';
           var row = btn.closest('tr');
           var aiCell = row ? row.querySelector('.ai-summary-cell') : null;
           if (aiCell && !aiCell.querySelector('.ai-summary-icon')) {
@@ -2178,6 +2275,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
             icon.title = 'AI summary available';
             aiCell.appendChild(icon);
           }
+          btn.remove();
         } else {
           btn.disabled = false;
           btn.innerHTML = originalHtml;
@@ -2351,13 +2449,17 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
+        btn.disabled = false;
         if (data.ok) {
-          btn.innerHTML = '<i class="fas fa-flag text-warning"></i>';
-          btn.title = 'Flagged for follow-up';
-          btn.classList.remove('btn-outline-warning');
-          btn.classList.add('btn-warning');
+          var nowFlagged = data.flagged;
+          var row = btn.closest('tr');
+          if (row) row.dataset.flagged = nowFlagged ? 'true' : 'false';
+          btn.dataset.flagged = nowFlagged ? 'true' : 'false';
+          btn.classList.toggle('btn-warning', nowFlagged);
+          btn.classList.toggle('btn-outline-warning', !nowFlagged);
+          btn.title = nowFlagged ? 'Remove follow-up flag' : 'Flag for follow-up review';
+          applyAll();
         } else {
-          btn.disabled = false;
           btn.title = 'Error: ' + (data.error || 'unknown');
         }
       })

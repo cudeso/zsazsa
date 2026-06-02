@@ -238,6 +238,12 @@
       "ui-priority": 35,
       "description": "JSON array of MITRE ATT\\&CK technique strings (from misp-galaxy:mitre-attack-pattern)",
       "disable_correlation": true
+    },
+    "triage-checklist": {
+      "misp-attribute": "text",
+      "ui-priority": 36,
+      "description": "JSON array of completed triage checklist items",
+      "disable_correlation": true
     }
   }
 }

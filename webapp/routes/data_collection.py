@@ -238,6 +238,8 @@ def index():
 
     followup_tag = getattr(config, "TAG_COLLECTION_FOLLOWUP", 'zsazsa:collection="follow-up"')
 
+    flagged_uuids = collection_cache.get_flagged_uuids()
+
     return render_template(
         "data_collection/list.html",
         events=events,
@@ -252,6 +254,10 @@ def index():
         source_errors=source_errors,
         cache_ages=cache_ages,
         cache_status=cache_status,
+        tag_briefing=config.TAG_BRIEFING,
+        tag_flash_intel=config.TAG_FLASH_INTEL,
+        tag_vea=config.TAG_VEA,
+        flagged_uuids=flagged_uuids,
     )
 
 
@@ -778,6 +784,9 @@ def flag_for_review(uuid):
     source_id = data.get("source") or _SCRAPER_SOURCE_ID
     src = _find_source(source_id)
     tag = getattr(config, "TAG_COLLECTION_FOLLOWUP", 'zsazsa:collection="follow-up"')
+
+    currently_flagged = collection_cache.is_flagged(uuid)
+
     if src and src["kind"] == "misp":
         if not src.get("api_key"):
             return jsonify({"ok": False, "error": "Source not configured"}), 502
@@ -788,12 +797,20 @@ def flag_for_review(uuid):
             return jsonify({"ok": False, "error": "Source not available"}), 502
     else:
         misp = misp_store._scraper_misp()
+
     try:
-        r = misp.tag(uuid, tag, local=True)
-        if isinstance(r, dict) and "errors" in r:
-            return jsonify({"ok": False, "error": str(r["errors"])}), 400
+        if currently_flagged:
+            misp.untag(uuid, tag)
+            collection_cache.unflag_event(uuid)
+            audit.record("unflag", "misp-event", entity_id=uuid)
+            return jsonify({"ok": True, "flagged": False})
+        else:
+            r = misp.tag(uuid, tag, local=True)
+            if isinstance(r, dict) and "errors" in r:
+                return jsonify({"ok": False, "error": str(r["errors"])}), 400
+            collection_cache.flag_event(uuid)
+            audit.record("flag", "misp-event", entity_id=uuid)
+            return jsonify({"ok": True, "flagged": True})
     except Exception as exc:
         logger.warning("flag_for_review failed for %s: %s", uuid, exc)
-        return jsonify({"ok": False, "error": "Could not flag event."}), 502
-    audit.record("flag", "misp-event", entity_id=uuid)
-    return jsonify({"ok": True})
+        return jsonify({"ok": False, "error": "Could not update flag."}), 502
