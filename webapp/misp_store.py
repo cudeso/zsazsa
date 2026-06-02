@@ -28,6 +28,7 @@ from types import SimpleNamespace
 import config
 from pymisp import MISPAttribute, MISPEvent, MISPObject, PyMISP
 from webapp.collection_cache import AI_SUMMARY_PREFIX
+from webapp.models import STAKEHOLDER_ROLES
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
@@ -1686,10 +1687,39 @@ FIA_REVIEW_STATES = [
     FIA_REVIEW_REJECTED,
 ]
 
-FIA_AUDIENCES = ["SOC", "IR", "VM", "Threat Hunting", "Detection Eng.", "Executive", "Other"]
+FIA_AUDIENCES = list(STAKEHOLDER_ROLES)
 FIA_TLP_LEVELS = ["clear", "green", "amber", "amber+strict", "red"]
 FIA_RELIABILITIES = ["A", "B", "C", "D", "E", "F"]
 FIA_CREDIBILITIES = ["1", "2", "3", "4", "5", "6"]
+
+_ROLE_ALIASES = {
+    "soc": "SOC",
+    "ir": "Incident Response",
+    "incident response": "Incident Response",
+    "cti": "Cyber Threat Intelligence",
+    "cyber threat intelligence": "Cyber Threat Intelligence",
+    "threat hunting": "Threat Hunting",
+    "detection eng.": "Detection Engineering",
+    "detection engineering": "Detection Engineering",
+    "vm": "Vulnerability Management",
+    "vulnerability management": "Vulnerability Management",
+    "third party risk management": "Third Party Risk Management",
+    "it security": "IT Security",
+    "executive": "CISO / Leadership",
+    "ciso / leadership": "CISO / Leadership",
+    "other": "Other",
+}
+
+
+def _canonical_role(value: str) -> str:
+    if not value:
+        return ""
+    v = value.strip()
+    if not v:
+        return ""
+    if v in STAKEHOLDER_ROLES:
+        return v
+    return _ROLE_ALIASES.get(v.lower(), v)
 
 
 def _split_lines(s):
@@ -2605,13 +2635,17 @@ def recipient_preview(product_type: str, tlp: str, audience_str: str) -> list:
     """
     tlp_rank = {t: i for i, t in enumerate(FIA_TLP_LEVELS)}
     product_rank = tlp_rank.get((tlp or "amber").lower(), 2)
-    audiences = [a.strip() for a in (audience_str or "").split(",") if a.strip()]
+    audiences = {
+        _canonical_role(a)
+        for a in (audience_str or "").split(",")
+        if _canonical_role(a)
+    }
     result = []
     for s in list_stakeholders():
         subscribed = product_type in (s.products or [])
         s_rank = tlp_rank.get((s.tlp_clearance or "amber").lower(), 2)
         tlp_ok = s_rank >= product_rank
-        audience_ok = bool(audiences) and (s.role in audiences)
+        audience_ok = bool(audiences) and (_canonical_role(s.role or "") in audiences)
         if subscribed and tlp_ok and audience_ok:
             status = "green"
             reason = "Receives this product (subscribed, TLP ok, audience match)"
