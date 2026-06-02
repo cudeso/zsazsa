@@ -1,10 +1,16 @@
 import os
 import secrets
+import logging
 
-from flask import Flask, abort, request, session
+from flask import Flask, abort, request, session, jsonify, render_template
+from pymisp.exceptions import PyMISPError
+from requests.exceptions import RequestException
 
 import config
 from webapp import audit, org_store, collection_cache
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_app():
@@ -87,5 +93,56 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(community_bp)
     app.register_blueprint(collection_sources_bp)
+
+    def _wants_json() -> bool:
+        if request.path.startswith("/api/"):
+            return True
+        best = request.accept_mimetypes.best
+        if best == "application/json" and (
+            request.accept_mimetypes["application/json"]
+            >= request.accept_mimetypes["text/html"]
+        ):
+            return True
+        return False
+
+    def _record_misp_error(exc: Exception) -> None:
+        details = (
+            f"path={request.path}; method={request.method}; "
+            f"endpoint={request.endpoint or ''}; error={str(exc)[:900]}"
+        )
+        try:
+            audit.record("error", "misp_connection", details=details)
+        except Exception:
+            logger.exception("Failed to write misp_connection error to audit log")
+
+    @app.errorhandler(PyMISPError)
+    def _handle_pymisp_error(exc):
+        logger.warning("MISP connection error on %s: %s", request.path, exc)
+        _record_misp_error(exc)
+        if _wants_json():
+            return jsonify({
+                "ok": False,
+                "error": "The MISP web app store is currently unreachable. This service is crucial for a functional application. Please retry shortly or verify the MISP web app configuration.",
+            }), 503
+        return render_template(
+            "errors/service_unavailable.html",
+            title="MISP web app store unavailable",
+            message="The MISP web app store is currently unreachable. It is crucial for a functional application. Please retry shortly or check the MISP web app configuration.",
+        ), 503
+
+    @app.errorhandler(RequestException)
+    def _handle_request_error(exc):
+        logger.warning("Upstream request error on %s: %s", request.path, exc)
+        _record_misp_error(exc)
+        if _wants_json():
+            return jsonify({
+                "ok": False,
+                "error": "Upstream service is currently unreachable. Please retry shortly.",
+            }), 503
+        return render_template(
+            "errors/service_unavailable.html",
+            title="Service unavailable",
+            message="An upstream service is currently unreachable. Please retry shortly.",
+        ), 503
 
     return app

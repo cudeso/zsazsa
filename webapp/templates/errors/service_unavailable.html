@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title or "Service unavailable" }}{% endblock %}
+{% block page_title %}Service unavailable{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-4 p-md-5">
+    <h2 class="h4 mb-3">{{ title or "Service unavailable" }}</h2>
+    <p class="text-muted mb-4">{{ message or "The requested service is temporarily unavailable." }}</p>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary" type="button" onclick="window.location.reload();">
+        <i class="fas fa-rotate-right me-1"></i> Retry
+      </button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('dashboard.index') }}">
+        <i class="fas fa-house me-1"></i> Back to dashboard
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
