@@ -197,6 +197,32 @@
         </div>
       </div>
 
+      <div class="card content-card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-user-secret me-2"></i>Threat actor types</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="add-tat-btn">
+            <i class="fas fa-plus me-1"></i>Add type
+          </button>
+        </div>
+        <div class="card-body p-0">
+          <input type="hidden" name="THREAT_ACTOR_TYPES" id="tat-json">
+          <table class="table mb-0" id="tat-table">
+            <thead class="table-light">
+              <tr>
+                <th style="width:22%;padding:.5rem .75rem;">Name</th>
+                <th style="padding:.5rem .75rem;">Description</th>
+                <th style="width:2.5rem;"></th>
+              </tr>
+            </thead>
+            <tbody id="tat-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card-footer text-muted small">
+          Threat actor taxonomy based on ENISA categories. Add your own types as needed.
+          Available to all CTI products — daily briefing, flash intel, vulnerability advisory.
+        </div>
+      </div>
+
       <div class="d-flex justify-content-end">
         <button type="submit" class="btn btn-primary">
           <i class="fas fa-floppy-disk me-1"></i> Save configuration
@@ -1190,6 +1216,87 @@
       }
     });
   }
+})();
+
+/* ── Threat actor types dynamic table ─────────────────────────────── */
+(function() {
+  var initialData = {{ cfg.THREAT_ACTOR_TYPES | tojson }};
+  var tbody = document.getElementById('tat-tbody');
+  var jsonInput = document.getElementById('tat-json');
+  var addBtn = document.getElementById('add-tat-btn');
+  if (!tbody || !jsonInput) return;
+
+  function syncJson() {
+    var types = [];
+    tbody.querySelectorAll('tr').forEach(function(row) {
+      var nameEl = row.querySelector('.tat-name');
+      var descEl = row.querySelector('.tat-desc');
+      var name = (nameEl ? nameEl.value : '').trim();
+      var desc = (descEl ? descEl.value : '').trim();
+      if (name || desc) types.push({name: name, description: desc});
+    });
+    jsonInput.value = JSON.stringify(types);
+  }
+
+  function makeRow(name, desc) {
+    var tr = document.createElement('tr');
+
+    var tdName = document.createElement('td');
+    tdName.style.verticalAlign = 'top';
+    tdName.style.padding = '.4rem .75rem';
+    var nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'form-control form-control-sm tat-name';
+    nameInput.value = name;
+    nameInput.placeholder = 'Type name';
+    nameInput.addEventListener('input', syncJson);
+    tdName.appendChild(nameInput);
+
+    var tdDesc = document.createElement('td');
+    tdDesc.style.padding = '.4rem .5rem .4rem .75rem';
+    var descArea = document.createElement('textarea');
+    descArea.className = 'form-control form-control-sm tat-desc';
+    descArea.rows = 3;
+    descArea.placeholder = 'Description';
+    descArea.style.resize = 'vertical';
+    descArea.textContent = desc;
+    descArea.addEventListener('input', syncJson);
+    tdDesc.appendChild(descArea);
+
+    var tdDel = document.createElement('td');
+    tdDel.style.verticalAlign = 'top';
+    tdDel.style.padding = '.4rem .5rem';
+    var delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-xs btn-outline-danger';
+    delBtn.title = 'Remove this type';
+    delBtn.innerHTML = '<i class="fas fa-xmark"></i>';
+    delBtn.addEventListener('click', function() { tr.remove(); syncJson(); });
+    tdDel.appendChild(delBtn);
+
+    tr.appendChild(tdName);
+    tr.appendChild(tdDesc);
+    tr.appendChild(tdDel);
+    return tr;
+  }
+
+  (initialData || []).forEach(function(t) {
+    tbody.appendChild(makeRow(t.name || '', t.description || ''));
+  });
+  syncJson();
+
+  if (addBtn) {
+    addBtn.addEventListener('click', function() {
+      var row = makeRow('', '');
+      tbody.appendChild(row);
+      row.querySelector('.tat-name').focus();
+      syncJson();
+    });
+  }
+
+  /* Sync before the enclosing form submits */
+  var form = tbody.closest('form');
+  if (form) form.addEventListener('submit', syncJson);
 })();
 
 </script>

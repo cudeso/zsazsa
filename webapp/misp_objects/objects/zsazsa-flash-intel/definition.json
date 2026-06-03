@@ -77,9 +77,15 @@
       "description": "Affected systems, applications, teams, business processes",
       "disable_correlation": true
     },
-    "actor-context": {
+    "actor-types": {
       "misp-attribute": "text",
       "ui-priority": 12,
+      "description": "JSON array of selected threat actor type names (ENISA taxonomy)",
+      "disable_correlation": true
+    },
+    "actor-context": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
       "description": "Threat actor motivation or capability context",
       "disable_correlation": true
     },

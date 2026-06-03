@@ -65,20 +65,37 @@ def send_text(text: str, label: str, channel_ids: list[str] | None = None) -> bo
     return bool(_post(targets, payload, label))
 
 
-def _extract_summary(fia_content: str) -> str:
-    lines = fia_content.splitlines()
-    in_summary = False
-    collected = []
-    for line in lines:
-        if line.strip() == "## Summary":
-            in_summary = True
+def _chunk_and_send(urls, body: str, label: str, max_chars: int = 3500) -> bool:
+    """Send body to all urls, splitting into chunks if it exceeds max_chars."""
+    if len(body) <= max_chars:
+        return bool(_post(urls, {"text": body}, label))
+    paragraphs = body.split("\n\n")
+    chunks: list[str] = []
+    current = ""
+    for para in paragraphs:
+        candidate = para if not current else f"{current}\n\n{para}"
+        if len(candidate) <= max_chars:
+            current = candidate
             continue
-        if in_summary:
-            if line.startswith("##"):
-                break
-            if line.strip():
-                collected.append(line.strip())
-    return " ".join(collected[:3]) if collected else "See MISP for details."
+        if current:
+            chunks.append(current)
+        if len(para) > max_chars:
+            start = 0
+            while start < len(para):
+                chunks.append(para[start:start + max_chars])
+                start += max_chars
+            current = ""
+        else:
+            current = para
+    if current:
+        chunks.append(current)
+    all_sent = True
+    total = len(chunks)
+    for idx, chunk in enumerate(chunks, start=1):
+        prefix = f"**Part {idx}/{total}**\n\n" if total > 1 else ""
+        ok = _post(urls, {"text": prefix + chunk}, f"{label} part {idx}/{total}")
+        all_sent = all_sent and bool(ok)
+    return all_sent
 
 
 def send_product_published(product_type: str, product_id: str, description: str,
@@ -202,45 +219,9 @@ def send_daily_briefing_notification(briefing, markdown: str, stakeholders: list
         body += f"**{title}**\n\n"
     body += markdown
 
-    # Incoming webhooks can reject large payloads. Split long briefings into
-    # readable parts so full content is still delivered.
-    max_chars = 3500
-    if len(body) <= max_chars:
-        return send_text(body, f"Daily briefing {getattr(briefing, 'date', '')}", channel_ids=channel_ids)
-
-    paragraphs = body.split("\n\n")
-    chunks: list[str] = []
-    current = ""
-    for para in paragraphs:
-        candidate = para if not current else f"{current}\n\n{para}"
-        if len(candidate) <= max_chars:
-            current = candidate
-            continue
-        if current:
-            chunks.append(current)
-        # Fallback when a single paragraph exceeds the chunk size.
-        if len(para) > max_chars:
-            start = 0
-            while start < len(para):
-                chunks.append(para[start:start + max_chars])
-                start += max_chars
-            current = ""
-        else:
-            current = para
-    if current:
-        chunks.append(current)
-
-    all_sent = True
-    total = len(chunks)
-    for idx, chunk in enumerate(chunks, start=1):
-        prefix = f"**Part {idx}/{total}**\n\n" if total > 1 else ""
-        ok = send_text(
-            prefix + chunk,
-            f"Daily briefing {getattr(briefing, 'date', '')} part {idx}/{total}",
-            channel_ids=channel_ids,
-        )
-        all_sent = all_sent and bool(ok)
-    return all_sent
+    label = f"Daily briefing {getattr(briefing, 'date', '')}"
+    targets = _active_webhooks(channel_ids)
+    return _chunk_and_send(targets, body, label)
 
 
 def send_vea_notification(vea, markdown: str, stakeholders: list | None = None) -> bool:
@@ -262,42 +243,8 @@ def send_vea_notification(vea, markdown: str, stakeholders: list | None = None) 
         body += f"{subtitle}\n\n"
     body += markdown
 
-    max_chars = 3500
-    if len(body) <= max_chars:
-        return send_text(body, f"VEA {getattr(vea, 'vea_id', '')}", channel_ids=channel_ids)
-
-    paragraphs = body.split("\n\n")
-    chunks: list[str] = []
-    current = ""
-    for para in paragraphs:
-        candidate = para if not current else f"{current}\n\n{para}"
-        if len(candidate) <= max_chars:
-            current = candidate
-            continue
-        if current:
-            chunks.append(current)
-        if len(para) > max_chars:
-            start = 0
-            while start < len(para):
-                chunks.append(para[start:start + max_chars])
-                start += max_chars
-            current = ""
-        else:
-            current = para
-    if current:
-        chunks.append(current)
-
-    all_sent = True
-    total = len(chunks)
-    for idx, chunk in enumerate(chunks, start=1):
-        prefix = f"**Part {idx}/{total}**\n\n" if total > 1 else ""
-        ok = send_text(
-            prefix + chunk,
-            f"VEA {getattr(vea, 'vea_id', '')} part {idx}/{total}",
-            channel_ids=channel_ids,
-        )
-        all_sent = all_sent and bool(ok)
-    return all_sent
+    targets = _active_webhooks(channel_ids)
+    return _chunk_and_send(targets, body, f"VEA {getattr(vea, 'vea_id', '')}")
 
 
 def send_rfi_notification(
@@ -323,17 +270,14 @@ def send_rfi_notification(
 
 
 def send_flash_intel_alert(product_event, fia_id: str, fia_content: str) -> bool:
+    """Send the full Flash Intel Alert report to all active Mattermost channels."""
     urls = _active_webhooks()
     if not urls:
         return False
-    summary = _extract_summary(fia_content)
-    misp_url = f"{config.MISP_URL}/events/view/{product_event.id}"
-    payload = {
-        "text": (
-            f"### :rotating_light: {fia_id}\n"
-            f"**{product_event.info}**\n\n"
-            f"{summary}\n\n"
-            f"[View in MISP]({misp_url})"
-        )
-    }
-    return bool(_post(urls, payload, fia_id))
+    misp_url = f"{config.MISP_WEBAPP_URL}/events/view/{product_event.id}"
+    body = (
+        f":rotating_light: **{fia_id} — Flash Intel Alert**\n\n"
+        + fia_content
+        + f"\n\n---\n[Open in MISP]({misp_url})"
+    )
+    return _chunk_and_send(urls, body, fia_id)

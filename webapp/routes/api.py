@@ -330,10 +330,18 @@ def fetch_url():
 def _parse_fia_markdown(text: str) -> dict:
     """Parse flash_intel_generate.md LLM output into form field values."""
     import re as _re
+
+    def _csv(s):
+        """Split a comma-separated value string into a clean list, drop placeholders."""
+        return [v.strip() for v in (s or '').split(',') if v.strip() and not v.strip().startswith('<')]
+
     fields = {
         'title': '', 'summary': '', 'action_required': '',
         'what_happened': [], 'source_description': '',
-        'likely_impact': '', 'affected_assets': '', 'actor_context': '',
+        'likely_impact': '', 'affected_assets': '',
+        'actor_types': [], 'actor_context': '',
+        'geographic_scope': [], 'sectors': [],
+        'threat_types': [], 'technology': [], 'vendor': [], 'incident': [], 'campaign': [],
         'actions_immediate': [], 'actions_near_term': [],
         'mitre_techniques': [], 'hunting_hypotheses': [],
         'source_reliability': '', 'information_credibility': '', 'credibility_justification': '',
@@ -352,6 +360,7 @@ def _parse_fia_markdown(text: str) -> dict:
             if 'summary' in sl: section = 'summary'
             elif 'what happened' in sl: section = 'what_happened'
             elif 'why it matters' in sl: section = 'why_matters'
+            elif sl.strip() == 'scope': section = 'scope'
             elif 'recommended' in sl: section = 'actions'
             elif 'detection' in sl: section = 'detection'
             else: section = None
@@ -389,8 +398,25 @@ def _parse_fia_markdown(text: str) -> dict:
                 fields['likely_impact'] = s[len('- **Likely impact:**'):].strip()
             elif s.startswith('- **Affected assets:**'):
                 fields['affected_assets'] = s[len('- **Affected assets:**'):].strip()
+            elif s.startswith('- **Threat actor types:**'):
+                fields['actor_types'] = _csv(s[len('- **Threat actor types:**'):])
             elif s.startswith('- **Threat actor context:**'):
                 fields['actor_context'] = s[len('- **Threat actor context:**'):].strip()
+        elif section == 'scope':
+            if s.startswith('- **Geographic scope:**'):
+                fields['geographic_scope'] = _csv(s[len('- **Geographic scope:**'):])
+            elif s.startswith('- **Sectors:**'):
+                fields['sectors'] = _csv(s[len('- **Sectors:**'):])
+            elif s.startswith('- **Threat types:**'):
+                fields['threat_types'] = _csv(s[len('- **Threat types:**'):])
+            elif s.startswith('- **Technology:**'):
+                fields['technology'] = _csv(s[len('- **Technology:**'):])
+            elif s.startswith('- **Vendor:**'):
+                fields['vendor'] = _csv(s[len('- **Vendor:**'):])
+            elif s.startswith('- **Incident:**'):
+                fields['incident'] = _csv(s[len('- **Incident:**'):])
+            elif s.startswith('- **Campaign:**'):
+                fields['campaign'] = _csv(s[len('- **Campaign:**'):])
         elif section == 'actions_immediate':
             if s.startswith('- ') and not s.startswith('- <'):
                 fields['actions_immediate'].append(s[2:].strip())
@@ -403,7 +429,7 @@ def _parse_fia_markdown(text: str) -> dict:
         elif section == 'hunting':
             if s.startswith('- ') and not s.startswith('- <'):
                 fields['hunting_hypotheses'].append(s[2:].strip())
-    # Convert list fields to newline-joined strings
+    # Convert narrative list fields to newline-joined strings (wizard textarea fields)
     for f in ('what_happened', 'actions_immediate', 'actions_near_term', 'mitre_techniques', 'hunting_hypotheses'):
         if isinstance(fields[f], list):
             fields[f] = '\n'.join(fields[f])
@@ -504,6 +530,16 @@ def build_fia():
                 existing.add(item.lower())
                 extra.append(item)
         return known + extra
+
+    # Merge LLM-suggested geo/sector values into the tag-derived lists before galaxy inference
+    llm_geo = fields.pop('geographic_scope', [])
+    llm_sectors = fields.pop('sectors', [])
+    for v in llm_geo:
+        if v.lower() not in {x.lower() for x in geo_values}:
+            scope_text += ' ' + v.lower()
+    for v in llm_sectors:
+        if v.lower() not in {x.lower() for x in sector_values}:
+            scope_text += ' ' + v.lower()
 
     try:
         sector_values = _infer_scope(sector_values, misp_store.galaxy_sectors())

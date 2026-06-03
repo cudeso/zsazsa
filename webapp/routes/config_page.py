@@ -1,4 +1,5 @@
 import importlib
+import json
 import logging
 import mimetypes
 import os
@@ -109,6 +110,11 @@ def _read() -> dict:
     focus_points_technologies = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_TECHNOLOGIES", []) or []) if str(p).strip()]
     focus_points_threat_types = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_THREAT_TYPES", []) or []) if str(p).strip()]
     focus_points_threat_actors = [str(p).strip() for p in (getattr(_config, "FOCUS_POINTS_THREAT_ACTORS", []) or []) if str(p).strip()]
+    raw_tat = getattr(_config, "THREAT_ACTOR_TYPES", []) or []
+    threat_actor_types = [
+        {"name": str(t.get("name", "")).strip(), "description": str(t.get("description", "")).strip()}
+        for t in raw_tat if isinstance(t, dict)
+    ]
     openai_api_key = getattr(_config, "OPENAI_API_KEY", getattr(_config, "ANTHROPIC_API_KEY", ""))
     openai_model = getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", ""))
     return {
@@ -129,6 +135,7 @@ def _read() -> dict:
         "FOCUS_POINTS_TECHNOLOGIES": focus_points_technologies,
         "FOCUS_POINTS_THREAT_TYPES": focus_points_threat_types,
         "FOCUS_POINTS_THREAT_ACTORS": focus_points_threat_actors,
+        "THREAT_ACTOR_TYPES": threat_actor_types,
         "TAG_STAKEHOLDER": _config.TAG_STAKEHOLDER,
         "TAG_PIR": _config.TAG_PIR,
         "TAG_GIR": _config.TAG_GIR,
@@ -177,6 +184,17 @@ def _write(values):
     fp_threat_types_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_threat_types) + "]"
     fp_threat_actors = values.get("FOCUS_POINTS_THREAT_ACTORS", [])
     fp_threat_actors_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_threat_actors) + "]"
+    tat = values.get("THREAT_ACTOR_TYPES", [])
+    if tat:
+        tat_lines = ["[\n"]
+        for t in tat:
+            tat_lines.append(
+                f"    {{'name': {t.get('name', '')!r}, 'description': {t.get('description', '')!r}}},\n"
+            )
+        tat_lines.append("]")
+        tat_repr = "".join(tat_lines)
+    else:
+        tat_repr = "[]"
     servers = values.get("MISP_SERVERS", [])
     if servers:
         lines = []
@@ -241,6 +259,9 @@ COLLECTION_SOURCES = _build_collection_sources()
 
 # Product types used for stakeholder subscriptions and PIR deliverables
 PRODUCT_TYPES = {products_repr}
+
+# Threat actor types (ENISA taxonomy) - reference list available to all CTI products
+THREAT_ACTOR_TYPES = {tat_repr}
 
 # Daily briefing analyser: skip source events/reports whose titles contain
 # any of these substrings (case-insensitive).
@@ -325,6 +346,15 @@ def index():
         fp_technologies = [p.strip() for p in request.form.get("FOCUS_POINTS_TECHNOLOGIES", "").splitlines() if p.strip()]
         fp_threat_types = [p.strip() for p in request.form.get("FOCUS_POINTS_THREAT_TYPES", "").splitlines() if p.strip()]
         fp_threat_actors = [p.strip() for p in request.form.get("FOCUS_POINTS_THREAT_ACTORS", "").splitlines() if p.strip()]
+        try:
+            tat_raw = json.loads(request.form.get("THREAT_ACTOR_TYPES", "[]") or "[]")
+            threat_actor_types = [
+                {"name": str(t.get("name", "")).strip(), "description": str(t.get("description", "")).strip()}
+                for t in tat_raw if isinstance(t, dict)
+                if str(t.get("name", "")).strip() or str(t.get("description", "")).strip()
+            ]
+        except (json.JSONDecodeError, ValueError):
+            threat_actor_types = []
         values = {
             "MISP_URL": getattr(_config, "MISP_URL", ""),
             "MISP_KEY": getattr(_config, "MISP_KEY", ""),
@@ -343,6 +373,7 @@ def index():
             "FOCUS_POINTS_TECHNOLOGIES": fp_technologies,
             "FOCUS_POINTS_THREAT_TYPES": fp_threat_types,
             "FOCUS_POINTS_THREAT_ACTORS": fp_threat_actors,
+            "THREAT_ACTOR_TYPES": threat_actor_types,
             "TAG_STAKEHOLDER": request.form.get("TAG_STAKEHOLDER", "").strip(),
             "TAG_PIR": request.form.get("TAG_PIR", "").strip(),
             "TAG_GIR": request.form.get("TAG_GIR", "").strip(),

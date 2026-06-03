@@ -166,6 +166,7 @@
                     <ul class="mb-0 ps-3">
                       {% if f.likely_impact %}<li style="font-size:.82rem;"><strong>Likely impact:</strong> {{ f.likely_impact }}</li>{% endif %}
                       {% if f.affected_assets %}<li style="font-size:.82rem;"><strong>Affected assets:</strong> {{ f.affected_assets }}</li>{% endif %}
+                      {% if f.actor_types %}<li style="font-size:.82rem;"><strong>Threat actor type:</strong> {{ f.actor_types | join(', ') }}</li>{% endif %}
                       {% if f.actor_context %}<li style="font-size:.82rem;"><strong>Actor context:</strong> {{ f.actor_context }}</li>{% endif %}
                       {% if f.geographic_scope %}<li style="font-size:.82rem;"><strong>Geography:</strong> {{ f.geographic_scope | join(', ') }}</li>{% endif %}
                       {% if f.sectors %}<li style="font-size:.82rem;"><strong>Sectors:</strong> {{ f.sectors | join(', ') }}</li>{% endif %}

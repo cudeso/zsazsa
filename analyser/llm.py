@@ -116,9 +116,20 @@ def generate_fia_draft(
         "threat_actors": list(getattr(config, "FOCUS_POINTS_THREAT_ACTORS", []) or []),
     }
     fc = _feature_cfg("generate_fia_draft")
+    extra_parts = []
+    if focus_points:
+        extra_parts.append(f"Focus points configured:\n{json.dumps(focus_points, indent=2)}")
+    threat_actor_types = [
+        t.get("name", "") for t in (getattr(config, "THREAT_ACTOR_TYPES", []) or []) if t.get("name")
+    ]
+    if threat_actor_types:
+        extra_parts.append(
+            "Available threat actor types (use exact names when completing 'Threat actor types'):\n"
+            + "\n".join(f"- {n}" for n in threat_actor_types)
+        )
     system = _build_system_prompt(
         _resolve_prompt(fc.get("prompt") or "flash_intel_generate.md"),
-        f"Focus points configured:\n{json.dumps(focus_points, indent=2)}" if focus_points else "",
+        "\n\n".join(extra_parts),
     )
     user_message = (
         f"Event title: {event_info}\n"

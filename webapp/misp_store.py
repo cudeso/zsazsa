@@ -2271,6 +2271,7 @@ def _fia_obj(data):
     _oa(obj, "information-credibility", data.get("information_credibility"))
     _oa(obj, "likely-impact", data.get("likely_impact"))
     _oa(obj, "affected-assets", data.get("affected_assets"))
+    _oa_json(obj, "actor-types", data.get("actor_types", []))
     _oa(obj, "actor-context", data.get("actor_context"))
     _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
     _oa_json(obj, "sectors", data.get("sectors", []))
@@ -2332,6 +2333,7 @@ def _fia_ns(event):
         information_credibility=g("information-credibility"),
         likely_impact=g("likely-impact"),
         affected_assets=g("affected-assets"),
+        actor_types=_json_list(g("actor-types")),
         actor_context=g("actor-context"),
         geographic_scope=_json_list(g("geographic-scope")),
         sectors=_json_list(g("sectors")),
@@ -2407,7 +2409,26 @@ def render_fia_markdown(fia, fia_id=None):
         "",
         f"- **Likely impact:** {fia.likely_impact or 'unspecified'}",
         f"- **Affected assets:** {fia.affected_assets or 'unspecified'}",
+        f"- **Threat actor types:** {', '.join(getattr(fia, 'actor_types', []) or []) or 'unspecified'}",
         f"- **Threat actor context:** {fia.actor_context or 'unspecified'}",
+        "",
+        "---",
+        "",
+        "## Scope",
+        "",
+        *([f"- **Geography:** {', '.join(fia.geographic_scope)}"] if fia.geographic_scope else []),
+        *([f"- **Sectors:** {', '.join(fia.sectors)}"] if fia.sectors else []),
+        *([f"- **Threat actors:** {', '.join(fia.threat_actors)}"] if fia.threat_actors else []),
+        *([f"- **Threat types:** {', '.join(getattr(fia, 'threat_types', []) or [])}"] if getattr(fia, 'threat_types', []) else []),
+        *([f"- **Technology:** {', '.join(getattr(fia, 'technology', []) or [])}"] if getattr(fia, 'technology', []) else []),
+        *([f"- **Vendor:** {', '.join(getattr(fia, 'vendor', []) or [])}"] if getattr(fia, 'vendor', []) else []),
+        *([f"- **Incident:** {', '.join(getattr(fia, 'incident', []) or [])}"] if getattr(fia, 'incident', []) else []),
+        *([f"- **Campaign:** {', '.join(getattr(fia, 'campaign', []) or [])}"] if getattr(fia, 'campaign', []) else []),
+        *(['_(No scope data recorded.)_'] if not any([
+            fia.geographic_scope, fia.sectors, fia.threat_actors,
+            getattr(fia, 'threat_types', []), getattr(fia, 'technology', []),
+            getattr(fia, 'vendor', []), getattr(fia, 'incident', []), getattr(fia, 'campaign', []),
+        ]) else []),
         "",
         "---",
         "",
@@ -2613,6 +2634,7 @@ def set_fia_review_state(uuid, state, reason=None):
         "information_credibility": fia.information_credibility,
         "likely_impact": fia.likely_impact,
         "affected_assets": fia.affected_assets,
+        "actor_types": list(getattr(fia, "actor_types", []) or []),
         "actor_context": fia.actor_context,
         "actions_immediate": fia.actions_immediate,
         "actions_near_term": fia.actions_near_term,

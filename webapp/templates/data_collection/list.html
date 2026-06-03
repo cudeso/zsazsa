@@ -1,405 +1,541 @@
 {% extends "base.html" %}
 
-{# ── Value-chip configuration ──────────────────────────────────────────
-   Add an entry here whenever a MISP tag should be shown as a friendly
-   chip in the event row rather than as a raw tag badge.
-   Fields:
-     icon       FontAwesome class (without "fa-" prefix)
-     bg/color/border  badge colours
-     label      prefix shown before the value, e.g. "Source reliability: B"
-                leave empty to show only the value (e.g. just "Proofpoint")
-     cloud_hide true → also hide the tag from the tag-cloud filter panel
-#}
 {% set VALUE_CHIP_CONFIG = {
   'scraper:data-collection-source': {
-    'icon': 'fa-at',
-    'bg': '#e8f0fe', 'color': '#1a56a0', 'border': '#b3c8ed',
+    'icon': 'fa-at', 'bg': '#e8f0fe', 'color': '#1a56a0', 'border': '#b3c8ed',
     'label': '', 'cloud_hide': false
   },
   'scraper:primary-data-collection-source': {
-    'icon': 'fa-globe',
-    'bg': '#ede9fe', 'color': '#5b21b6', 'border': '#c4b5fd',
+    'icon': 'fa-globe', 'bg': '#ede9fe', 'color': '#5b21b6', 'border': '#c4b5fd',
     'label': '', 'cloud_hide': true
   },
   'admiralty-scale:source-reliability': {
-    'icon': 'fa-star-half-stroke',
-    'bg': '#fdf0d5', 'color': '#7a4800', 'border': '#f0c96e',
+    'icon': 'fa-star-half-stroke', 'bg': '#fdf0d5', 'color': '#7a4800', 'border': '#f0c96e',
     'label': 'Source reliability', 'cloud_hide': false
   },
   'admiralty-scale:information-credibility': {
-    'icon': 'fa-check-double',
-    'bg': '#fdf0d5', 'color': '#7a4800', 'border': '#f0c96e',
+    'icon': 'fa-check-double', 'bg': '#fdf0d5', 'color': '#7a4800', 'border': '#f0c96e',
     'label': 'Information credibility', 'cloud_hide': false
   },
 } %}
-
-{# Render a single value chip. cfg is one entry from VALUE_CHIP_CONFIG. #}
-{% macro chip_badge(tag, val, cfg) -%}
-<span class="badge tag-row-badge" data-tag="{{ tag }}"
-      style="background:{{ cfg.bg }};color:{{ cfg.color }};border:1px solid {{ cfg.border }};cursor:pointer;"
-      title="{% if cfg.label %}{{ cfg.label }}: {% endif %}{{ val }} · Click to filter">
-  <i class="fas {{ cfg.icon }} fa-xs me-1"></i>{% if cfg.label %}{{ cfg.label }}: {% endif %}{{ val }}
-</span>
-{%- endmacro %}
 
 {% block title %}Data collection | zsazsa CTI{% endblock %}
 {% block page_title %}Data collection{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-sm btn-outline-secondary" id="refresh-btn" title="Trigger background cache refresh">
-  <i class="fas fa-arrows-rotate me-1"></i> Refresh cache
-</button>
-<small class="text-muted ms-2 me-1" id="refresh-countdown"
-       data-interval-s="{{ cache_interval_s }}"
-       data-last-fetch="{{ cache_last_fetch_ts or '' }}"
-       title="Time until the next automatic cache refresh"
-       style="font-size: .7rem; font-variant-numeric: tabular-nums;
-              font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-              display: inline-block; min-width: 7.5em; text-align: right;"></small>
-<i class="fas fa-circle-info text-muted me-2" id="refresh-info"
-   role="button" tabindex="0"
-   style="cursor: help; font-size: .8rem;"
-   data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="bottom"
-   data-bs-html="true"
-   data-bs-title="How cache refresh works"
-   data-bs-content="The cache is refreshed automatically every <strong>{{ (cache_interval_s // 60) }} minutes</strong> by a background worker that polls every configured MISP source. The countdown shows time until the next automatic run. Clicking <strong>Refresh cache</strong> just wakes the worker early, it does not change the schedule."></i>
-<button class="btn btn-sm btn-outline-secondary me-2" id="pull-event-btn"
-        title="Pull a specific event from a MISP source into the cache"
-        data-bs-toggle="modal" data-bs-target="#pull-event-modal">
-  <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:14px;width:auto;margin-right:4px;vertical-align:middle;opacity:.75;">Pull event
-</button>
-{% if has_manual_sources %}
-<a href="{{ url_for('data_collection.manual_new') }}" class="btn btn-sm btn-outline-primary me-2"
-   title="Manually add intelligence from a configured source">
-  <i class="fas fa-file-import me-1"></i> Add manual entry
-</a>
-{% else %}
-<button class="btn btn-sm btn-outline-primary me-2 disabled" disabled
-  title="No enabled manual sources configured. Add them under Configuration > Collection sources > Manual sources">
-  <i class="fas fa-file-import me-1"></i> Add manual entry
-</button>
-{% endif %}
 <div class="dropdown">
   <button class="btn btn-sm btn-primary dropdown-toggle disabled" type="button" id="create-product-btn"
           data-bs-toggle="dropdown" aria-expanded="false" disabled>
     <i class="fas fa-plus me-1"></i>Create product
   </button>
   <ul class="dropdown-menu dropdown-menu-end">
-    <li>
-      <a class="dropdown-item create-product-item" href="#" data-product-action="daily-briefing">
-        <i class="fas fa-newspaper me-2"></i>Add to daily briefing
-      </a>
-    </li>
-    <li>
-      <a class="dropdown-item create-product-item" href="#" data-product-action="flash-intel">
-        <i class="fas fa-bolt me-2"></i>Flash intel alert
-      </a>
-    </li>
-    <li>
-      <a class="dropdown-item create-product-item" href="#" data-product-action="vea">
-        <i class="fas fa-shield-halved me-2"></i>Vulnerability advisory
-      </a>
-    </li>
+    <li><a class="dropdown-item create-product-item" href="#" data-product-action="daily-briefing"><i class="fas fa-newspaper me-2"></i>Add to daily briefing</a></li>
+    <li><a class="dropdown-item create-product-item" href="#" data-product-action="flash-intel"><i class="fas fa-bolt me-2"></i>Flash intel alert</a></li>
+    <li><a class="dropdown-item create-product-item" href="#" data-product-action="vea"><i class="fas fa-shield-halved me-2"></i>Vulnerability advisory</a></li>
   </ul>
 </div>
 {% endblock %}
 
 {% block content %}
+<style>
+/* ── Alt 4 layout ──────────────────────────────────────────────── */
+.alt4-l1, .alt4-l2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.alt4-l1 {
+  padding: .4rem 0 .55rem;
+  border-bottom: 1px solid #edf0f4;
+  margin-bottom: .4rem;
+}
+.alt4-l2 {
+  padding: .35rem 0 .55rem;
+  border-bottom: 1px solid #edf0f4;
+  margin-bottom: .5rem;
+}
 
-<!-- Cache status bar -->
-{% if cache_status %}
-<div class="d-flex flex-wrap gap-2 align-items-center mb-3 small">
-  <span class="text-muted"><i class="fas fa-database me-1"></i>Cache:</span>
-  {% for s in sources %}
-    {% set st = cache_status.get(s.id) %}
-    {% if st %}
-      {% if st.error %}
-        <span class="badge text-bg-danger" title="{{ st.error }}">
-          <i class="fas fa-triangle-exclamation me-1"></i>{{ s.label }} - error
-        </span>
-      {% else %}
-        <span class="badge text-bg-secondary">
-          {{ s.label }} - {{ st.event_count }} events{% if cache_ages.get(s.id) is not none %}, {{ cache_ages[s.id] }}m ago{% endif %}
-        </span>
-      {% endif %}
-    {% else %}
-      <span class="badge text-bg-warning">{{ s.label }} - not yet fetched</span>
-    {% endif %}
-  {% endfor %}
-</div>
-{% endif %}
+/* Rounded search pill */
+.alt4-search {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  background: #fff;
+  border: 1.5px solid #d8dde6;
+  border-radius: 999px;
+  padding: .22rem .75rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+.alt4-search:focus-within {
+  border-color: #0078f1;
+  box-shadow: 0 0 0 2.5px rgba(0,120,241,.13);
+}
+.alt4-search input {
+  border: 0;
+  outline: 0;
+  box-shadow: none !important;
+  font-size: .85rem;
+  background: transparent;
+  min-width: 160px;
+  max-width: 220px;
+}
+.alt4-search .search-icon { font-size: .76rem; color: #9aa5b4; flex-shrink: 0; }
 
-<!-- Stats row -->
-<div class="row g-3 mb-3">
-  <div class="col-sm-4">
-    <div class="stat-card">
-      <div class="stat-icon" style="--icon-color:#0078f1;"><i class="fas fa-database"></i></div>
-      <div class="stat-body">
-        <div class="stat-number" id="visible-count">{{ events | length }}</div>
-        <div class="stat-label">Events <span class="text-muted small" id="total-count-note">of {{ events | length }} total</span></div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-4">
-    <div class="stat-card">
-      <div class="stat-icon" style="--icon-color:#22a06b;"><i class="fas fa-file-lines"></i></div>
-      <div class="stat-body">
-        <div class="stat-number" id="stat-reports">{{ total_reports }}</div>
-        <div class="stat-label">MISP reports attached</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-4">
-    <div class="stat-card">
-      <div class="stat-icon" style="--icon-color:#e07c1e;"><i class="fas fa-tags"></i></div>
-      <div class="stat-body">
-        <div class="stat-number" id="stat-tags">{{ all_tags | length }}</div>
-        <div class="stat-label">Distinct tags</div>
-      </div>
-    </div>
-  </div>
-</div>
+/* Panel toggle buttons - shared class for open-state CSS */
+.alt4-panel-toggle[aria-expanded="true"] {
+  background: #eef4ff;
+  border-color: #8ab4f8;
+  color: #1a56a0;
+}
+.alt4-panel-toggle.has-filter {
+  background: #0078f1;
+  border-color: #0062cc;
+  color: #fff;
+}
+.alt4-panel-toggle.has-filter[aria-expanded="true"] {
+  background: #0062cc;
+  border-color: #004fa3;
+}
 
-<!-- Filter panel -->
-<div class="card content-card filter-card mb-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="fas fa-sliders me-2"></i>Filter &amp; sort</span>
-    <button class="btn btn-xs btn-link text-muted p-0" id="clear-filters-btn" style="display:none;">
-      <i class="fas fa-xmark me-1"></i>Clear all filters
+/* Collapsible filter panels */
+.alt4-panel {
+  background: #f8f9fc;
+  border: 1px solid #e4e8f0;
+  border-radius: .45rem;
+  padding: .7rem 1rem .65rem;
+  margin-bottom: .4rem;
+}
+.alt4-panel-head {
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #6c757d;
+  margin-bottom: .45rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Source toggles on line 2 */
+.alt4-l2 .source-toggle {
+  font-size: .8rem;
+  padding: .28rem .65rem;
+}
+
+/* Hide-rejected toggle */
+/* Hide-rejected toggle — uses action-pill for sizing, only overrides state colours */
+.hide-rej-btn.is-hiding {
+  background: #edf0f5;
+  border-color: #b8c0cc;
+  color: #48515f;
+}
+.hide-rej-btn.is-hiding:hover { background: #e2e6ea; border-color: #9aa4b0; }
+.hide-rej-btn.is-showing {
+  /* neutral — inherits action-pill defaults */
+  border-style: dashed;
+}
+
+/* Active chips bar */
+.alt4-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  align-items: center;
+  min-height: 0;
+  margin-bottom: .5rem;
+}
+
+/* Action pills (below sources) */
+.alt4-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  padding: .3rem 0 .55rem;
+  border-bottom: 1px solid #edf0f4;
+  margin-bottom: .5rem;
+}
+.action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .26rem .6rem;
+  border: 1.5px solid #dee2e6;
+  border-radius: .4rem;
+  background: #fff;
+  font-size: .78rem;
+  color: #6c757d;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color .12s, background .12s, color .12s;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+.action-pill:hover {
+  border-color: #adb5bd;
+  background: #f8f9fa;
+  color: #495057;
+  text-decoration: none;
+}
+.action-pill:disabled, .action-pill.disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.action-pill-danger {
+  border-color: #f5c2c7;
+  color: #842029;
+  background: #fff5f7;
+}
+.action-pill-danger:hover {
+  border-color: #dc3545;
+  background: #f8d7da;
+  color: #58151c;
+}
+.action-pill-refresh-meta {
+  font-size: .7rem;
+  color: #9aa5b4;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, monospace;
+}
+.action-pill-preview-active {
+  border-color: #0078f1;
+  background: #e8f0fe;
+  color: #1a56a0;
+}
+.action-pill-preview-active:hover {
+  border-color: #0062cc;
+  background: #d0e3fd;
+  color: #0d3d7a;
+}
+</style>
+
+<!-- ── Line 1: search + filter toggles ─────────────────────────── -->
+<div class="alt4-l1">
+
+  <!-- Rounded search -->
+  <div class="alt4-search">
+    <i class="fas fa-search search-icon"></i>
+    <input type="text" id="search-input" placeholder="Search events…" autocomplete="off" spellcheck="false">
+    <button class="btn btn-xs btn-link text-muted p-0" id="search-clear" style="display:none;">
+      <i class="fas fa-xmark fa-xs"></i>
     </button>
   </div>
-  <div class="card-body">
 
-    <!-- Row 1: Sources -->
-    {# Hidden checkboxes carry the source state for JS; not submitted as a form #}
-    <div id="source-cb-container" style="display:none;">
-      {% for s in sources %}
-      <input type="checkbox" name="source" value="{{ s.id }}" checked class="source-cb">
+  <!-- Date (dropdown — auto-closes on selection) -->
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" id="date-dd-btn" data-bs-toggle="dropdown">
+      <i class="fas fa-calendar me-1 text-muted"></i><span id="date-btn-label">Date</span>
+    </button>
+    <div class="dropdown-menu p-2" style="min-width:150px;">
+      <div class="d-flex flex-column gap-1">
+        <button class="btn btn-sm btn-outline-secondary date-filter-btn active text-start"
+                data-date-filter="none" data-date-label="Date">No filter</button>
+        <button class="btn btn-sm btn-outline-secondary date-filter-btn text-start"
+                data-date-filter="today" data-date-label="Today">Today</button>
+        <button class="btn btn-sm btn-outline-secondary date-filter-btn text-start"
+                data-date-filter="48h" data-date-label="Last 48h">Last 48h</button>
+        <button class="btn btn-sm btn-outline-secondary date-filter-btn text-start"
+                data-date-filter="7d" data-date-label="Last 7d">Last 7d</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tags (collapse toggle) -->
+  <button class="btn btn-sm btn-outline-secondary alt4-panel-toggle" id="tags-toggle-btn"
+          data-bs-toggle="collapse" data-bs-target="#alt4-tags-panel" aria-expanded="false">
+    <i class="fas fa-tags me-1"></i>Tags
+    <span class="badge ms-1 d-none" id="tags-active-badge"
+          style="font-size:.58rem;padding:.15em .4em;background:rgba(0,0,0,.15);">0</span>
+  </button>
+
+  <!-- Org (collapse toggle) -->
+  <button class="btn btn-sm btn-outline-secondary alt4-panel-toggle" id="org-toggle-btn"
+          data-bs-toggle="collapse" data-bs-target="#alt4-org-panel" aria-expanded="false">
+    <i class="fas fa-building me-1"></i>Org
+    <span class="badge ms-1 d-none" id="org-active-badge"
+          style="font-size:.58rem;padding:.15em .4em;background:rgba(0,0,0,.15);">0</span>
+  </button>
+
+  <!-- More: event properties (collapse toggle) -->
+  <button class="btn btn-sm btn-outline-secondary alt4-panel-toggle" id="more-toggle-btn"
+          data-bs-toggle="collapse" data-bs-target="#alt4-more-panel" aria-expanded="false">
+    <i class="fas fa-sliders me-1"></i>More
+  </button>
+
+  <!-- CTI Evaluation (collapse toggle) -->
+  <button class="btn btn-sm btn-outline-secondary alt4-panel-toggle" id="cti-toggle-btn"
+          data-bs-toggle="collapse" data-bs-target="#alt4-cti-panel" aria-expanded="false">
+    <i class="fas fa-microscope me-1"></i>CTI Eval
+  </button>
+
+  <!-- Right: count + clear -->
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <span class="text-muted small" style="font-variant-numeric:tabular-nums;white-space:nowrap;">
+      <span id="visible-count">{{ events | length }}</span>
+      <span id="total-count-note" style="font-size:.85em;color:#adb5bd;"></span>
+      events
+    </span>
+    <button class="btn btn-xs btn-link text-danger p-0" id="clear-filters-btn"
+            style="display:none;white-space:nowrap;font-size:.78rem;">
+      <i class="fas fa-xmark me-1"></i>Clear
+    </button>
+  </div>
+</div>
+
+<!-- ── Line 2: sources ──────────────────────────────────────────── -->
+<div class="alt4-l2">
+  <div id="style-current" class="d-flex flex-wrap gap-2">
+    {% for s in sources %}
+    {% set st = cache_status.get(s.id) %}
+    {% set has_err = source_errors.get(s.id) %}
+    <div class="source-toggle source-toggle-on {{ 'source-toggle-err' if has_err else '' }}"
+         data-source-id="{{ s.id }}"
+         title="{{ s.url or '' }}{% if has_err %} · Error: {{ has_err }}{% endif %}">
+      <span class="source-toggle-icon">
+        {% if s.kind == 'scraper' %}<i class="fas fa-spider"></i>
+        {% elif s.kind == 'manual' %}<i class="fas fa-file-import"></i>
+        {% else %}<i class="fas fa-server"></i>{% endif %}
+      </span>
+      <span class="d-flex flex-column" style="line-height:1.2;">
+        <span class="source-toggle-label">{{ s.label }}</span>
+        {% if s.kind == 'misp' %}<span style="font-size:.6rem;font-weight:400;color:#6c757d;">last {{ s.since_days }}d</span>
+        {% elif s.kind == 'manual' %}<span style="font-size:.6rem;font-weight:400;color:#6c757d;">manual</span>{% endif %}
+      </span>
+      {% if has_err %}
+        <span class="source-toggle-badge text-bg-danger"><i class="fas fa-triangle-exclamation"></i></span>
+      {% elif st %}
+        <span class="source-toggle-badge text-bg-light text-muted">{{ st.event_count }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── Line 3: action pills ────────────────────────────────────────── -->
+<div class="alt4-actions">
+
+  <!-- Hide/show rejected events (toggle, active by default) -->
+  <button class="action-pill hide-rej-btn is-hiding" id="hide-rejected-btn"
+          title="Toggle visibility of rejected events (workflow:state=rejected)">
+    <i class="fas fa-eye" style="font-size:.75rem;"></i>
+    <span class="hide-rej-label">Show rejected</span>
+  </button>
+
+  <span class="text-muted" style="font-size:.7rem;user-select:none;">·</span>
+
+  <!-- Refresh cache -->
+  <button class="action-pill" id="refresh-btn" title="Trigger background cache refresh">
+    <i class="fas fa-arrows-rotate" style="font-size:.75rem;"></i> Refresh cache
+  </button>
+  <small id="refresh-countdown"
+         data-interval-s="{{ cache_interval_s }}"
+         data-last-fetch="{{ cache_last_fetch_ts or '' }}"
+         class="action-pill-refresh-meta"></small>
+  <i class="fas fa-circle-info" id="refresh-info" role="button" tabindex="0"
+     style="font-size:.75rem;color:#c0c9d6;cursor:help;"
+     data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="bottom" data-bs-html="true"
+     data-bs-title="How cache refresh works"
+     data-bs-content="The cache is refreshed automatically every <strong>{{ (cache_interval_s // 60) }} minutes</strong> by a background worker that polls every configured source. Clicking <strong>Refresh cache</strong> wakes the worker early without changing the schedule."></i>
+
+  <span class="text-muted" style="font-size:.7rem;user-select:none;">·</span>
+
+  <!-- Pull event from MISP -->
+  <button class="action-pill" id="pull-event-btn"
+          data-bs-toggle="modal" data-bs-target="#pull-event-modal"
+          title="Pull a specific event from a MISP source into the cache">
+    <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP"
+         style="height:12px;width:auto;vertical-align:middle;opacity:.65;">
+    Pull event
+  </button>
+
+  <!-- Add manual entry -->
+  {% if has_manual_sources %}
+  <a href="{{ url_for('data_collection.manual_new') }}" class="action-pill"
+     title="Manually add intelligence from a configured source">
+    <i class="fas fa-file-import" style="font-size:.75rem;"></i> Add manual entry
+  </a>
+  {% else %}
+  <button class="action-pill disabled" disabled
+          title="No enabled manual sources configured. Add them under Configuration › Collection sources › Manual sources">
+    <i class="fas fa-file-import" style="font-size:.75rem;"></i> Add manual entry
+  </button>
+  {% endif %}
+
+  {% if briefing_pending_reject_uuids %}
+  <span class="text-muted" style="font-size:.7rem;user-select:none;">·</span>
+  <!-- Preview: filter table to pending-reject events -->
+  <button class="action-pill" id="preview-excluded-btn"
+          title="Preview: show only events that would be rejected ({{ briefing_pending_reject_uuids | length }} event{{ 's' if briefing_pending_reject_uuids | length != 1 }})">
+    <i class="fas fa-eye" style="font-size:.75rem;"></i>
+  </button>
+  <!-- Bulk-reject events matching briefing exclusions (not yet rejected) -->
+  <button class="action-pill action-pill-danger" id="bulk-reject-btn"
+          title="Set workflow:state=rejected on every event matching a daily briefing title exclusion pattern that is not yet rejected">
+    <i class="fas fa-ban" style="font-size:.75rem;"></i>
+    Reject {{ briefing_pending_reject_uuids | length }} event{{ 's' if briefing_pending_reject_uuids | length != 1 }} matching exclusions
+  </button>
+  <span id="bulk-reject-result" class="small d-none"></span>
+  {% endif %}
+
+</div>
+
+<!-- ── Collapsible: Tags ─────────────────────────────────────────── -->
+<div class="collapse" id="alt4-tags-panel">
+  <div class="alt4-panel">
+    <div class="alt4-panel-head">
+      <span>
+        Tags
+        <small class="fw-normal ms-2 text-muted" id="tag-count-label"
+               style="text-transform:none;letter-spacing:0;font-size:.7rem;"></small>
+      </span>
+      <div class="d-flex align-items-center gap-3">
+        <span class="text-muted fw-normal" style="font-size:.65rem;text-transform:none;letter-spacing:0;">
+          <span class="badge text-bg-success" style="font-size:.55rem;">+</span> include ·
+          <span class="badge text-bg-danger ms-1" style="font-size:.55rem;">–</span> exclude ·
+          click again to clear
+        </span>
+        <button type="button" class="btn btn-xs btn-link text-muted p-0" id="deselect-all-tags-btn"
+                style="font-size:.7rem;white-space:nowrap;">
+          <i class="fas fa-xmark me-1"></i>Deselect all
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick filters: used in products -->
+    <div class="mb-1 d-flex align-items-center flex-wrap gap-1">
+      <span class="text-muted me-1" style="font-size:.7rem;white-space:nowrap;font-weight:600;color:#7c3aed;">Used in:</span>
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="daily-briefing"' data-state="neutral">
+        <i class="fas fa-newspaper fa-xs me-1"></i>daily briefing
+      </button>
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="flash-intel"' data-state="neutral">
+        <i class="fas fa-bolt fa-xs me-1"></i>flash intel
+      </button>
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="vea"' data-state="neutral">
+        <i class="fas fa-shield-halved fa-xs me-1"></i>vuln advisory
+      </button>
+    </div>
+
+    <!-- Quick filters: product events -->
+    <div class="mb-2 d-flex align-items-center flex-wrap gap-1">
+      <span class="text-muted me-1" style="font-size:.7rem;white-space:nowrap;font-weight:600;color:#0078f1;">Products:</span>
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_briefing }}" data-state="neutral">
+        <i class="fas fa-newspaper fa-xs me-1"></i>daily threat briefing
+      </button>
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_flash_intel }}" data-state="neutral">
+        <i class="fas fa-bolt fa-xs me-1"></i>flash intel product
+      </button>
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_vea }}" data-state="neutral">
+        <i class="fas fa-shield-halved fa-xs me-1"></i>vulnerability advisory product
+      </button>
+    </div>
+
+    <!-- Tag search input -->
+    <input type="text" id="tag-search" class="form-control form-control-sm mb-2"
+           placeholder="Find tag…" style="max-width:240px;">
+
+    <!-- Tag cloud — cti-evaluation tags excluded from display here -->
+    <div id="tag-cloud" class="d-flex flex-wrap gap-1" style="max-height:7rem;overflow:hidden;">
+      {% for t in all_tags %}
+      {% if not t.startswith('cti-evaluation:') %}
+      <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ t }}" data-state="neutral">{{ t }}</button>
+      {% endif %}
       {% endfor %}
     </div>
-
-    <div class="row g-3 align-items-end mb-3 pb-3 border-bottom">
-      <div class="col-12">
-        <label class="form-label small fw-semibold mb-2">
-          <i class="fas fa-satellite-dish me-1"></i>Sources
-        </label>
-
-        {# ── Current style ─────────────────────────────────────── #}
-        <div class="d-flex flex-wrap gap-2 mb-4" id="style-current">
-          {% for s in sources %}
-          {% set st = cache_status.get(s.id) %}
-          {% set has_err = source_errors.get(s.id) %}
-          <div class="source-toggle source-toggle-on {{ 'source-toggle-err' if has_err else '' }}"
-               data-source-id="{{ s.id }}"
-               title="{{ s.url or '' }}{% if has_err %} - Error: {{ has_err }}{% endif %}">
-            <span class="source-toggle-icon">
-              {% if s.kind == 'scraper' %}<i class="fas fa-spider"></i>
-              {% elif s.kind == 'manual' %}<i class="fas fa-file-import"></i>
-              {% else %}<i class="fas fa-server"></i>{% endif %}
-            </span>
-            <span class="d-flex flex-column" style="line-height:1.2;">
-              <span class="source-toggle-label">{{ s.label }}</span>
-              {% if s.kind == 'misp' %}
-              <span style="font-size:.65rem;font-weight:400;color:#6c757d;">published · last {{ s.since_days }}d</span>
-              {% elif s.kind == 'manual' %}
-              <span style="font-size:.65rem;font-weight:400;color:#6c757d;">manual entry</span>
-              {% endif %}
-            </span>
-            {% if has_err %}
-              <span class="source-toggle-badge text-bg-danger"><i class="fas fa-triangle-exclamation"></i></span>
-            {% elif st %}
-              <span class="source-toggle-badge text-bg-light text-muted">{{ st.event_count }}</span>
-            {% endif %}
-          </div>
-          {% endfor %}
-        </div>
-
-      </div>
+    <div class="mt-1 d-flex justify-content-end">
+      <button type="button" class="btn btn-xs btn-link text-muted p-0" id="tag-cloud-toggle"
+              style="font-size:.72rem;">
+        <i class="fas fa-chevron-down me-1"></i>Show all
+      </button>
     </div>
+  </div>
+</div>
 
-    <!-- Row 2: Sort + Date -->
-    <div class="row g-3 mb-3 pb-3 border-bottom align-items-start">
-      <div class="col-md-5">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-sort me-1"></i>Sort
-        </label>
-        <div class="d-flex gap-1">
-          <button class="btn btn-sm btn-outline-secondary sort-btn" data-col="date" data-dir="desc">
-            <i class="fas fa-calendar me-1"></i>Date <i class="fas fa-arrow-down sort-icon ms-1"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-secondary sort-btn" data-col="title" data-dir="asc">
-            <i class="fas fa-font me-1"></i>Title <i class="fas fa-sort sort-icon ms-1 text-muted"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-secondary sort-btn" data-col="orgc" data-dir="asc">
-            <i class="fas fa-building me-1"></i>Creator org <i class="fas fa-sort sort-icon ms-1 text-muted"></i>
-          </button>
-        </div>
-      </div>
-      <div class="col-md-7">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-calendar-days me-1"></i>Date
-          <span class="text-muted fw-normal ms-1" style="font-size:.77rem;">- filters on the MISP event date field</span>
-        </label>
-        <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn active" data-date-filter="none">No filter</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="today">Today</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="48h">Last 48h</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary date-filter-btn" data-date-filter="7d">Last 7d</button>
-        </div>
-      </div>
+<!-- ── Collapsible: Org ──────────────────────────────────────────── -->
+<div class="collapse" id="alt4-org-panel">
+  <div class="alt4-panel">
+    <div class="alt4-panel-head">
+      <span>
+        Creator organisation
+        <small class="fw-normal ms-2 text-muted" id="org-count-label"
+               style="text-transform:none;letter-spacing:0;font-size:.7rem;"></small>
+      </span>
+      <button type="button" class="btn btn-xs btn-link text-muted p-0" id="deselect-all-orgs-btn"
+              style="font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;">
+        <i class="fas fa-xmark me-1"></i>Deselect all
+      </button>
     </div>
-
-    <!-- Row 3: Tag filter -->
-    <div class="mb-3 pb-3 border-bottom">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <label class="form-label small fw-semibold mb-0">
-          <i class="fas fa-tags me-1"></i>Tags
-          <span class="text-muted fw-normal" id="tag-count-label" style="font-size:.78rem;"></span>
-        </label>
-        <div class="d-flex align-items-center gap-2">
-          <span class="text-muted small">
-            <span class="badge text-bg-success me-1" style="font-size:.6rem;">+</span>include ·
-            <span class="badge text-bg-danger me-1" style="font-size:.6rem;">–</span>exclude ·
-            click again to clear
-          </span>
-          <input type="text" id="tag-search" class="form-control form-control-sm"
-                 placeholder="Find tag…" style="width:11rem;">
-        </div>
-      </div>
-
-      <!-- Quick filters: Used in products -->
-      <div class="mb-1 d-flex align-items-center flex-wrap gap-1">
-        <span class="fw-semibold me-1" style="font-size:.72rem;white-space:nowrap;color:#7c3aed;">Used in products:</span>
-        <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="daily-briefing"' data-state="neutral"><i class="fas fa-newspaper fa-xs me-1"></i>daily briefing</button>
-        <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="flash-intel"' data-state="neutral"><i class="fas fa-bolt fa-xs me-1"></i>flash intel</button>
-        <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="vea"' data-state="neutral"><i class="fas fa-shield-halved fa-xs me-1"></i>vuln advisory</button>
-      </div>
-
-      <!-- Quick filters: Product events -->
-      <div class="mb-2 d-flex align-items-center flex-wrap gap-1">
-        <span class="fw-semibold me-1" style="font-size:.72rem;white-space:nowrap;color:#0078f1;">Products:</span>
-        <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_briefing }}" data-state="neutral"><i class="fas fa-newspaper fa-xs me-1"></i>daily threat briefing</button>
-        <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_flash_intel }}" data-state="neutral"><i class="fas fa-bolt fa-xs me-1"></i>flash intel product</button>
-        <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_vea }}" data-state="neutral"><i class="fas fa-shield-halved fa-xs me-1"></i>vulnerability advisory product</button>
-      </div>
-
-      <!-- Active tag filters -->
-      <div id="active-tag-summary" class="mb-2" style="display:none;">
-        <span class="text-muted small me-1">Active:</span>
-        <span id="active-tag-chips"></span>
-      </div>
-
-      <!-- Tag cloud -->
-      <div id="tag-cloud" class="d-flex flex-wrap gap-1" style="max-height:7rem;overflow:hidden;">
-        {% for t in all_tags %}
-        <button type="button" class="tag-pill tag-pill-neutral"
-                data-tag="{{ t }}" data-state="neutral">{{ t }}</button>
+    <div id="org-cloud" class="d-flex flex-wrap gap-1">
+      {% if org_list %}
+        {% for o in org_list %}
+        <button type="button" class="tag-pill tag-pill-neutral org-pill"
+                data-org="{{ o.name }}"
+                data-sources='{{ o.sources.keys() | list | tojson }}'
+                data-state="neutral"
+                title="Sources: {{ o.sources.values() | join(', ') }}">
+          {{ o.name }}<span class="ms-1" style="font-size:.62rem;opacity:.55;font-weight:400;">({{ o.sources.values() | join(', ') }})</span>
+        </button>
         {% endfor %}
+      {% else %}
+        <p class="text-muted small mb-0"><em>No organisations in cache yet.</em></p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Collapsible: More (event properties + sort) ──────────────── -->
+<div class="collapse" id="alt4-more-panel">
+  <div class="alt4-panel">
+    <div class="alt4-panel-head">Event properties</div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary filter-toggle-btn" data-toggle-key="vulnFilter">
+        <i class="fas fa-shield-halved me-1"></i>Covers a CVE
+      </button>
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-flag fa-xs me-1"></i>Flagged</span>
+        <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="flagFilter" data-filter-value="any">Any</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="flagFilter" data-filter-value="flagged">Yes</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="flagFilter" data-filter-value="not-flagged">No</button>
       </div>
-      <div class="mt-1 d-flex justify-content-between align-items-center">
-        <div class="form-text mb-0">
-          <span class="badge text-bg-success me-1" style="font-size:.6rem;">include</span> events must have this tag ·
-          <span class="badge text-bg-danger me-1" style="font-size:.6rem;">exclude</span> events with this tag are hidden ·
-          <button type="button" class="btn btn-xs btn-link text-muted p-0 ms-1" id="deselect-all-tags-btn" style="font-size:.78rem;" title="Remove all active tag filters">
-            <i class="fas fa-xmark me-1"></i>Deselect all tags
-          </button>
-        </div>
-        <button type="button" class="btn btn-xs btn-link text-muted p-0" id="tag-cloud-toggle" style="font-size:.78rem;white-space:nowrap;">
-          <i class="fas fa-chevron-down me-1"></i>Show all
-        </button>
+      <div class="vr mx-1" style="height:1.4rem;"></div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted small" style="white-space:nowrap;">
+          <i class="fas fa-wand-magic-sparkles fa-xs me-1"></i>AI summary
+        </span>
+        <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="any">Any</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="with">With</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="without">Without</button>
+      </div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted small" style="white-space:nowrap;">
+          <i class="fas fa-file-lines fa-xs me-1"></i>Has reports
+        </span>
+        <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="any">Any</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="with">With</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="without">Without</button>
+      </div>
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-muted small" style="white-space:nowrap;">
+          <i class="fas fa-crosshairs fa-xs me-1"></i>PIR/GIR match
+        </span>
+        <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="any">Any</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="with">With</button>
+        <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="without">Without</button>
       </div>
     </div>
+  </div>
+</div>
 
-    <!-- Row 4: Creator organisation + Search title -->
-    <div class="row g-3 mb-3 pb-3 border-bottom align-items-start">
-      <div class="col-md-7">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <label class="form-label small fw-semibold mb-0">
-            <i class="fas fa-building me-1"></i>Creator organisation
-            <span class="text-muted fw-normal" id="org-count-label" style="font-size:.78rem;"></span>
-          </label>
-          <button type="button" class="btn btn-xs btn-link text-muted p-0" id="deselect-all-orgs-btn"
-                  style="font-size:.78rem;" title="Remove all active organisation filters">
-            <i class="fas fa-xmark me-1"></i>Deselect all
-          </button>
-        </div>
-        <div id="active-org-summary" class="mb-2" style="display:none;">
-          <span class="text-muted small me-1">Active:</span>
-          <span id="active-org-chips"></span>
-        </div>
-        <div id="org-cloud" class="d-flex flex-wrap gap-1">
-          {% if org_list %}
-            {% for o in org_list %}
-            <button type="button" class="tag-pill tag-pill-neutral org-pill"
-                    data-org="{{ o.name }}"
-                    data-sources='{{ o.sources.keys() | list | tojson }}'
-                    data-state="neutral"
-                    title="Sources: {{ o.sources.values() | join(', ') }}">
-              {{ o.name }}<span class="ms-1" style="font-size:.62rem;opacity:.6;font-weight:400;">({{ o.sources.values() | join(', ') }})</span>
-            </button>
-            {% endfor %}
-          {% else %}
-            <p class="text-muted small mb-0"><em>No organisations in cache yet.</em></p>
-          {% endif %}
-        </div>
-      </div>
-      <div class="col-md-5">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-magnifying-glass me-1"></i>Search title
-        </label>
-        <div class="input-group input-group-sm">
-          <span class="input-group-text"><i class="fas fa-search"></i></span>
-          <input type="text" id="search-input" class="form-control"
-                 placeholder="Filter by event title…" autocomplete="off">
-          <button class="btn btn-outline-secondary" id="search-clear" type="button" style="display:none;">
-            <i class="fas fa-xmark"></i>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Row 5: Event properties -->
-    <div class="mb-3 pb-3 border-bottom">
-      <label class="form-label small fw-semibold mb-2">
-        <i class="fas fa-sliders me-1"></i>Event properties
-      </label>
-      <div class="d-flex flex-wrap align-items-center gap-2">
-        <button type="button" class="btn btn-sm btn-outline-secondary filter-toggle-btn" data-toggle-key="vulnFilter"
-                title="Show only events covering a CVE or vulnerability">
-          <i class="fas fa-shield-halved me-1"></i>Covers a CVE
-        </button>
-        <button type="button" class="btn btn-sm btn-outline-warning" id="flagged-only-btn"
-                title="Show only events flagged for follow-up">
-          <i class="fas fa-flag me-1"></i>Flagged only
-        </button>
-        <span class="text-muted" style="font-size:.8rem;">|</span>
-        <div class="d-flex align-items-center gap-1">
-          <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-wand-magic-sparkles fa-xs me-1"></i>AI summary</span>
-          <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="any">Any</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="with">With</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="aiFilter" data-filter-value="without">Without</button>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-file-lines fa-xs me-1"></i>Has reports</span>
-          <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="any">Any</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="with">With</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reportsFilter" data-filter-value="without">Without</button>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          <span class="text-muted small" style="white-space:nowrap;"><i class="fas fa-crosshairs fa-xs me-1"></i>PIR/GIR match</span>
-          <button type="button" class="btn btn-xs btn-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="any">Any</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="with">With</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary tristate-filter-btn" data-filter-key="reqMatchFilter" data-filter-value="without">Without</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Row 6: CTI evaluation filter -->
-    <div class="row g-3 mt-2 pt-3 border-top align-items-end">
-      <div class="col-md-4 col-lg-3">
-        <label class="form-label small fw-semibold mb-1">
-          <i class="fas fa-microscope me-1"></i>CTI evaluation
-        </label>
+<!-- ── Collapsible: CTI Evaluation ──────────────────────────────── -->
+<div class="collapse" id="alt4-cti-panel">
+  <div class="alt4-panel">
+    <div class="alt4-panel-head">CTI Evaluation filter</div>
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-md-3 col-lg-2">
+        <label class="form-label small fw-semibold mb-1">Predicate</label>
         <select id="cti-predicate-filter" class="form-select form-select-sm">
           <option value="">None</option>
           <option value="overall-score">Overall score</option>
@@ -416,7 +552,7 @@
           <option value="confidence">Confidence</option>
         </select>
       </div>
-      <div class="col-md-4 col-lg-3">
+      <div class="col-md-3 col-lg-2">
         <label class="form-label small fw-semibold mb-1">Comparison</label>
         <select id="cti-operator-filter" class="form-select form-select-sm">
           <option value="gte">Above or equal</option>
@@ -425,7 +561,7 @@
           <option value="without">No value</option>
         </select>
       </div>
-      <div class="col-md-4 col-lg-3">
+      <div class="col-md-2 col-lg-1">
         <label class="form-label small fw-semibold mb-1">Value</label>
         <select id="cti-value-filter" class="form-select form-select-sm">
           <option value="very-low">Very low</option>
@@ -435,2327 +571,203 @@
           <option value="very-high">Very high</option>
         </select>
       </div>
-      <div class="col-lg-3">
-        <p class="text-muted small mb-1">Choose a predicate, then filter by threshold or by events without that predicate.</p>
-      </div>
-      <div class="col-12">
-        <div class="d-flex flex-wrap gap-1 align-items-center" style="font-size:.65rem;">
-          <span class="text-muted me-1">Quick presets:</span>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="overall-score" data-operator="gte" data-value="high">Overall score >= High</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="overall-score" data-operator="lte" data-value="low">Overall score <= Low</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="relevance" data-operator="gte" data-value="moderate">Relevance >= Moderate</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="confidence" data-operator="gte" data-value="high">Confidence >= High</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn" style="font-size:.65rem;" data-predicate="overall-score" data-operator="without">No overall score</button>
-          <button type="button" class="btn btn-xs btn-outline-secondary" style="font-size:.65rem;" id="cti-preset-clear">Clear</button>
+      <div class="col-md-4 col-lg-7">
+        <label class="form-label small fw-semibold mb-1">Quick presets</label>
+        <div class="d-flex flex-wrap gap-1" style="font-size:.65rem;">
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn"
+                  data-predicate="overall-score" data-operator="gte" data-value="high">Overall score ≥ High</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn"
+                  data-predicate="overall-score" data-operator="lte" data-value="low">Overall score ≤ Low</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn"
+                  data-predicate="relevance" data-operator="gte" data-value="moderate">Relevance ≥ Moderate</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn"
+                  data-predicate="confidence" data-operator="gte" data-value="high">Confidence ≥ High</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary cti-preset-btn"
+                  data-predicate="overall-score" data-operator="without">No overall score</button>
+          <button type="button" class="btn btn-xs btn-outline-secondary" id="cti-preset-clear">Clear</button>
         </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- Pull event modal -->
-<div class="modal fade" id="pull-event-modal" tabindex="-1" aria-labelledby="pull-event-modal-label" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="pull-event-modal-label">
-          <i class="fas fa-cloud-arrow-down me-2"></i>Pull event into cache
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="text-muted small mb-3">
-          Enter a MISP event UUID and choose a source. The event will be fetched immediately and added to the local cache. If it does not match the configured filters for the MISP scraper or other MISP servers, it will be removed on the next cache refresh.
-        </p>
-        <div class="mb-3">
-          <label for="pull-uuid-input" class="form-label">Event UUID</label>
-          <input type="text" class="form-control font-monospace" id="pull-uuid-input"
-                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                 autocomplete="off" spellcheck="false">
-        </div>
-        <div class="mb-3">
-          <label for="pull-source-select" class="form-label">Source</label>
-          <select class="form-select" id="pull-source-select">
-            {% for s in sources %}
-              {% if s.kind != 'manual' %}
-              <option value="{{ s.id }}">{{ s.label }}</option>
-              {% endif %}
-            {% endfor %}
-          </select>
-        </div>
-        <div id="pull-result" class="d-none">
-          <div id="pull-result-ok" class="alert alert-success d-none py-2 small mb-0">
-            <i class="fas fa-check-circle me-1"></i><span id="pull-result-ok-msg"></span>
-          </div>
-          <div id="pull-result-err" class="alert alert-danger d-none py-2 small mb-0">
-            <i class="fas fa-triangle-exclamation me-1"></i><span id="pull-result-err-msg"></span>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="pull-confirm-btn">
-          <i class="fas fa-cloud-arrow-down me-1"></i>Pull
-        </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Event preview offcanvas -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="event-preview-offcanvas"
-     style="width:min(90vw,760px);">
-  <div class="offcanvas-header border-bottom py-2">
-    <div class="overflow-hidden">
-      <h6 class="offcanvas-title mb-0 text-truncate" id="event-preview-title" style="max-width:55vw;"></h6>
-      <small class="text-muted" id="event-preview-meta"></small>
-    </div>
-    <div class="d-flex gap-2 align-items-center ms-2 flex-shrink-0">
-      <a href="#" id="event-preview-detail-link" class="btn btn-sm btn-outline-secondary" title="Open full detail page" target="_blank">
-        <i class="fas fa-external-link-alt me-1"></i>Detail
-      </a>
-      <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
-    </div>
-  </div>
-  <div class="offcanvas-body p-0">
-    <div id="event-preview-loading" class="text-center py-5 d-none">
-      <i class="fas fa-spinner fa-spin fa-2x text-muted"></i>
-    </div>
-    <div id="event-preview-content" class="p-3"></div>
-  </div>
+<!-- ── Active filter chips (always visible, below panels) ─────── -->
+<div class="alt4-chips">
+  <div id="active-tag-summary" style="display:none;"><span id="active-tag-chips"></span></div>
+  <div id="active-org-summary" style="display:none;"><span id="active-org-chips"></span></div>
 </div>
 
-<!-- Events table -->
-<div class="card content-card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="fas fa-database me-2"></i><span id="table-count">{{ events | length }}</span> event<span id="table-count-plural">{{ 's' if events|length != 1 }}</span><span id="table-count-of-total" class="text-muted small ms-1" style="display:none;"></span></span>
-  </div>
-  <div class="card-body p-0">
-    {% if events %}
-    <div>
-      <table class="table zsazsa-table mb-0" id="events-table" style="width:100%;table-layout:fixed;">
-        <thead>
-          <tr>
-            <th style="width:2rem;">
-              <input type="checkbox" id="select-all-cb" class="form-check-input" title="Select all visible">
-            </th>
-            <th class="sort-col" data-col="date" style="width:6.5rem;white-space:nowrap;cursor:pointer;">
-              Date <i class="fas fa-arrow-down ms-1 small sort-th-icon active-asc-desc" id="th-date-icon"></i>
-            </th>
-            <th style="width:5.5rem;white-space:nowrap;">Event ID</th>
-            <th class="sort-col" data-col="title" style="cursor:pointer;">
-              Title <i class="fas fa-sort ms-1 small text-muted sort-th-icon" id="th-title-icon"></i>
-            </th>
-            <th class="sort-col" data-col="orgc" style="width:8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;" title="Creator org">
-              <i class="fas fa-building text-muted"></i> <i class="fas fa-sort ms-1 small text-muted sort-th-icon" id="th-orgc-icon"></i>
-            </th>
-            <th style="width:7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Source"><i class="fas fa-satellite-dish text-muted"></i></th>
-            <th class="text-end" style="width:4rem;" title="Reports"><i class="fas fa-file-lines text-muted"></i></th>
-            <th class="text-end" style="width:3rem;" title="AI summary"><i class="fas fa-wand-magic-sparkles fa-xs" title="AI summary"></i></th>
-            <th class="text-end" style="width:8rem;" title="Actions"><i class="fas fa-gear text-muted"></i></th>
-          </tr>
-        </thead>
-        <tbody id="events-tbody">
-          {% for e in events %}
-          <tr class="event-row{% if 'workflow:state="rejected"' in e.tags %} wf-rejected-row{% endif %}"
-              data-date="{{ e.date or '' }}"
-              data-title="{{ e.info or '' | lower }}"
-              data-search-text="{{ ((e.info or '') ~ ' ' ~ (e.galaxy_names | join(' ')) ~ ' ' ~ (e.req_matches | map(attribute='id') | join(' '))) | lower | e }}"
-              data-tags='{{ e.tags | tojson }}'
-              data-source-id="{{ e.source_id }}"
-              data-source-kind="{{ e.source_kind }}"
-              data-uuid="{{ e.uuid }}"
-              data-orgc="{{ e.orgc or '' }}"
-              data-has-ai-summary="{{ 1 if e.has_ai_summary else 0 }}"
-              data-report-count="{{ e.report_count }}"
-              data-has-req-match="{{ 1 if e.req_matches else 0 }}"
-              data-has-vuln="{{ 1 if e.vulnerability_ids else 0 }}"
-              data-flagged="{{ 'true' if e.uuid in flagged_uuids else 'false' }}">
-            <td>
-              <input type="checkbox" class="form-check-input event-row-cb" value="{{ e.uuid }}"
-                     data-source-id="{{ e.source_id }}">
-            </td>
-            <td class="text-muted" style="white-space:nowrap;font-size:.72rem;">{{ e.date or '-' }}</td>
-            <td style="white-space:nowrap;">
-              <a href="#" class="event-preview-link font-monospace text-muted"
-                 data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
-                 style="font-size:.7rem;">{{ e.id or '-' }}</a>
-            </td>
-            <td>
-              <a href="#" class="event-preview-link"
-                 data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}">{{ e.info or '(untitled)' }}</a>
-              {# ── Extract scraper meta-tags ──────────────────────────── #}
-              {% set ns = namespace(
-                has_tags=false,
-                src_source_tag='', src_source_val='',
-                src_domain_tag='',  src_domain_val='',
-                adm_rel_tag='',    adm_rel_val='',
-                adm_cred_tag='',   adm_cred_val='',
-                retention_tag='',
-                workflow_tag='', workflow_val=''
-              ) %}
-              {% for t in e.tags %}
-                {% if t.startswith('scraper:data-collection-source') %}
-                  {% set ns.src_source_tag = t %}
-                  {% set ns.src_source_val = t | replace('scraper:data-collection-source=', '') | replace('scraper:data-collection-source:', '') | replace('"', '') | trim %}
-                  {% set ns.has_tags = true %}
-                {% elif t.startswith('scraper:primary-data-collection-source') %}
-                  {% set ns.src_domain_tag = t %}
-                  {% set ns.src_domain_val = t | replace('scraper:primary-data-collection-source=', '') | replace('scraper:primary-data-collection-source:', '') | replace('"', '') | trim %}
-                  {% set ns.has_tags = true %}
-                {% elif t.startswith('admiralty-scale:source-reliability') %}
-                  {% set ns.adm_rel_tag = t %}
-                  {% set ns.adm_rel_val = t | replace('admiralty-scale:source-reliability=', '') | replace('admiralty-scale:source-reliability:', '') | replace('"', '') | trim %}
-                  {% set ns.has_tags = true %}
-                {% elif t.startswith('admiralty-scale:information-credibility') %}
-                  {% set ns.adm_cred_tag = t %}
-                  {% set ns.adm_cred_val = t | replace('admiralty-scale:information-credibility=', '') | replace('admiralty-scale:information-credibility:', '') | replace('"', '') | trim %}
-                  {% set ns.has_tags = true %}
-                {% elif t.startswith('workflow:state') %}
-                  {% set ns.workflow_tag = t %}
-                  {% set ns.workflow_val = t | replace('workflow:state="', '') | replace('workflow:state=', '') | replace('"', '') | trim %}
-                  {% set ns.has_tags = true %}
-                {% elif t.startswith('retention') %}
-                  {% set ns.retention_tag = t %}
-                  {% set ns.has_tags = true %}
-                {% elif t != marker_tag %}
-                  {% set ns.has_tags = true %}
-                {% endif %}
-              {% endfor %}
-              {% if ns.has_tags %}
-              <div class="tag-cell-inner mt-1">
-                {# Workflow state badge - CSS class drives colour; icon per state #}
-                {% if ns.workflow_val %}
-                  {% if ns.workflow_val == 'draft' %}
-                    <span class="badge tag-row-badge wf-badge wf-draft" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: draft · Click to filter"><i class="fas fa-pen fa-xs me-1"></i>draft</span>
-                  {% elif ns.workflow_val == 'incomplete' %}
-                    <span class="badge tag-row-badge wf-badge wf-incomplete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: incomplete · Click to filter"><i class="fas fa-circle-exclamation fa-xs me-1"></i>incomplete</span>
-                  {% elif ns.workflow_val == 'ongoing' %}
-                    <span class="badge tag-row-badge wf-badge wf-ongoing" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: ongoing · Click to filter"><i class="fas fa-hourglass-half fa-xs me-1"></i>ongoing</span>
-                  {% elif ns.workflow_val == 'complete' %}
-                    <span class="badge tag-row-badge wf-badge wf-complete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: complete · Click to filter"><i class="fas fa-circle-check fa-xs me-1"></i>complete</span>
-                  {% elif ns.workflow_val == 'published' %}
-                    <span class="badge tag-row-badge wf-badge wf-published" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: published · Click to filter"><i class="fas fa-paper-plane fa-xs me-1"></i>published</span>
-                  {% else %}
-                    <span class="badge tag-row-badge wf-badge wf-other" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: {{ ns.workflow_val }} · Click to filter"><i class="fas fa-circle fa-xs me-1"></i>{{ ns.workflow_val }}</span>
-                  {% endif %}
-                {% endif %}
-                {# Value chips driven by VALUE_CHIP_CONFIG #}
-                {% if ns.src_source_val %}{{ chip_badge(ns.src_source_tag, ns.src_source_val, VALUE_CHIP_CONFIG['scraper:data-collection-source']) }}{% endif %}
-                {% if ns.src_domain_val %}{{ chip_badge(ns.src_domain_tag, ns.src_domain_val, VALUE_CHIP_CONFIG['scraper:primary-data-collection-source']) }}{% endif %}
-                {% if ns.adm_rel_val %}{{ chip_badge(ns.adm_rel_tag, ns.adm_rel_val, VALUE_CHIP_CONFIG['admiralty-scale:source-reliability']) }}{% endif %}
-                {% if ns.adm_cred_val %}{{ chip_badge(ns.adm_cred_tag, ns.adm_cred_val, VALUE_CHIP_CONFIG['admiralty-scale:information-credibility']) }}{% endif %}
-                {# Info icon showing scraper metadata on hover #}
-                {% if ns.src_source_val or ns.src_domain_val or ns.retention_tag %}
-                <span class="scraper-meta-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
-                      title="{% set sep = namespace(v='') %}{% if ns.src_source_tag %}{{ ns.src_source_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.src_domain_tag %}{{ sep.v }}{{ ns.src_domain_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.retention_tag %}{{ sep.v }}{{ ns.retention_tag }}{% endif %}">
-                  <i class="fas fa-circle-info" style="font-size:.72rem;color:#adb5bd;cursor:default;"></i>
-                </span>
-                {% endif %}
-                {# Regular tags - skip scraper meta and marker #}
-                {% for t in e.tags %}
-                  {% if not (t == marker_tag
-                             or t.startswith('scraper:data-collection-source')
-                             or t.startswith('scraper:primary-data-collection-source')
-                             or t.startswith('admiralty-scale:source-reliability')
-                             or t.startswith('admiralty-scale:information-credibility')
-                             or t.startswith('workflow:state')
-                             or t.startswith('retention')) %}
-                    {% if t.startswith('tlp:') %}
-                      {% set tlp_val = t[4:] | lower %}
-                      <span class="badge tag-row-badge tlp-badge tlp-{{ tlp_val | replace('+strict','') | replace('+','') }}" data-tag="{{ t }}"
-                            style="cursor:pointer;" title="Click to filter · TLP classification">TLP:{{ tlp_val | upper }}</span>
-                    {% elif t.startswith('misp-galaxy:mitre-attack-pattern=') %}
-                      {% set tval = t[33:] %}
-                      {% set tparts = tval.split(' - ', 1) %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#fdecea;color:#7b1a10;border:1px solid #e8b4b0;cursor:pointer;"
-                            title="{{ tval }} · Click to filter">
-                        <span style="font-family:monospace;font-weight:700;">{{ tparts[0] }}</span>{% if tparts | length > 1 %} {{ tparts[1] }}{% endif %}
-                      </span>
-                    {% elif t.startswith('misp-galaxy:threat-actor=') %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#fef5e3;color:#7a4f0a;border:1px solid #f5d89a;cursor:pointer;"
-                            title="{{ t[25:] }} · Click to filter">
-                        <i class="fas fa-user-secret fa-xs me-1"></i>{{ t[25:] }}
-                      </span>
-                    {% elif t.startswith('misp-galaxy:sector=') or t.startswith('misp-galaxy:country=') or t.startswith('misp-galaxy:target-information=') %}
-                      {% if t.startswith('misp-galaxy:sector=') %}
-                        {% set ctx_label = t[19:] %}
-                        {% set ctx_icon = 'fa-building' %}
-                      {% elif t.startswith('misp-galaxy:country=') %}
-                        {% set ctx_label = t[20:] %}
-                        {% set ctx_icon = 'fa-globe' %}
-                      {% else %}
-                        {% set ctx_label = t[31:] %}
-                        {% set ctx_icon = 'fa-bullseye' %}
-                      {% endif %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;cursor:pointer;"
-                            title="{{ ctx_label }} · Click to filter">
-                        <i class="fas {{ ctx_icon }} fa-xs me-1"></i>{{ ctx_label }}
-                      </span>
-                    {% elif t.startswith('zsazsa:product=') %}
-                      {% set product_label = t[16:-1] %}
-                      <span style="display:inline-flex;align-items:stretch;background:#7c3aed;border:1px solid #6d28d9;border-radius:.3rem;overflow:hidden;vertical-align:middle;font-size:.62rem;font-weight:600;line-height:1;">
-                        <span class="product-tag-main-btn" data-tag="{{ t }}"
-                              style="color:#fff;padding:.18rem .35rem;cursor:pointer;"
-                              title="Used for: {{ product_label }} · Click to see linked products">
-                          <i class="fas fa-box-open fa-xs me-1"></i>{{ product_label }}
-                        </span>
-                        <span class="product-tag-filter-btn" data-tag="{{ t }}"
-                              style="color:rgba(255,255,255,.65);border-left:1px solid rgba(255,255,255,.25);padding:.18rem .3rem;cursor:pointer;display:flex;align-items:center;"
-                              title="Filter: show only events used for {{ product_label }}">
-                          <i class="fas fa-filter fa-xs"></i>
-                        </span>
-                      </span>
-                    {% elif t.startswith('cti-evaluation:') %}
-                      {% set eval_raw = t[15:] %}
-                      {% set eval_parts = eval_raw.split('=', 1) %}
-                      {% set eval_pred = eval_parts[0] | replace('-', ' ') %}
-                      {% set eval_value = (eval_parts[1] if eval_parts | length > 1 else '') | replace('"', '') | lower %}
-                      {% if eval_value == 'very-high' %}
-                        {% set eval_bg = '#dcfce7' %}{% set eval_color = '#166534' %}{% set eval_border = '#86efac' %}
-                      {% elif eval_value == 'high' %}
-                        {% set eval_bg = '#ecfccb' %}{% set eval_color = '#3f6212' %}{% set eval_border = '#bef264' %}
-                      {% elif eval_value == 'moderate' %}
-                        {% set eval_bg = '#fef9c3' %}{% set eval_color = '#854d0e' %}{% set eval_border = '#fde047' %}
-                      {% elif eval_value == 'low' %}
-                        {% set eval_bg = '#ffedd5' %}{% set eval_color = '#9a3412' %}{% set eval_border = '#fdba74' %}
-                      {% else %}
-                        {% set eval_bg = '#fee2e2' %}{% set eval_color = '#991b1b' %}{% set eval_border = '#fca5a5' %}
-                      {% endif %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:{{ eval_bg }};color:{{ eval_color }};border:1px solid {{ eval_border }};cursor:pointer;"
-                            title="CTI evaluation · {{ eval_pred | title }}: {{ eval_value | replace('-', ' ') | title }} · Click to filter">
-                        <i class="fas fa-microscope fa-xs me-1"></i>{{ eval_pred | title }}: {{ eval_value | replace('-', ' ') | title }}
-                      </span>
-                    {% else %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#eef2f7;color:#455a7a;cursor:pointer;"
-                            title="{{ t }} · Click to filter">{{ t }}</span>
-                    {% endif %}
-                  {% endif %}
-                {% endfor %}
-              </div>
-              {% endif %}
-              {# ── Vulnerability and PIR/GIR relevance indicators ── #}
-              {% if e.vulnerability_ids or e.req_matches %}
-              <div class="req-match-badges mt-1">
-                {% if e.vulnerability_ids %}
-                <span class="badge me-1"
-                      style="font-size:.68rem;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;"
-                      data-bs-toggle="tooltip" data-bs-placement="top"
-                      title="{{ e.vulnerability_ids | join(', ') }}">
-                  <i class="fas fa-shield-halved fa-xs me-1"></i>Vuln advisory
-                </span>
-                {% endif %}
-                {% for m in e.req_matches %}
-                {% set _is_pir = m.type == 'pir' %}
-                <a href="{{ url_for('requirements.pir_detail', id=m.uuid) if _is_pir else url_for('requirements.gir_detail', id=m.uuid) }}"
-                   class="badge me-1 text-decoration-none"
-                   target="_blank" rel="noopener"
-                   style="font-size:.68rem;{% if _is_pir %}background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;{% else %}background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;{% endif %}"
-                   data-bs-toggle="tooltip" data-bs-placement="top"
-                   title="{{ m.label | truncate(90) }}{% if m.matched_terms %} · {{ m.matched_terms | join(', ') }}{% endif %}">
-                  <i class="fas {% if _is_pir %}fa-crosshairs{% else %}fa-compass{% endif %} fa-xs me-1"></i>{{ m.id }}
-                </a>
-                {% endfor %}
-              </div>
-              {% endif %}
-            </td>
-            <td class="text-muted small" style="white-space:nowrap;">{{ e.orgc or '-' }}</td>
-            <td class="text-muted small" style="white-space:nowrap;">
-              {% if e.source_kind == 'scraper' %}
-              <i class="fas fa-spider me-1"></i>
-              {% else %}
-              <i class="fas fa-server me-1"></i>
-              {% endif %}
-              {{ e.source_label or '-' }}
-            </td>
-            <td class="text-end">{{ e.report_count }}</td>
-            <td class="text-end ai-summary-cell">
-              {% if e.has_ai_summary %}
-              <i class="fas fa-wand-magic-sparkles text-success ai-summary-icon"
-                 style="font-size:.8rem;" title="AI summary available"></i>
-              {% endif %}
-            </td>
-            <td class="text-end" style="white-space:nowrap;">
-              <div class="d-inline-flex gap-1 justify-content-end align-items-center">
-                {% set _flagged = e.uuid in flagged_uuids %}
-                <button class="btn btn-xs {{ 'btn-warning' if _flagged else 'btn-outline-warning' }} flag-review-btn"
-                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
-                        data-flagged="{{ 'true' if _flagged else 'false' }}"
-                        title="{{ 'Remove follow-up flag' if _flagged else 'Flag for follow-up review' }}">
-                  <i class="fas fa-flag"></i>
-                </button>
-                <button class="btn btn-xs btn-outline-primary cti-eval-btn"
-                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
-                        data-title="{{ e.info or '(untitled)' }}"
-                        title="Apply CTI evaluation tags to MISP">
-                  <i class="fas fa-microscope fa-xs"></i>
-                </button>
-                {% if e.source_kind == 'scraper' and not e.has_ai_summary %}
-                <button class="btn btn-xs btn-outline-secondary create-summary-btn"
-                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
-                        title="Generate LLM summary from first MISP report">
-                  <i class="fas fa-wand-magic-sparkles"></i>
-                </button>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="empty-state py-5 text-center">
-      <i class="fas fa-database text-muted d-block mb-2 fa-2x"></i>
-      <p class="text-muted mb-0">No events in cache yet. Click <strong>Refresh cache</strong> above to populate.</p>
-    </div>
-    {% endif %}
-  </div>
-</div>
-
-<div id="load-more-container" class="text-center mt-3" style="display:none;">
-  <button type="button" class="btn btn-outline-secondary" id="load-more-btn">
-    <i class="fas fa-chevron-down me-1"></i>Load next 100
-  </button>
-  <div class="text-muted small mt-1" id="load-more-hint"></div>
-</div>
-<button type="button" class="btn btn-sm btn-secondary" id="go-to-top-btn" title="Back to top">
-  <i class="fas fa-arrow-up me-1"></i>Top
-</button>
-
-<!-- CTI Evaluation tagging modal -->
-<div class="modal fade" id="cti-eval-modal" tabindex="-1" aria-labelledby="cti-eval-modal-label" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="overflow-hidden pe-3">
-          <h5 class="modal-title mb-0" id="cti-eval-modal-label">
-            <i class="fas fa-microscope me-2 text-primary"></i>CTI Evaluation
-          </h5>
-          <p class="small text-muted mb-0 mt-1 text-truncate" id="cti-eval-event-name"></p>
-        </div>
-        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="text-muted small mb-3">
-          Rate this intelligence using the CTI Evaluation taxonomy. Tags are applied directly to the source MISP event and will sync. Leave any predicate at <em>Not set</em> to skip it.
-          <a href="#" class="ms-1" data-bs-dismiss="modal" data-bs-toggle="modal" data-bs-target="#admiralty-modal" data-bs-force-tab="ir-ctiev-tab">
-            <i class="fas fa-circle-info fa-xs"></i> Reference
-          </a>
-        </p>
-        <div class="row g-2">
-          <!-- Column 1: Analytical quality + Timeliness/Relevance -->
-          <div class="col-md-6">
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Overall Score</span>
-                <span class="text-muted cti-pred-desc">Composite quality rating across all dimensions</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="overall-score">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Accuracy</span>
-                <span class="text-muted cti-pred-desc">Factual correctness, absence of errors</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="accuracy">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Clarity</span>
-                <span class="text-muted cti-pred-desc">Readability and ease of understanding</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="clarity">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Specificity</span>
-                <span class="text-muted cti-pred-desc">Technical detail and actionable depth</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="specificity">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Relevance</span>
-                <span class="text-muted cti-pred-desc">Alignment with your threat landscape</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="relevance">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Timeliness</span>
-                <span class="text-muted cti-pred-desc">Currency and actionability</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="timeliness">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-          </div>
-          <!-- Column 2: Usefulness/Confidence + Provenance -->
-          <div class="col-md-6">
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Usefulness</span>
-                <span class="text-muted cti-pred-desc">Practical operational value</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="usefulness">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Confidence</span>
-                <span class="text-muted cti-pred-desc">Analytical confidence in the assessment</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="confidence">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Source Reliability</span>
-                <span class="text-muted cti-pred-desc">Trustworthiness of the originating source</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="source-reliability">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Evidence Strength</span>
-                <span class="text-muted cti-pred-desc">Quality of evidence supporting claims</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="evidence-strength">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Format Validity</span>
-                <span class="text-muted cti-pred-desc">Structural correctness of the MISP data</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="format-validity">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-            <div class="cti-pred-row">
-              <div class="cti-pred-label">
-                <span class="fw-semibold small">Conversion Fidelity</span>
-                <span class="text-muted cti-pred-desc">Accuracy of data transformation from source</span>
-              </div>
-              <select class="form-select form-select-sm cti-eval-select" data-predicate="conversion-fidelity">
-                <option value="">Not set</option>
-                <option value="very-low">Very Low</option>
-                <option value="low">Low</option>
-                <option value="moderate">Moderate</option>
-                <option value="high">High</option>
-                <option value="very-high">Very High</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div id="cti-eval-feedback" class="mt-3 d-none">
-          <div id="cti-eval-ok" class="alert alert-success py-2 small d-none mb-0"></div>
-          <div id="cti-eval-err" class="alert alert-danger py-2 small d-none mb-0"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary" id="cti-eval-submit-btn">
-          <i class="fas fa-tag me-1"></i>Apply tags to MISP
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="used-in-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fas fa-box-open me-2"></i>Used in products</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="used-in-modal-body">
-        <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>
-      </div>
-    </div>
-  </div>
-</div>
-
+{% include "data_collection/_list_table.html" %}
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<style>
-/* Compact stat cards on collection page */
-.stat-card .stat-icon { width:32px; height:32px; font-size:.82rem; border-radius:7px; }
-.stat-card .stat-number { font-size:1.4rem; }
-/* Tags shown under the title */
-.tag-cell-inner { display:flex;flex-wrap:wrap;gap:.2rem; }
-/* Compact filter & sort panel */
-.filter-card > .card-body { padding-top:.55rem; padding-bottom:.5rem; }
-.filter-card .border-bottom { margin-bottom:.5rem !important; padding-bottom:.5rem !important; }
-.filter-card .form-label.fw-semibold { margin-bottom:.2rem !important; }
-/* Smaller tag badges in the events table */
-.tag-row-badge { font-size:.62rem !important; padding:.15rem .4rem !important; }
-/* Floating back-to-top button */
-#go-to-top-btn {
-  position:fixed; bottom:1.75rem; right:1.5rem; z-index:1030;
-  opacity:0; transform:translateY(10px);
-  transition:opacity .22s, transform .22s;
-  pointer-events:none;
-  box-shadow:0 2px 8px rgba(0,0,0,.18);
-}
-#go-to-top-btn.visible { opacity:1; transform:translateY(0); pointer-events:auto; }
-/* ── Current source toggle style ──────────────────────────── */
-.source-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-  padding: .4rem .75rem;
-  border: 2px solid #dee2e6;
-  border-radius: .5rem;
-  cursor: pointer;
-  background: #fff;
-  transition: border-color .12s, background .12s;
-  user-select: none;
-  font-size: .85rem;
-}
-.source-toggle:hover { border-color: #0078f1; background: #eef6ff; }
-.source-toggle-on { border-color: #0078f1; background: #ddeeff; color: #00408a; font-weight: 600; }
-.source-toggle-on .source-toggle-icon { color: #0078f1; }
-.source-toggle-err { border-color: #dc3545; }
-.source-toggle-err.source-toggle-on { background: #fdecea; }
-.source-toggle-icon { font-size: .9rem; color: #6c757d; }
-.source-toggle-badge { font-size: .65rem; padding: .15rem .35rem; border-radius: .25rem; }
-
-.tag-pill {
-  display: inline-block;
-  padding: .15rem .45rem;
-  border-radius: 999px;
-  font-size: .7rem;
-  font-weight: 500;
-  border: 1.5px solid #dee2e6;
-  background: #f8f9fa;
-  color: #495057;
-  cursor: pointer;
-  transition: all .12s;
-}
-.tag-pill:hover { border-color: #adb5bd; background: #e9ecef; }
-.tag-pill-include { background: #d1e7dd; border-color: #198754; color: #0a3622; }
-.tag-pill-include:hover { background: #badbcc; }
-.tag-pill-exclude { background: #f8d7da; border-color: #dc3545; color: #58151c; }
-.tag-pill-exclude:hover { background: #f1aeb5; }
-.tag-pill-hidden { display: none !important; }
-.sort-btn.active, .date-filter-btn.active { background: #0078f1; border-color: #0078f1; color: #fff; }
-/* Workflow state badges */
-.wf-badge { border: 1px solid; font-weight: 600; }
-.wf-draft     { background:#f0f0f0; color:#6c757d; border-color:#ced4da; }
-.wf-incomplete{ background:#fff3cd; color:#856404; border-color:#ffe69c; }
-.wf-ongoing   { background:#cfe2ff; color:#084298; border-color:#b6d4fe; }
-.wf-complete  { background:#d1ecf1; color:#0c5460; border-color:#bee5eb; }
-.wf-published { background:#d3e5ef; color:#0c4a6e; border-color:#a8c8e0; }
-.wf-other     { background:#e9ecef; color:#495057; border-color:#dee2e6; }
-.wf-rejected-row { opacity:.45; }
-.wf-rejected-row:hover { opacity:.8; }
-/* CTI evaluation modal predicate rows */
-.cti-pred-row {
-  display: flex;
-  align-items: center;
-  gap: .6rem;
-  padding: .4rem .2rem;
-  border-bottom: 1px solid #f0f3f6;
-}
-.cti-pred-label {
-  flex: 0 0 9.5rem;
-  min-width: 9.5rem;
-}
-.cti-pred-desc {
-  display: block;
-  font-size: .7rem;
-  line-height: 1.2;
-  margin-top: .1rem;
-}
-</style>
-
+{% include "data_collection/_list_js.html" %}
 <script>
-if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
+/* ── Alt 4 specific behaviour ──────────────────────────────────── */
 (function() {
-  'use strict';
 
-  var allSourceIds = {{ sources | map(attribute='id') | list | tojson }};
-  var followupTag = {{ followup_tag | tojson }};
-
-  // ── Special tag config (mirrors VALUE_CHIP_CONFIG above + non-chip hidden tags) ──
-  var VALUE_CHIP_CONFIG = {{ VALUE_CHIP_CONFIG | tojson }};
-  // Tags to hide from the cloud: chips with cloud_hide=true, plus tags with no chip at all
-  var CLOUD_HIDDEN_PREFIXES = Object.keys(VALUE_CHIP_CONFIG).filter(function(k) {
-    return VALUE_CHIP_CONFIG[k].cloud_hide;
-  }).concat(['workflow:state', 'retention']);
-  var CTI_EVAL_RANK = {
-    'very-low': 1,
-    'low': 2,
-    'moderate': 3,
-    'high': 4,
-    'very-high': 5,
-  };
-
-  var state = {
-    q: '',
-    include: new Set(),
-    exclude: new Set(),
-    sortCol: 'date',
-    sortDir: 'desc',
-    activeSources: new Set(allSourceIds),
-    includeOrgs: new Set(),
-    excludeOrgs: new Set(),
-    displayLimit: 100,
-    showFlaggedOnly: false,
-    dateFilter: 'none',
-    aiFilter: 'any',
-    reportsFilter: 'any',
-    reqMatchFilter: 'any',
-    vulnFilter: 'any',
-    ctiPredicate: '',
-    ctiOperator: 'gte',
-    ctiValue: 'moderate',
-  };
-
-  function _ctiEvalColors(value) {
-    if (value === 'very-high') return {bg: '#dcfce7', color: '#166534', border: '#86efac'};
-    if (value === 'high') return {bg: '#ecfccb', color: '#3f6212', border: '#bef264'};
-    if (value === 'moderate') return {bg: '#fef9c3', color: '#854d0e', border: '#fde047'};
-    if (value === 'low') return {bg: '#ffedd5', color: '#9a3412', border: '#fdba74'};
-    return {bg: '#fee2e2', color: '#991b1b', border: '#fca5a5'};
-  }
-
-  function _applyCtiBadgeStyle(badge, tag) {
-    if (!badge || !tag || !tag.startsWith('cti-evaluation:')) return;
-    var raw = tag.slice('cti-evaluation:'.length);
-    var sepIdx = raw.indexOf('=');
-    var value = sepIdx >= 0 ? raw.slice(sepIdx + 1).replace(/"/g, '').toLowerCase() : '';
-    var colors = _ctiEvalColors(value);
-    badge.style.background = colors.bg;
-    badge.style.color = colors.color;
-    badge.style.borderColor = colors.border;
-  }
-
-  function _formatCtiEvalTag(tag) {
-    var raw = (tag || '').slice('cti-evaluation:'.length);
-    var sepIdx = raw.indexOf('=');
-    var predicate = sepIdx >= 0 ? raw.slice(0, sepIdx) : raw;
-    var value = sepIdx >= 0 ? raw.slice(sepIdx + 1).replace(/"/g, '') : '';
-    var predLabel = predicate.split('-').map(function(part) {
-      return part ? part.charAt(0).toUpperCase() + part.slice(1) : part;
-    }).join(' ');
-    var valueLabel = value.split('-').map(function(part) {
-      return part ? part.charAt(0).toUpperCase() + part.slice(1) : part;
-    }).join(' ');
-    return {
-      predicateLabel: predLabel,
-      valueLabel: valueLabel,
-    };
-  }
-
-  function ctiEvalMap(tags) {
-    var out = {};
-    (tags || []).forEach(function(t) {
-      if (!t || !t.startsWith('cti-evaluation:')) return;
-      var raw = t.slice('cti-evaluation:'.length);
-      var sepIdx = raw.indexOf('=');
-      if (sepIdx < 0) return;
-      var predicate = raw.slice(0, sepIdx).trim().toLowerCase();
-      var value = raw.slice(sepIdx + 1).replace(/"/g, '').trim().toLowerCase();
-      if (!CTI_EVAL_RANK[value]) return;
-      out[predicate] = value;
-    });
-    return out;
-  }
-
-  function getDateCutoff(filter) {
-    var d = new Date();
-    if (filter === '48h') { d.setDate(d.getDate() - 2); }
-    else if (filter === '7d') { d.setDate(d.getDate() - 7); }
-    return d.toISOString().slice(0, 10);
-  }
-
-  /* ── 1. Source toggles - shared state across all style variants ── */
-  function setSourceActive(srcId, active) {
-    var cb = document.querySelector('#source-cb-container .source-cb[value="' + srcId + '"]');
-    if (cb) cb.checked = active;
-    if (active) { state.activeSources.add(srcId); }
-    else { state.activeSources.delete(srcId); }
-    sessionStorage.setItem('zsazsa_active_sources', JSON.stringify(Array.from(state.activeSources)));
-    syncAllSourceVisuals();
-    updateOrgPillVisibility();
-    applyAll();
-  }
-
-  function syncAllSourceVisuals() {
-    document.querySelectorAll('#style-current .source-toggle').forEach(function(el) {
-      el.classList.toggle('source-toggle-on', state.activeSources.has(el.dataset.sourceId));
-    });
-  }
-
-  document.querySelectorAll('#style-current .source-toggle').forEach(function(el) {
-    el.addEventListener('click', function() {
-      setSourceActive(el.dataset.sourceId, !state.activeSources.has(el.dataset.sourceId));
-    });
-  });
-  syncAllSourceVisuals();
-
-  /* ── 2. Refresh cache button ──────────────────────────────────── */
-  var refreshBtn = document.getElementById('refresh-btn');
-  var refreshCountdown = document.getElementById('refresh-countdown');
-
-  function fmtCountdown(secs) {
-    if (secs <= 0) return 'refresh due';
-    var m = Math.floor(secs / 60);
-    var s = secs % 60;
-    // Round seconds down to nearest 10 so the value matches the tick rate
-    s = s - (s % 10);
-    var ss = (s < 10 ? '0' : '') + s;
-    return 'next in ' + m + 'm ' + ss + 's';
-  }
-
-  if (refreshCountdown) {
-    var intervalS = parseInt(refreshCountdown.dataset.intervalS, 10) || 0;
-    var lastFetch = parseFloat(refreshCountdown.dataset.lastFetch);
-    var nextAt = (!isNaN(lastFetch) && lastFetch > 0 && intervalS > 0)
-      ? (lastFetch + intervalS) : null;
-
-    function tickCountdown() {
-      if (!nextAt) {
-        refreshCountdown.textContent = '';
-        return;
-      }
-      var remaining = Math.round(nextAt - (Date.now() / 1000));
-      refreshCountdown.textContent = fmtCountdown(remaining);
-    }
-    tickCountdown();
-    setInterval(tickCountdown, 10000);
-
-    // Expose so the button handler can reset the countdown on manual refresh
-    refreshCountdown._resetTimer = function() {
-      if (intervalS > 0) {
-        nextAt = (Date.now() / 1000) + intervalS;
-        tickCountdown();
-      }
-    };
-  }
-
-  // Initialise the info popover
-  var refreshInfo = document.getElementById('refresh-info');
-  if (refreshInfo && window.bootstrap && bootstrap.Popover) {
-    new bootstrap.Popover(refreshInfo);
-  }
-
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', function() {
-      refreshBtn.disabled = true;
-      refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Refreshing…';
-      var csrf = document.querySelector('meta[name="csrf-token"]');
-      var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
-      if (csrf) headers['X-CSRF-Token'] = csrf.content;
-      fetch('{{ url_for("data_collection.refresh") }}', {method: 'POST', headers: headers})
-        .then(function() {
-          refreshBtn.innerHTML = '<i class="fas fa-check me-1"></i> Refresh started';
-          if (refreshCountdown && refreshCountdown._resetTimer) {
-            refreshCountdown._resetTimer();
-          }
-          setTimeout(function() { window.location.reload(); }, 4000);
-        })
-        .catch(function() {
-          refreshBtn.disabled = false;
-          refreshBtn.innerHTML = '<i class="fas fa-arrows-rotate me-1"></i> Refresh cache';
-        });
-    });
-  }
-
-  /* ── 3. Core filter + sort engine ────────────────────────────── */
-  var rows = Array.from(document.querySelectorAll('#events-tbody .event-row'));
-
-  function bindTagBadgeClick(badge) {
-    if (!badge || badge.dataset.boundTagClick === '1') return;
-    badge.dataset.boundTagClick = '1';
-    badge.addEventListener('click', function(e) {
-      e.preventDefault();
-      var tag = badge.dataset.tag;
-      if (tag && tag.startsWith('zsazsa:product=')) {
-        var row = badge.closest('tr');
-        var uuid = row ? row.dataset.uuid : null;
-        if (uuid) {
-          showUsedInModal(uuid);
-          return;
-        }
-      }
-      if (state.include.has(tag)) {
-        state.include.delete(tag);
-      } else {
-        state.include.add(tag);
-        state.exclude.delete(tag);
-      }
-      var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-      document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
-        if (pill.dataset.tag !== tag) return;
-        if (state.include.has(tag)) {
-          pill.dataset.state = 'include';
-          pill.className = 'tag-pill tag-pill-include' + (isMeta ? ' tag-pill-hidden' : '');
-        } else {
-          pill.dataset.state = 'neutral';
-          pill.className = 'tag-pill tag-pill-neutral' + (isMeta ? ' tag-pill-hidden' : '');
-        }
-      });
-      updateTagSummary();
-      applyAll();
-    });
-  }
-
-  function showUsedInModal(uuid) {
-    var body = document.getElementById('used-in-modal-body');
-    body.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>';
-    new bootstrap.Modal(document.getElementById('used-in-modal')).show();
-    fetch('/api/collection/' + uuid + '/used-in')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (!data.ok || !data.products || data.products.length === 0) {
-          body.innerHTML = '<p class="text-muted mb-0">No products found that reference this event.</p>';
-          return;
-        }
-        var icons = {'daily-briefing': 'fa-newspaper', 'flash-intel': 'fa-bolt', 'vea': 'fa-shield-halved'};
-        var html = '<ul class="list-group list-group-flush">';
-        data.products.forEach(function(p) {
-          var icon = icons[p.type] || 'fa-box-open';
-          html += '<li class="list-group-item px-0">' +
-            '<a href="' + p.url + '" class="d-flex align-items-center gap-2 text-decoration-none">' +
-            '<i class="fas ' + icon + ' text-secondary fa-fw"></i>' +
-            '<span>' + (p.title || p.type) + '</span>' +
-            (p.date ? '<span class="text-muted small ms-auto">' + p.date + '</span>' : '') +
-            '</a></li>';
-        });
-        html += '</ul>';
-        body.innerHTML = html;
-      })
-      .catch(function() {
-        body.innerHTML = '<p class="text-danger mb-0">Failed to load product links.</p>';
-      });
-  }
-
-  function bindProductFilterBtnClick(btn) {
-    if (!btn || btn.dataset.boundFilterClick === '1') return;
-    btn.dataset.boundFilterClick = '1';
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      var tag = btn.dataset.tag;
-      if (!tag) return;
-      var active;
-      if (state.include.has(tag)) {
-        state.include.delete(tag);
-        active = false;
-      } else {
-        state.include.add(tag);
-        state.exclude.delete(tag);
-        active = true;
-      }
-      btn.style.color = active ? '#fff' : 'rgba(255,255,255,.65)';
-      document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
-        if (pill.dataset.tag !== tag) return;
-        pill.dataset.state = active ? 'include' : 'neutral';
-        pill.className = active ? 'tag-pill tag-pill-include' : 'tag-pill tag-pill-neutral';
-      });
-      updateTagSummary();
-      applyAll();
-    });
-  }
-
-  function bindProductMainBtnClick(btn) {
-    if (!btn || btn.dataset.boundMainClick === '1') return;
-    btn.dataset.boundMainClick = '1';
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      var row = btn.closest('tr');
-      var uuid = row ? row.dataset.uuid : null;
-      if (uuid) showUsedInModal(uuid);
-    });
-  }
-
-  document.querySelectorAll('.product-tag-filter-btn').forEach(bindProductFilterBtnClick);
-  document.querySelectorAll('.product-tag-main-btn').forEach(bindProductMainBtnClick);
-
-  function ensureCtiBadgeContainer(row) {
-    if (!row) return null;
-    var titleCell = row.children[3];
-    if (!titleCell) return null;
-    var container = titleCell.querySelector('.tag-cell-inner');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'tag-cell-inner mt-1';
-      var titleLink = titleCell.querySelector('.event-preview-link');
-      if (titleLink) titleLink.insertAdjacentElement('afterend', container);
-      else titleCell.appendChild(container);
-    }
-    return container;
-  }
-
-  function buildCtiBadge(tag) {
-    var fmt = _formatCtiEvalTag(tag);
-    var badge = document.createElement('span');
-    badge.className = 'badge tag-row-badge me-1';
-    badge.dataset.tag = tag;
-    badge.style.cursor = 'pointer';
-    badge.title = 'CTI evaluation · ' + fmt.predicateLabel + ': ' + fmt.valueLabel + ' · Click to filter';
-    badge.innerHTML = '<i class="fas fa-microscope fa-xs me-1"></i>' + fmt.predicateLabel + ': ' + fmt.valueLabel;
-    _applyCtiBadgeStyle(badge, tag);
-    bindTagBadgeClick(badge);
-    return badge;
-  }
-
-  async function refreshEventRowTags(uuid, sourceId) {
-    var row = rows.find(function(r) {
-      return r.dataset.uuid === uuid && r.dataset.sourceId === sourceId;
-    });
-    if (!row) return;
-
-    var resp = await fetch('/collection/' + encodeURIComponent(uuid) + '/preview?source=' + encodeURIComponent(sourceId));
-    var data = await resp.json();
-    if (!data.ok || !data.event) return;
-
-    var tagNames = (data.event.tags || []).map(function(t) { return t.name; }).filter(Boolean);
-    row.dataset.tags = JSON.stringify(tagNames);
-
-    var ctiTags = tagNames.filter(function(t) { return t.startsWith('cti-evaluation:'); });
-    var container = row.querySelector('.tag-cell-inner');
-    if (!container && ctiTags.length) {
-      container = ensureCtiBadgeContainer(row);
-    }
-    if (!container) {
-      applyAll();
-      return;
-    }
-
-    container.querySelectorAll('.tag-row-badge[data-tag^="cti-evaluation:"]').forEach(function(el) { el.remove(); });
-    ctiTags.forEach(function(tag) { container.appendChild(buildCtiBadge(tag)); });
-
-    applyAll();
-  }
-
-  window.zsazsaRefreshCollectionEventRow = refreshEventRowTags;
-
-  function applyAll() {
-    var q = state.q.toLowerCase().trim();
-    var visible = 0;
-    var totalMatching = 0;
-    var todayStr = new Date().toISOString().slice(0, 10);
-    var cutoffStr = state.dateFilter !== 'none' ? getDateCutoff(state.dateFilter) : '';
-
-    rows.forEach(function(row) {
-      var title = row.dataset.searchText || row.dataset.title || '';
-      var tags = JSON.parse(row.dataset.tags || '[]');
-      var tagSet = new Set(tags);
-      var ctiMap = ctiEvalMap(tags);
-      var srcId = row.dataset.sourceId || '';
-      var orgc = row.dataset.orgc || '';
-      var date = row.dataset.date || '';
-
-      var ok = true;
-      if (!state.activeSources.has(srcId)) ok = false;
-      if (ok && q && title.indexOf(q) === -1) ok = false;
-      if (ok) state.include.forEach(function(t) { if (!tagSet.has(t)) ok = false; });
-      if (ok) state.exclude.forEach(function(t) { if (tagSet.has(t)) ok = false; });
-      if (ok && state.includeOrgs.size && !state.includeOrgs.has(orgc)) ok = false;
-      if (ok && state.excludeOrgs.has(orgc)) ok = false;
-      if (ok && state.showFlaggedOnly && row.dataset.flagged !== 'true') ok = false;
-      if (ok && state.aiFilter !== 'any') {
-        var hasAi = row.dataset.hasAiSummary === '1';
-        if (state.aiFilter === 'with' && !hasAi) ok = false;
-        if (state.aiFilter === 'without' && hasAi) ok = false;
-      }
-      if (ok && state.reportsFilter !== 'any') {
-        var repCount = parseInt(row.dataset.reportCount || '0', 10);
-        if (state.reportsFilter === 'with' && repCount === 0) ok = false;
-        if (state.reportsFilter === 'without' && repCount > 0) ok = false;
-      }
-      if (ok && state.reqMatchFilter !== 'any') {
-        var hasReqMatch = row.dataset.hasReqMatch === '1';
-        if (state.reqMatchFilter === 'with' && !hasReqMatch) ok = false;
-        if (state.reqMatchFilter === 'without' && hasReqMatch) ok = false;
-      }
-      if (ok && state.vulnFilter !== 'any') {
-        var hasVuln = row.dataset.hasVuln === '1';
-        if (state.vulnFilter === 'with' && !hasVuln) ok = false;
-        if (state.vulnFilter === 'without' && hasVuln) ok = false;
-      }
-      if (ok && state.ctiPredicate) {
-        var rowValue = ctiMap[state.ctiPredicate] || '';
-        if (state.ctiOperator === 'without') {
-          if (rowValue) ok = false;
-        } else if (state.ctiOperator === 'with') {
-          if (!rowValue) ok = false;
-        } else {
-          if (!rowValue) {
-            ok = false;
-          } else {
-            var rowRank = CTI_EVAL_RANK[rowValue] || 0;
-            var targetRank = CTI_EVAL_RANK[state.ctiValue] || 0;
-            if (state.ctiOperator === 'gte' && rowRank < targetRank) ok = false;
-            if (state.ctiOperator === 'lte' && rowRank > targetRank) ok = false;
-          }
-        }
-      }
-      if (ok && cutoffStr) {
-        if (state.dateFilter === 'today') {
-          if (date !== todayStr) ok = false;
-        } else {
-          if (!date || date < cutoffStr) ok = false;
-        }
-      }
-      if (ok) totalMatching++;
-      if (ok && visible >= state.displayLimit) ok = false;
-
-      row.style.display = ok ? '' : 'none';
-      if (ok) visible++;
-
-      row.querySelectorAll('.tag-row-badge').forEach(function(b) {
-        var t = b.dataset.tag;
-        if (state.include.has(t)) {
-          b.style.background = '#d1e7dd'; b.style.color = '#0a3622';
-          return;
-        }
-        if (state.exclude.has(t)) {
-          b.style.background = '#f8d7da'; b.style.color = '#58151c';
-          return;
-        }
-        if (t && t.startsWith('workflow:state=')) {
-          b.style.background = ''; b.style.color = ''; // restore CSS class colour
-          return;
-        }
-        if (t && t.startsWith('cti-evaluation:')) {
-          _applyCtiBadgeStyle(b, t);
-          return;
-        }
-        // Check VALUE_CHIP_CONFIG for chip-type tags
-        var chipCfg = null;
-        Object.keys(VALUE_CHIP_CONFIG).forEach(function(prefix) {
-          if (!chipCfg && t && t.startsWith(prefix)) chipCfg = VALUE_CHIP_CONFIG[prefix];
-        });
-        if (chipCfg) {
-          b.style.background = chipCfg.bg; b.style.color = chipCfg.color;
-        } else {
-          b.style.background = '#eef2f7'; b.style.color = '#455a7a';
-        }
-      });
-    });
-
-    var totalEl = document.getElementById('table-count');
-    var pluralEl = document.getElementById('table-count-plural');
-    var vcEl = document.getElementById('visible-count');
-    if (totalEl) totalEl.textContent = totalMatching;
-    if (pluralEl) pluralEl.textContent = totalMatching === 1 ? '' : 's';
-    if (vcEl) vcEl.textContent = totalMatching;
-
-    // Recompute reports and tags from currently visible rows
-    var visibleRows = rows.filter(function(r) { return r.style.display !== 'none'; });
-    var totalReports = 0;
-    var tagSet = new Set();
-    visibleRows.forEach(function(r) {
-      totalReports += parseInt(r.dataset.reportCount || '0', 10);
-      try { (JSON.parse(r.dataset.tags || '[]')).forEach(function(t) { if (t) tagSet.add(t); }); } catch(e) {}
-    });
-    var statReports = document.getElementById('stat-reports');
-    var statTags = document.getElementById('stat-tags');
-    if (statReports) statReports.textContent = totalReports;
-    if (statTags) statTags.textContent = tagSet.size;
-
-    var totalNoteEl = document.getElementById('total-count-note');
-    if (totalNoteEl) totalNoteEl.textContent = 'of ' + totalMatching + ' matching';
-
-    var ofTotalEl = document.getElementById('table-count-of-total');
-    if (ofTotalEl) {
-      if (totalMatching < rows.length) {
-        ofTotalEl.textContent = '(' + rows.length + ' without filter)';
-        ofTotalEl.style.display = '';
-      } else {
-        ofTotalEl.style.display = 'none';
-      }
-    }
-
-    var loadMoreContainer = document.getElementById('load-more-container');
-    var loadMoreHint = document.getElementById('load-more-hint');
-    if (loadMoreContainer) {
-      var remaining = totalMatching - visible;
-      loadMoreContainer.style.display = remaining > 0 ? '' : 'none';
-      if (loadMoreHint) {
-        loadMoreHint.textContent = remaining + ' more event' + (remaining !== 1 ? 's' : '') + ' match your current filters';
-      }
-    }
-
-    var hasFilter = q || state.include.size || state.exclude.size ||
-      state.activeSources.size < allSourceIds.length ||
-      state.includeOrgs.size || state.excludeOrgs.size || state.showFlaggedOnly ||
-      state.dateFilter !== 'none' || state.aiFilter !== 'any' || state.reportsFilter !== 'any' ||
-      state.reqMatchFilter !== 'any' || state.vulnFilter !== 'any' || !!state.ctiPredicate;
-    var clearBtn = document.getElementById('clear-filters-btn');
-    if (clearBtn) clearBtn.style.display = hasFilter ? '' : 'none';
-  }
-
-  function sortRows() {
-    if (!rows.length) return;
-    var tbody = document.getElementById('events-tbody');
-    var col = state.sortCol;
-    var dir = state.sortDir === 'asc' ? 1 : -1;
-    rows.sort(function(a, b) {
-      var va, vb;
-      if (col === 'date') { va = a.dataset.date || ''; vb = b.dataset.date || ''; }
-      else if (col === 'orgc') { va = (a.dataset.orgc || '').toLowerCase(); vb = (b.dataset.orgc || '').toLowerCase(); }
-      else { va = a.dataset.title || ''; vb = b.dataset.title || ''; }
-      return va < vb ? -dir : va > vb ? dir : 0;
-    });
-    rows.forEach(function(r) { tbody.appendChild(r); });
-    document.querySelectorAll('.sort-btn').forEach(function(btn) {
-      var active = btn.dataset.col === col;
-      btn.classList.toggle('active', active);
-      var icon = btn.querySelector('.sort-icon');
-      if (!icon) return;
-      icon.className = 'fas ms-1 sort-icon ' +
-        (active ? (state.sortDir === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down') : 'fa-sort text-muted');
-    });
-    var thIcons = {date: 'th-date-icon', title: 'th-title-icon', orgc: 'th-orgc-icon'};
-    Object.keys(thIcons).forEach(function(c) {
-      var el = document.getElementById(thIcons[c]);
-      if (!el) return;
-      if (c === col) {
-        el.className = 'fas ms-1 small sort-th-icon ' +
-          (state.sortDir === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down');
-      } else {
-        el.className = 'fas fa-sort ms-1 small text-muted sort-th-icon';
-      }
-    });
-  }
-
-  /* ── 4. Search input ─────────────────────────────────────────── */
-  var searchInput = document.getElementById('search-input');
-  var searchClear = document.getElementById('search-clear');
-  if (searchInput) {
-    searchInput.addEventListener('input', function() {
-      state.q = searchInput.value;
-      if (searchClear) searchClear.style.display = state.q ? '' : 'none';
-      applyAll();
-    });
-  }
-  if (searchClear) {
-    searchClear.addEventListener('click', function() {
-      if (searchInput) searchInput.value = '';
-      state.q = '';
-      searchClear.style.display = 'none';
-      applyAll();
-    });
-  }
-
-  /* ── 5. Sort buttons ─────────────────────────────────────────── */
-  document.querySelectorAll('.sort-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var col = btn.dataset.col;
-      if (state.sortCol === col) {
-        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-      } else {
-        state.sortCol = col;
-        state.sortDir = col === 'date' ? 'desc' : 'asc';
-      }
-      sortRows(); applyAll();
-    });
-  });
-  document.querySelectorAll('.sort-col').forEach(function(th) {
-    th.addEventListener('click', function() {
-      var col = th.dataset.col;
-      if (state.sortCol === col) {
-        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-      } else {
-        state.sortCol = col;
-        state.sortDir = col === 'date' ? 'desc' : 'asc';
-      }
-      document.querySelectorAll('.sort-btn').forEach(function(b) {
-        if (b.dataset.col === col) { b.dataset.dir = state.sortDir; }
-      });
-      sortRows(); applyAll();
-    });
-  });
-
-  /* ── 6. Tag cloud ─────────────────────────────────────────────── */
-  var activeSummary = document.getElementById('active-tag-summary');
-  var activeChips = document.getElementById('active-tag-chips');
-
-  function updateTagSummary() {
-    if (!activeChips) return;
-    var chips = '';
-    state.include.forEach(function(t) {
-      var s = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      chips += '<span class="badge text-bg-success me-1" style="cursor:pointer;" data-remove-tag="' + s + '" data-remove-type="include">' +
-               '<i class="fas fa-plus me-1 fa-xs"></i>' + s + ' <i class="fas fa-xmark ms-1 fa-xs"></i></span>';
-    });
-    state.exclude.forEach(function(t) {
-      var s = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      chips += '<span class="badge text-bg-danger me-1" style="cursor:pointer;" data-remove-tag="' + s + '" data-remove-type="exclude">' +
-               '<i class="fas fa-minus me-1 fa-xs"></i>' + s + ' <i class="fas fa-xmark ms-1 fa-xs"></i></span>';
-    });
-    activeChips.innerHTML = chips;
-    if (activeSummary) activeSummary.style.display = (state.include.size || state.exclude.size) ? '' : 'none';
-    updateTagCountLabel();
-    activeChips.querySelectorAll('[data-remove-tag]').forEach(function(chip) {
-      chip.addEventListener('click', function() {
-        var tag = chip.dataset.removeTag;
-        if (chip.dataset.removeType === 'include') state.include.delete(tag);
-        else state.exclude.delete(tag);
-        var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-        document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
-          if (pill.dataset.tag !== tag) return;
-          pill.dataset.state = 'neutral';
-          pill.className = 'tag-pill tag-pill-neutral' + (isMeta ? ' tag-pill-hidden' : '');
-        });
-        updateTagSummary(); applyAll();
-      });
-    });
-  }
-
-  document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
-    pill.addEventListener('click', function() {
-      var tag = pill.dataset.tag;
-      var cur = pill.dataset.state;
-      if (cur === 'neutral') {
-        state.include.add(tag); state.exclude.delete(tag);
-        pill.dataset.state = 'include'; pill.className = 'tag-pill tag-pill-include';
-      } else if (cur === 'include') {
-        state.include.delete(tag); state.exclude.add(tag);
-        pill.dataset.state = 'exclude'; pill.className = 'tag-pill tag-pill-exclude';
-      } else {
-        state.include.delete(tag); state.exclude.delete(tag);
-        pill.dataset.state = 'neutral'; pill.className = 'tag-pill tag-pill-neutral';
-      }
-      updateTagSummary(); applyAll();
-    });
-  });
-
-  document.querySelectorAll('.tag-row-badge').forEach(function(badge) {
-    bindTagBadgeClick(badge);
-  });
-
-  /* ── 7. Tag cloud search + count label ───────────────────────── */
-  var tagSearch = document.getElementById('tag-search');
-  var tagCountLabel = document.getElementById('tag-count-label');
-  var totalTagCount = Array.from(document.querySelectorAll('.tag-pill:not(.org-pill)')).filter(function(p) {
-    var tag = p.dataset.tag || '';
-    return !CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-  }).length;
-
-  function updateTagCountLabel() {
-    var visible = document.querySelectorAll('.tag-pill:not(.org-pill):not(.tag-pill-hidden)').length;
-    var active = state.include.size + state.exclude.size;
-    var text = totalTagCount + ' tags';
-    if (visible < totalTagCount) text += ', ' + visible + ' shown';
-    if (active) text += ', ' + active + ' active filter' + (active > 1 ? 's' : '') + ' (AND)';
-    if (tagCountLabel) tagCountLabel.textContent = text;
-  }
-
-  if (tagSearch) {
-    tagSearch.addEventListener('input', function() {
-      var q = tagSearch.value.toLowerCase();
-      document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(p) {
-        var tag = p.dataset.tag || '';
-        var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-        if (isMeta) return; // always hidden; never touched by search
-        if (!q || tag.toLowerCase().indexOf(q) !== -1) {
-          p.classList.remove('tag-pill-hidden');
-        } else {
-          p.classList.add('tag-pill-hidden');
-        }
-      });
-      updateTagCountLabel();
-    });
-  }
-
-  /* ── 8. Tag cloud expand/collapse ────────────────────────────── */
-  var tagCloud = document.getElementById('tag-cloud');
-  var tagCloudToggle = document.getElementById('tag-cloud-toggle');
-  var tagCloudExpanded = false;
-  if (tagCloudToggle && tagCloud) {
-    tagCloudToggle.addEventListener('click', function() {
-      tagCloudExpanded = !tagCloudExpanded;
-      tagCloud.style.maxHeight = tagCloudExpanded ? 'none' : '7rem';
-      tagCloud.style.overflow = tagCloudExpanded ? 'visible' : 'hidden';
-      tagCloudToggle.innerHTML = tagCloudExpanded
-        ? '<i class="fas fa-chevron-up me-1"></i>Show less'
-        : '<i class="fas fa-chevron-down me-1"></i>Show all';
-    });
-    if (tagCloud.scrollHeight <= tagCloud.clientHeight + 4) {
-      tagCloudToggle.style.display = 'none';
-    }
-  }
-
-  /* ── 9. Clear all filters ─────────────────────────────────────── */
-  var clearAllBtn = document.getElementById('clear-filters-btn');
-  if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', function() {
-      state.q = ''; state.include.clear(); state.exclude.clear();
-      state.includeOrgs.clear(); state.excludeOrgs.clear();
-      state.activeSources = new Set(allSourceIds);
-      state.showFlaggedOnly = false;
-      state.dateFilter = 'none';
-      state.aiFilter = 'any';
-      state.reportsFilter = 'any';
-      state.reqMatchFilter = 'any';
-      state.vulnFilter = 'any';
-      state.ctiPredicate = '';
-      state.ctiOperator = 'gte';
-      state.ctiValue = 'moderate';
-      state.displayLimit = 100;
-      document.querySelectorAll('.date-filter-btn').forEach(function(b) {
-        b.classList.toggle('active', b.dataset.dateFilter === 'none');
-      });
-      document.querySelectorAll('.filter-toggle-btn').forEach(function(b) {
-        b.classList.remove('btn-secondary'); b.classList.add('btn-outline-secondary');
-      });
-      document.querySelectorAll('.tristate-filter-btn').forEach(function(b) {
-        var isAny = b.dataset.filterValue === 'any';
-        b.classList.toggle('btn-secondary', isAny);
-        b.classList.toggle('btn-outline-secondary', !isAny);
-      });
-      if (ctiPredicateFilter) ctiPredicateFilter.value = '';
-      if (ctiOperatorFilter) ctiOperatorFilter.value = 'gte';
-      if (ctiValueFilter) ctiValueFilter.value = 'moderate';
-      syncCtiFilterUi();
-      if (flaggedOnlyBtn) {
-        flaggedOnlyBtn.classList.add('btn-outline-warning');
-        flaggedOnlyBtn.classList.remove('btn-warning');
-      }
-      sessionStorage.setItem('zsazsa_active_sources', JSON.stringify(allSourceIds));
-      syncAllSourceVisuals();
-      if (searchInput) searchInput.value = '';
-      if (searchClear) searchClear.style.display = 'none';
-      document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(p) {
-        var tag = p.dataset.tag || '';
-        var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-        p.dataset.state = 'neutral';
-        p.className = 'tag-pill tag-pill-neutral' + (isMeta ? ' tag-pill-hidden' : '');
-      });
-      document.querySelectorAll('.org-pill').forEach(function(p) {
-        p.dataset.state = 'neutral'; p.className = 'tag-pill tag-pill-neutral org-pill';
-      });
-      if (tagSearch) {
-        tagSearch.value = '';
-        document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(p) {
-          var tag = p.dataset.tag || '';
-          var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-          if (!isMeta) p.classList.remove('tag-pill-hidden');
-        });
-      }
-      document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) { cb.checked = true; });
-      syncAllSourceVisuals();
-      updateTagSummary(); updateTagCountLabel();
-      updateOrgPillVisibility(); updateOrgSummary();
-      applyAll();
-    });
-  }
-
-  /* ── 10. Deselect all tags ────────────────────────────────────── */
-  var deselectAllTags = document.getElementById('deselect-all-tags-btn');
-  if (deselectAllTags) {
-    deselectAllTags.addEventListener('click', function() {
-      state.include.clear(); state.exclude.clear();
-      document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(p) {
-        var tag = p.dataset.tag || '';
-        var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-        p.dataset.state = 'neutral';
-        p.className = 'tag-pill tag-pill-neutral' + (isMeta ? ' tag-pill-hidden' : '');
-      });
-      updateTagSummary(); updateTagCountLabel(); applyAll();
-    });
-  }
-
-  /* ── 11. Creator organisation filter ─────────────────────────── */
-  var activeOrgSummary = document.getElementById('active-org-summary');
-  var activeOrgChips = document.getElementById('active-org-chips');
-
-  function updateOrgPillVisibility() {
-    document.querySelectorAll('.org-pill').forEach(function(pill) {
-      var sources = JSON.parse(pill.dataset.sources || '[]');
-      var anyActive = sources.some(function(s) { return state.activeSources.has(s); });
-      pill.style.display = anyActive ? '' : 'none';
-      if (!anyActive) {
-        var org = pill.dataset.org;
-        if (state.includeOrgs.has(org) || state.excludeOrgs.has(org)) {
-          state.includeOrgs.delete(org); state.excludeOrgs.delete(org);
-          pill.dataset.state = 'neutral'; pill.className = 'tag-pill tag-pill-neutral org-pill';
-        }
-      }
-    });
-    updateOrgCountLabel();
-  }
-
-  function updateOrgCountLabel() {
-    var label = document.getElementById('org-count-label');
-    if (!label) return;
-    var total = document.querySelectorAll('.org-pill').length;
-    var visibleCount = 0;
-    document.querySelectorAll('.org-pill').forEach(function(p) {
-      if (p.style.display !== 'none') visibleCount++;
-    });
-    var active = state.includeOrgs.size + state.excludeOrgs.size;
-    var text = total + ' org' + (total !== 1 ? 's' : '');
-    if (visibleCount < total) text += ', ' + visibleCount + ' shown';
-    if (active) text += ', ' + active + ' active filter' + (active > 1 ? 's' : '');
-    label.textContent = text;
-  }
-
-  function updateOrgSummary() {
-    if (!activeOrgChips) return;
-    var chips = '';
-    state.includeOrgs.forEach(function(o) {
-      var s = o.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      chips += '<span class="badge text-bg-success me-1" style="cursor:pointer;" data-remove-org="' + s + '" data-remove-type="include">' +
-               '<i class="fas fa-plus me-1 fa-xs"></i>' + s + ' <i class="fas fa-xmark ms-1 fa-xs"></i></span>';
-    });
-    state.excludeOrgs.forEach(function(o) {
-      var s = o.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      chips += '<span class="badge text-bg-danger me-1" style="cursor:pointer;" data-remove-org="' + s + '" data-remove-type="exclude">' +
-               '<i class="fas fa-minus me-1 fa-xs"></i>' + s + ' <i class="fas fa-xmark ms-1 fa-xs"></i></span>';
-    });
-    activeOrgChips.innerHTML = chips;
-    if (activeOrgSummary) activeOrgSummary.style.display = (state.includeOrgs.size || state.excludeOrgs.size) ? '' : 'none';
-    updateOrgCountLabel();
-    activeOrgChips.querySelectorAll('[data-remove-org]').forEach(function(chip) {
-      chip.addEventListener('click', function() {
-        var org = chip.dataset.removeOrg;
-        if (chip.dataset.removeType === 'include') state.includeOrgs.delete(org);
-        else state.excludeOrgs.delete(org);
-        document.querySelectorAll('.org-pill').forEach(function(p) {
-          if (p.dataset.org === org) {
-            p.dataset.state = 'neutral'; p.className = 'tag-pill tag-pill-neutral org-pill';
-          }
-        });
-        updateOrgSummary(); applyAll();
-      });
-    });
-  }
-
-  document.querySelectorAll('.org-pill').forEach(function(pill) {
-    pill.addEventListener('click', function() {
-      var org = pill.dataset.org;
-      var cur = pill.dataset.state;
-      if (cur === 'neutral') {
-        state.includeOrgs.add(org); state.excludeOrgs.delete(org);
-        pill.dataset.state = 'include'; pill.className = 'tag-pill tag-pill-include org-pill';
-      } else if (cur === 'include') {
-        state.includeOrgs.delete(org); state.excludeOrgs.add(org);
-        pill.dataset.state = 'exclude'; pill.className = 'tag-pill tag-pill-exclude org-pill';
-      } else {
-        state.includeOrgs.delete(org); state.excludeOrgs.delete(org);
-        pill.dataset.state = 'neutral'; pill.className = 'tag-pill tag-pill-neutral org-pill';
-      }
-      updateOrgSummary(); applyAll();
-    });
-  });
-
-  var deselectAllOrgs = document.getElementById('deselect-all-orgs-btn');
-  if (deselectAllOrgs) {
-    deselectAllOrgs.addEventListener('click', function() {
-      state.includeOrgs.clear(); state.excludeOrgs.clear();
-      document.querySelectorAll('.org-pill').forEach(function(p) {
-        p.dataset.state = 'neutral'; p.className = 'tag-pill tag-pill-neutral org-pill';
-      });
-      updateOrgSummary(); applyAll();
-    });
-  }
-
-  /* ── 12. Date filter buttons ─────────────────────────────────── */
+  /* Date dropdown: update button label when a date preset is chosen */
   document.querySelectorAll('.date-filter-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      state.dateFilter = btn.dataset.dateFilter;
-      document.querySelectorAll('.date-filter-btn').forEach(function(b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      applyAll();
-    });
-  });
-
-  document.querySelectorAll('.tristate-filter-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var key = btn.dataset.filterKey;
-      var val = btn.dataset.filterValue;
-      if (!key) return;
-      state[key] = val;
-      document.querySelectorAll('.tristate-filter-btn[data-filter-key="' + key + '"]').forEach(function(b) {
-        var isActive = b.dataset.filterValue === val;
-        b.classList.toggle('btn-secondary', isActive);
-        b.classList.toggle('btn-outline-secondary', !isActive);
-      });
-      applyAll();
-    });
-  });
-
-  /* ── 12b. Load more ──────────────────────────────────────────── */
-  var loadMoreBtn = document.getElementById('load-more-btn');
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener('click', function() {
-      state.displayLimit += 100;
-      applyAll();
-    });
-  }
-
-  /* ── 13. Restore source selection across page reloads ────────── */
-  var savedActiveSources = sessionStorage.getItem('zsazsa_active_sources');
-  if (savedActiveSources) {
-    try {
-      var savedSet = new Set(JSON.parse(savedActiveSources));
-      state.activeSources = savedSet;
-      document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) {
-        cb.checked = savedSet.has(cb.value);
-      });
-      syncAllSourceVisuals();
-    } catch(e) {}
-  }
-
-  /* ── 13b. AI summary + Reports filter buttons ───────────────── */
-  document.querySelectorAll('.ai-filter-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      state.aiFilter = btn.dataset.aiFilter;
-      document.querySelectorAll('.ai-filter-btn').forEach(function(b) {
-        b.classList.remove('btn-secondary'); b.classList.add('btn-outline-secondary');
-      });
-      btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-secondary');
-      applyAll();
-    });
-  });
-
-  document.querySelectorAll('.reports-filter-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      state.reportsFilter = btn.dataset.reportsFilter;
-      document.querySelectorAll('.reports-filter-btn').forEach(function(b) {
-        b.classList.remove('btn-secondary'); b.classList.add('btn-outline-secondary');
-      });
-      btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-secondary');
-      applyAll();
-    });
-  });
-
-  document.querySelectorAll('.req-match-filter-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      state.reqMatchFilter = btn.dataset.reqMatchFilter;
-      document.querySelectorAll('.req-match-filter-btn').forEach(function(b) {
-        b.classList.remove('btn-secondary'); b.classList.add('btn-outline-secondary');
-      });
-      btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-secondary');
-      applyAll();
-    });
-  });
-
-  document.querySelectorAll('.filter-toggle-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var key = btn.dataset.toggleKey;
-      if (!key || !(key in state)) return;
-      var active = state[key] === 'with';
-      state[key] = active ? 'any' : 'with';
-      btn.classList.toggle('btn-secondary', !active);
-      btn.classList.toggle('btn-outline-secondary', active);
-      applyAll();
-    });
-  });
-
-  var ctiPredicateFilter = document.getElementById('cti-predicate-filter');
-  var ctiOperatorFilter = document.getElementById('cti-operator-filter');
-  var ctiValueFilter = document.getElementById('cti-value-filter');
-  var ctiPresetBtns = document.querySelectorAll('.cti-preset-btn');
-  var ctiPresetClearBtn = document.getElementById('cti-preset-clear');
-
-  function syncCtiFilterUi() {
-    var predicateActive = !!state.ctiPredicate;
-    if (ctiOperatorFilter) ctiOperatorFilter.disabled = !predicateActive;
-    if (ctiValueFilter) {
-      var thresholdMode = state.ctiOperator === 'gte' || state.ctiOperator === 'lte';
-      ctiValueFilter.disabled = !predicateActive || !thresholdMode;
-    }
-
-    ctiPresetBtns.forEach(function(btn) {
-      var pred = btn.dataset.predicate || '';
-      var op = btn.dataset.operator || 'gte';
-      var val = btn.dataset.value || '';
-      var active = state.ctiPredicate === pred && state.ctiOperator === op &&
-        ((op === 'gte' || op === 'lte') ? state.ctiValue === val : true);
-      btn.classList.toggle('btn-secondary', active);
-      btn.classList.toggle('btn-outline-secondary', !active);
-    });
-  }
-
-  function applyCtiFilter(predicate, operator, value) {
-    state.ctiPredicate = predicate || '';
-    state.ctiOperator = operator || 'gte';
-    if (value) state.ctiValue = value;
-    if (ctiPredicateFilter) ctiPredicateFilter.value = state.ctiPredicate;
-    if (ctiOperatorFilter) ctiOperatorFilter.value = state.ctiOperator;
-    if (ctiValueFilter) ctiValueFilter.value = state.ctiValue;
-    syncCtiFilterUi();
-    applyAll();
-  }
-
-  if (ctiPredicateFilter) {
-    ctiPredicateFilter.addEventListener('change', function() {
-      state.ctiPredicate = ctiPredicateFilter.value || '';
-      syncCtiFilterUi();
-      applyAll();
-    });
-  }
-  if (ctiOperatorFilter) {
-    ctiOperatorFilter.addEventListener('change', function() {
-      state.ctiOperator = ctiOperatorFilter.value || 'gte';
-      syncCtiFilterUi();
-      applyAll();
-    });
-  }
-  if (ctiValueFilter) {
-    ctiValueFilter.addEventListener('change', function() {
-      state.ctiValue = ctiValueFilter.value || 'moderate';
-      applyAll();
-    });
-  }
-
-  ctiPresetBtns.forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      applyCtiFilter(btn.dataset.predicate || '', btn.dataset.operator || 'gte', btn.dataset.value || '');
-    });
-  });
-
-  if (ctiPresetClearBtn) {
-    ctiPresetClearBtn.addEventListener('click', function() {
-      applyCtiFilter('', 'gte', 'moderate');
-    });
-  }
-  syncCtiFilterUi();
-
-  /* ── 13c. Floating go-to-top ─────────────────────────────────── */
-  var goToTopBtn = document.getElementById('go-to-top-btn');
-  if (goToTopBtn) {
-    goToTopBtn.addEventListener('click', function() {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    window.addEventListener('scroll', function() {
-      goToTopBtn.classList.toggle('visible', window.scrollY > 400);
-    }, { passive: true });
-  }
-
-  /* ── 14. Initial render ─────────────────────────────────────── */
-
-  // Hide scraper meta-tags from the tag cloud - they surface via chips and tooltip instead
-  document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
-    var tag = pill.dataset.tag || '';
-    if (CLOUD_HIDDEN_PREFIXES.some(function(p) { return tag.startsWith(p); })) {
-      pill.classList.add('tag-pill-hidden');
-    }
-  });
-
-  // Bootstrap tooltips for scraper meta info icons
-  document.querySelectorAll('.scraper-meta-tooltip').forEach(function(el) {
-    new bootstrap.Tooltip(el);
-  });
-
-  updateOrgPillVisibility();
-  sortRows();
-  applyAll();
-  updateTagCountLabel();
-  updateOrgCountLabel();
-
-  /* ── 15. Select all checkbox ─────────────────────────────────── */
-  var selectAllCb = document.getElementById('select-all-cb');
-  if (selectAllCb) {
-    selectAllCb.addEventListener('change', function() {
-      var visibleCbs = Array.from(document.querySelectorAll('.event-row-cb')).filter(function(cb) {
-        return cb.closest('tr').style.display !== 'none';
-      });
-      visibleCbs.forEach(function(cb) { cb.checked = selectAllCb.checked; });
-    });
-  }
-
-  /* ── 16. Create product (top-level, uses selected checkboxes) ── */
-  function getSelectedEvents() {
-    var sel = [];
-    document.querySelectorAll('.event-row-cb:checked').forEach(function(cb) {
-      sel.push({uuid: cb.value, sourceId: cb.dataset.sourceId});
-    });
-    return sel;
-  }
-
-  document.querySelectorAll('.create-product-item').forEach(function(item) {
-    item.addEventListener('click', function(e) {
-      e.preventDefault();
-      var action = item.dataset.productAction;
-      var selected = getSelectedEvents();
-      if (!selected.length) {
-        alert('Select at least one event using the checkboxes.');
-        return;
-      }
-      if (action === 'flash-intel') {
-        var form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '{{ url_for("flash_intel.wizard_new") }}';
-        var csrfInp = document.createElement('input');
-        csrfInp.type = 'hidden'; csrfInp.name = 'csrf_token'; csrfInp.value = csrfToken;
-        form.appendChild(csrfInp);
-        var prefillInp = document.createElement('input');
-        prefillInp.type = 'hidden'; prefillInp.name = 'prefill_only'; prefillInp.value = '1';
-        form.appendChild(prefillInp);
-        selected.forEach(function(s) {
-          var inp = document.createElement('input');
-          inp.type = 'hidden';
-          inp.name = 'source';
-          inp.value = s.uuid + (s.sourceId ? ('|' + s.sourceId) : '');
-          form.appendChild(inp);
-        });
-        document.body.appendChild(form);
-        form.submit();
-      } else if (action === 'vea') {
-        var veaForm = document.createElement('form');
-        veaForm.method = 'POST';
-        veaForm.action = '{{ url_for("vea.wizard_new") }}';
-        var veaCsrfInp = document.createElement('input');
-        veaCsrfInp.type = 'hidden'; veaCsrfInp.name = 'csrf_token'; veaCsrfInp.value = csrfToken;
-        veaForm.appendChild(veaCsrfInp);
-        var veaPrefillInp = document.createElement('input');
-        veaPrefillInp.type = 'hidden'; veaPrefillInp.name = 'prefill_only'; veaPrefillInp.value = '1';
-        veaForm.appendChild(veaPrefillInp);
-        selected.forEach(function(s) {
-          var inp = document.createElement('input');
-          inp.type = 'hidden';
-          inp.name = 'source';
-          inp.value = s.uuid + (s.sourceId ? ('|' + s.sourceId) : '');
-          veaForm.appendChild(inp);
-        });
-        document.body.appendChild(veaForm);
-        veaForm.submit();
-      } else if (action === 'daily-briefing') {
-        var form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '{{ url_for("daily_briefing.compose") }}';
-        var csrfInp = document.createElement('input');
-        csrfInp.type = 'hidden'; csrfInp.name = 'csrf_token'; csrfInp.value = csrfToken;
-        form.appendChild(csrfInp);
-        var today = new Date().toISOString().slice(0, 10);
-        var dateInp = document.createElement('input');
-        dateInp.type = 'hidden'; dateInp.name = 'date'; dateInp.value = today;
-        form.appendChild(dateInp);
-        selected.forEach(function(s) {
-          var inp = document.createElement('input');
-          inp.type = 'hidden'; inp.name = 'selected_events'; inp.value = s.uuid;
-          form.appendChild(inp);
-        });
-        document.body.appendChild(form);
-        form.submit();
+      var label = btn.dataset.dateLabel || 'Date';
+      var labelEl = document.getElementById('date-btn-label');
+      var ddBtn = document.getElementById('date-dd-btn');
+      if (labelEl) labelEl.textContent = label;
+      if (ddBtn) {
+        var isFiltered = btn.dataset.dateFilter !== 'none';
+        ddBtn.classList.toggle('has-filter', isFiltered);
+        ddBtn.classList.toggle('btn-primary', isFiltered);
+        ddBtn.classList.toggle('btn-outline-secondary', !isFiltered);
       }
     });
   });
 
-  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
-  var csrfToken = csrfMeta ? csrfMeta.content : '';
+  /* Button-state indicators: update has-filter class on each toggle */
+  function refreshToggleBtnStates() {
+    var s = window.zsazsaCollectionState;
+    if (!s) return;
 
-  /* ── 16b. Enable / disable Create product button ─────────────── */
-  var createProductBtn = document.getElementById('create-product-btn');
-  function updateCreateProductBtn() {
-    var anyChecked = !!document.querySelector('.event-row-cb:checked');
-    if (createProductBtn) {
-      createProductBtn.disabled = !anyChecked;
-      createProductBtn.classList.toggle('disabled', !anyChecked);
+    /* Tags button */
+    var activeTagCount = s.include.size + s.exclude.size;
+    var tagsBtn = document.getElementById('tags-toggle-btn');
+    var tagsBadge = document.getElementById('tags-active-badge');
+    if (tagsBtn) tagsBtn.classList.toggle('has-filter', activeTagCount > 0);
+    if (tagsBadge) {
+      tagsBadge.textContent = activeTagCount;
+      tagsBadge.classList.toggle('d-none', activeTagCount === 0);
+    }
+
+    /* Org button */
+    var activeOrgCount = s.includeOrgs.size + s.excludeOrgs.size;
+    var orgBtn = document.getElementById('org-toggle-btn');
+    var orgBadge = document.getElementById('org-active-badge');
+    if (orgBtn) orgBtn.classList.toggle('has-filter', activeOrgCount > 0);
+    if (orgBadge) {
+      orgBadge.textContent = activeOrgCount;
+      orgBadge.classList.toggle('d-none', activeOrgCount === 0);
+    }
+
+    /* More button: active when any event-property filter is set */
+    var moreActive = s.flagFilter !== 'any' ||
+      s.vulnFilter !== 'any' || s.aiFilter !== 'any' ||
+      s.reportsFilter !== 'any' || s.reqMatchFilter !== 'any';
+    var moreBtn = document.getElementById('more-toggle-btn');
+    if (moreBtn) moreBtn.classList.toggle('has-filter', moreActive);
+
+    /* CTI Eval button */
+    var ctiBtn = document.getElementById('cti-toggle-btn');
+    if (ctiBtn) ctiBtn.classList.toggle('has-filter', !!s.ctiPredicate);
+
+    /* Preview button */
+    var pBtn = document.getElementById('preview-excluded-btn');
+    if (pBtn) pBtn.classList.toggle('action-pill-preview-active', !!s.pendingRejectUuids);
+
+    /* Hide-rejected button */
+    var hrBtn = document.getElementById('hide-rejected-btn');
+    if (hrBtn) {
+      var hiding = s.hideRejected;
+      hrBtn.classList.toggle('is-hiding', hiding);
+      hrBtn.classList.toggle('is-showing', !hiding);
+      var hrIcon = hrBtn.querySelector('i');
+      var hrLabel = hrBtn.querySelector('.hide-rej-label');
+      if (hrIcon) hrIcon.className = 'fas ' + (hiding ? 'fa-eye' : 'fa-eye-slash') + ' ms-0';
+      if (hrIcon) hrIcon.style.opacity = '.75';
+      if (hrLabel) hrLabel.textContent = hiding ? 'Show rejected' : 'Hide rejected';
     }
   }
-  document.querySelectorAll('.event-row-cb').forEach(function(cb) {
-    cb.addEventListener('change', updateCreateProductBtn);
-  });
-  if (selectAllCb) {
-    selectAllCb.addEventListener('change', updateCreateProductBtn);
+
+  /* Watch table-count (updated by applyAll) to trigger button-state refresh */
+  var tableCount = document.getElementById('table-count');
+  if (tableCount) {
+    new MutationObserver(refreshToggleBtnStates)
+      .observe(tableCount, {childList: true, characterData: true, subtree: true});
   }
 
-  /* ── 17. Create summary (per-row, scraper only) ──────────────── */
-
-  document.querySelectorAll('.create-summary-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var uuid = btn.dataset.uuid;
-      var sourceId = btn.dataset.sourceId;
-      var originalHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-      fetch('/collection/' + uuid + '/summarise', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
-        body: JSON.stringify({source: sourceId}),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) {
-          var row = btn.closest('tr');
-          var aiCell = row ? row.querySelector('.ai-summary-cell') : null;
-          if (aiCell && !aiCell.querySelector('.ai-summary-icon')) {
-            var icon = document.createElement('i');
-            icon.className = 'fas fa-wand-magic-sparkles text-success ai-summary-icon';
-            icon.style.fontSize = '.8rem';
-            icon.title = 'AI summary available';
-            aiCell.appendChild(icon);
-          }
-          btn.remove();
-        } else {
-          btn.disabled = false;
-          btn.innerHTML = originalHtml;
-          btn.title = 'Error: ' + (data.error || 'unknown');
-          alert('Could not create summary: ' + (data.error || 'unknown error'));
-        }
-      })
-      .catch(function() {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-        btn.title = 'Request failed';
-      });
-    });
-  });
-
-  /* ── 18. Event preview offcanvas ─────────────────────────────── */
-  var previewOffcanvasEl = document.getElementById('event-preview-offcanvas');
-  var previewOffcanvas = previewOffcanvasEl ? new bootstrap.Offcanvas(previewOffcanvasEl) : null;
-  var previewTitle = document.getElementById('event-preview-title');
-  var previewMeta = document.getElementById('event-preview-meta');
-  var previewContent = document.getElementById('event-preview-content');
-  var previewLoading = document.getElementById('event-preview-loading');
-  var previewDetailLink = document.getElementById('event-preview-detail-link');
-  var previewCache = {};
-
-  function renderPreview(data) {
-    if (!previewContent) return;
-    var ev = data.event;
-    var html = '';
-
-    // Tags
-    if (ev.tags && ev.tags.length) {
-      html += '<div class="mb-3 d-flex flex-wrap gap-1">';
-      ev.tags.forEach(function(t) {
-        var col = (t.colour || '#455a7a');
-        html += '<span class="badge" style="background:' + col + ';font-size:.72rem;">' + esc(t.name || t) + '</span>';
-      });
-      html += '</div>';
-    }
-
-    // Reports
-    if (data.reports && data.reports.length) {
-      html += '<div class="mb-3"><h6 class="small fw-semibold text-muted mb-2"><i class="fas fa-file-lines me-1"></i>Reports (' + data.reports.length + ')</h6>';
-      html += '<div class="accordion" id="preview-reports-acc">';
-      data.reports.forEach(function(r, i) {
-        html += '<div class="accordion-item border-0 ' + (i > 0 ? 'border-top' : '') + '">';
-        html += '<h2 class="accordion-header"><button class="accordion-button ' + (i > 0 ? 'collapsed' : '') + ' py-2 small" type="button" data-bs-toggle="collapse" data-bs-target="#prev-rep-' + i + '" aria-expanded="' + (i === 0 ? 'true' : 'false') + '">' + esc(r.name) + '</button></h2>';
-        html += '<div id="prev-rep-' + i + '" class="accordion-collapse collapse ' + (i === 0 ? 'show' : '') + '" data-bs-parent="#preview-reports-acc">';
-        html += '<div class="accordion-body pt-1 pb-2"><div class="report-md-body small" data-md="' + escAttr(r.content) + '"></div></div></div></div>';
-      });
-      html += '</div></div>';
-    }
-
-    // Attributes
-    if (ev.attributes && ev.attributes.length) {
-      html += '<div class="mb-3"><h6 class="small fw-semibold text-muted mb-2"><i class="fas fa-list me-1"></i>Attributes (' + ev.attributes.length + ')</h6>';
-      html += '<div style="max-height:16rem;overflow-y:auto;"><table class="table table-sm table-hover mb-0" style="font-size:.78rem;">';
-      ev.attributes.forEach(function(a) {
-        html += '<tr><td class="text-muted pe-2" style="white-space:nowrap;">' + esc(a.category) + '</td>';
-        html += '<td class="font-monospace text-muted pe-2" style="white-space:nowrap;font-size:.7rem;">' + esc(a.type) + '</td>';
-        html += '<td class="font-monospace" style="word-break:break-all;">' + esc(a.value) + '</td>';
-        if (a.comment) html += '<td class="text-muted" style="font-size:.72rem;">' + esc(a.comment) + '</td>';
-        html += '</tr>';
-      });
-      html += '</table></div></div>';
-    }
-
-    // Objects
-    if (ev.objects && ev.objects.length) {
-      html += '<div class="mb-3"><h6 class="small fw-semibold text-muted mb-2"><i class="fas fa-cube me-1"></i>Objects (' + ev.objects.length + ')</h6>';
-      html += '<div class="accordion" id="preview-objs-acc">';
-      ev.objects.forEach(function(obj, i) {
-        html += '<div class="accordion-item"><h2 class="accordion-header"><button class="accordion-button collapsed py-1 small" type="button" data-bs-toggle="collapse" data-bs-target="#prev-obj-' + i + '" aria-expanded="false">' + esc(obj.name) + '</button></h2>';
-        html += '<div id="prev-obj-' + i + '" class="accordion-collapse collapse" data-bs-parent="#preview-objs-acc"><div class="accordion-body py-1">';
-        html += '<table class="table table-sm mb-0" style="font-size:.76rem;">';
-        (obj.attributes || []).forEach(function(a) {
-          html += '<tr><td class="text-muted pe-2" style="white-space:nowrap;">' + esc(a.relation) + '</td><td class="font-monospace" style="word-break:break-all;">' + esc(a.value) + '</td></tr>';
-        });
-        html += '</table></div></div></div>';
-      });
-      html += '</div></div>';
-    }
-
-    if (!html) html = '<p class="text-muted small">No reports, attributes, or objects found.</p>';
-    previewContent.innerHTML = html;
-
-    // Render markdown in any report-md-body nodes
-    previewContent.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
-      var raw = el.getAttribute('data-md') || '';
-      el.innerHTML = raw.trim()
-        ? (window.DOMPurify ? DOMPurify.sanitize(marked.parse(raw)) : marked.parse(raw))
-        : '<em class="text-muted">No content.</em>';
-      el.removeAttribute('data-md');
+  /* Reset date button label when "Clear all" is clicked */
+  var clearBtn = document.getElementById('clear-filters-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      var labelEl = document.getElementById('date-btn-label');
+      var ddBtn = document.getElementById('date-dd-btn');
+      if (labelEl) labelEl.textContent = 'Date';
+      if (ddBtn) {
+        ddBtn.classList.remove('has-filter', 'btn-primary');
+        ddBtn.classList.add('btn-outline-secondary');
+      }
     });
   }
 
-  function esc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  function escAttr(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-  }
-
-  function openPreview(uuid, sourceId) {
-    if (!previewOffcanvas) return;
-    var cacheKey = uuid + '|' + sourceId;
-    if (previewTitle) previewTitle.textContent = '…';
-    if (previewMeta) previewMeta.textContent = '';
-    if (previewContent) previewContent.innerHTML = '';
-    if (previewLoading) previewLoading.classList.remove('d-none');
-    previewOffcanvas.show();
-
-    if (previewCache[cacheKey]) {
-      if (previewLoading) previewLoading.classList.add('d-none');
-      var cached = previewCache[cacheKey];
-      if (previewTitle) previewTitle.textContent = cached.event.info || '(untitled)';
-      if (previewMeta) previewMeta.textContent = cached.event.date + ' · ' + (cached.source_label || '');
-      if (previewDetailLink) previewDetailLink.href = cached.detail_url;
-      renderPreview(cached);
-      return;
-    }
-
-    fetch('/collection/' + uuid + '/preview?source=' + encodeURIComponent(sourceId))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (previewLoading) previewLoading.classList.add('d-none');
-        if (!data.ok) {
-          if (previewContent) previewContent.innerHTML = '<p class="text-danger small">' + esc(data.error || 'Could not load event') + '</p>';
-          return;
-        }
-        previewCache[cacheKey] = data;
-        if (previewTitle) previewTitle.textContent = data.event.info || '(untitled)';
-        if (previewMeta) previewMeta.textContent = (data.event.date || '') + (data.source_label ? ' · ' + data.source_label : '');
-        if (previewDetailLink) previewDetailLink.href = data.detail_url;
-        renderPreview(data);
-      })
-      .catch(function() {
-        if (previewLoading) previewLoading.classList.add('d-none');
-        if (previewContent) previewContent.innerHTML = '<p class="text-danger small">Request failed.</p>';
-      });
-  }
-
-  document.querySelectorAll('.event-preview-link').forEach(function(a) {
-    a.addEventListener('click', function(e) {
-      e.preventDefault();
-      openPreview(a.dataset.uuid, a.dataset.sourceId);
-    });
-  });
-
-  /* ── 19a. Flagged-only toggle ────────────────────────────────── */
-  var flaggedOnlyBtn = document.getElementById('flagged-only-btn');
-  if (flaggedOnlyBtn) {
-    flaggedOnlyBtn.addEventListener('click', function() {
-      state.showFlaggedOnly = !state.showFlaggedOnly;
-      flaggedOnlyBtn.classList.toggle('btn-outline-warning', !state.showFlaggedOnly);
-      flaggedOnlyBtn.classList.toggle('btn-warning', state.showFlaggedOnly);
-      applyAll();
-    });
-  }
-
-  /* ── 19. Flag for review ──────────────────────────────────────── */
-  document.querySelectorAll('.flag-review-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var uuid = btn.dataset.uuid;
-      var sourceId = btn.dataset.sourceId;
-      btn.disabled = true;
-      fetch('/collection/' + uuid + '/flag', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
-        body: JSON.stringify({source: sourceId}),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        btn.disabled = false;
-        if (data.ok) {
-          var nowFlagged = data.flagged;
-          var row = btn.closest('tr');
-          if (row) row.dataset.flagged = nowFlagged ? 'true' : 'false';
-          btn.dataset.flagged = nowFlagged ? 'true' : 'false';
-          btn.classList.toggle('btn-warning', nowFlagged);
-          btn.classList.toggle('btn-outline-warning', !nowFlagged);
-          btn.title = nowFlagged ? 'Remove follow-up flag' : 'Flag for follow-up review';
-          applyAll();
-        } else {
-          btn.title = 'Error: ' + (data.error || 'unknown');
-        }
-      })
-      .catch(function() {
-        btn.disabled = false;
-        btn.title = 'Request failed';
-      });
-    });
-  });
-
-})();
-
-/* ── Other sources chevron ───────────────────────────────────── */
-(function() {
-  var panel = document.getElementById('other-sources-panel');
-  var chevron = document.getElementById('other-sources-chevron');
-  if (!panel || !chevron) return;
-  panel.addEventListener('show.bs.collapse', function() {
-    chevron.style.transform = 'rotate(90deg)';
-  });
-  panel.addEventListener('hide.bs.collapse', function() {
-    chevron.style.transform = 'rotate(0deg)';
-  });
-})();
-
-/* ── Pull event modal ────────────────────────────────────────── */
-(function() {
-  var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var modal = document.getElementById('pull-event-modal');
-  var btn = document.getElementById('pull-confirm-btn');
-  var uuidInput = document.getElementById('pull-uuid-input');
-  var sourceSelect = document.getElementById('pull-source-select');
-  var resultDiv = document.getElementById('pull-result');
-  var okDiv = document.getElementById('pull-result-ok');
-  var errDiv = document.getElementById('pull-result-err');
-  var okMsg = document.getElementById('pull-result-ok-msg');
-  var errMsg = document.getElementById('pull-result-err-msg');
-  if (!btn) return;
-
-  function resetResult() {
-    resultDiv.classList.add('d-none');
-    okDiv.classList.add('d-none');
-    errDiv.classList.add('d-none');
-  }
-
-  modal.addEventListener('show.bs.modal', function() {
-    resetResult();
-    uuidInput.value = '';
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-cloud-arrow-down me-1"></i>Pull';
-  });
-
-  btn.addEventListener('click', function() {
-    var uuid = uuidInput.value.trim();
-    if (!uuid) { uuidInput.focus(); return; }
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pulling…';
-    resetResult();
-
-    fetch('/collection/pull', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
-      body: JSON.stringify({uuid: uuid, source_id: sourceSelect.value}),
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-cloud-arrow-down me-1"></i>Pull';
-      resultDiv.classList.remove('d-none');
-      if (data.ok) {
-        okMsg.textContent = data.message || 'Event pulled into cache.';
-        okDiv.classList.remove('d-none');
-        setTimeout(function() { window.location.reload(); }, 1200);
+  /* Preview button: filter table to events pending rejection */
+  var pendingRejectUuids = new Set({{ briefing_pending_reject_uuids | list | tojson }});
+  var previewBtn = document.getElementById('preview-excluded-btn');
+  if (previewBtn && pendingRejectUuids.size > 0) {
+    previewBtn.addEventListener('click', function() {
+      var s = window.zsazsaCollectionState;
+      if (!s) return;
+      if (s.pendingRejectUuids) {
+        s.pendingRejectUuids = null;
       } else {
-        errMsg.textContent = data.error || 'Unknown error.';
-        errDiv.classList.remove('d-none');
+        s.pendingRejectUuids = pendingRejectUuids;
       }
-    })
-    .catch(function(err) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-cloud-arrow-down me-1"></i>Pull';
-      resultDiv.classList.remove('d-none');
-      errMsg.textContent = 'Request failed.';
-      errDiv.classList.remove('d-none');
-    });
-  });
-})();
-
-/* ── CTI Evaluation modal ─────────────────────────────────── */
-(function() {
-  var modal = document.getElementById('cti-eval-modal');
-  if (!modal) return;
-
-  var eventNameEl = document.getElementById('cti-eval-event-name');
-  var submitBtn = document.getElementById('cti-eval-submit-btn');
-  var feedbackEl = document.getElementById('cti-eval-feedback');
-  var okEl = document.getElementById('cti-eval-ok');
-  var errEl = document.getElementById('cti-eval-err');
-  var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var currentUuid = null;
-  var currentSourceId = null;
-  var bsModal = new bootstrap.Modal(modal);
-
-  document.querySelectorAll('.cti-eval-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      currentUuid = btn.dataset.uuid;
-      currentSourceId = btn.dataset.sourceId;
-      if (eventNameEl) eventNameEl.textContent = btn.dataset.title || '(untitled)';
-      document.querySelectorAll('.cti-eval-select').forEach(function(s) { s.value = ''; });
-      if (feedbackEl) feedbackEl.classList.add('d-none');
-      if (okEl) okEl.classList.add('d-none');
-      if (errEl) errEl.classList.add('d-none');
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-tag me-1"></i>Apply tags to MISP';
-      }
-      bsModal.show();
-    });
-  });
-
-  if (submitBtn) {
-    submitBtn.addEventListener('click', function() {
-      var pairs = [];
-      document.querySelectorAll('.cti-eval-select').forEach(function(s) {
-        if (s.value) pairs.push({predicate: s.dataset.predicate, value: s.value});
-      });
-
-      if (!pairs.length) {
-        if (feedbackEl) feedbackEl.classList.remove('d-none');
-        if (errEl) { errEl.textContent = 'Select at least one predicate value before applying.'; errEl.classList.remove('d-none'); }
-        if (okEl) okEl.classList.add('d-none');
-        return;
-      }
-
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
-      if (feedbackEl) feedbackEl.classList.add('d-none');
-
-      var index = 0;
-      var errors = [];
-
-      function next() {
-        if (index >= pairs.length) {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<i class="fas fa-tag me-1"></i>Apply tags to MISP';
-          if (feedbackEl) feedbackEl.classList.remove('d-none');
-          if (errors.length) {
-            if (errEl) { errEl.textContent = 'Some tags failed: ' + errors.join('; '); errEl.classList.remove('d-none'); }
-            if (okEl) okEl.classList.add('d-none');
-          } else {
-            if (okEl) {
-              okEl.textContent = pairs.length + ' tag' + (pairs.length !== 1 ? 's' : '') + ' applied to MISP.';
-              okEl.classList.remove('d-none');
-            }
-            if (errEl) errEl.classList.add('d-none');
-            var refreshPromise = Promise.resolve();
-            if (window.zsazsaRefreshCollectionEventRow && currentUuid && currentSourceId) {
-              refreshPromise = window.zsazsaRefreshCollectionEventRow(currentUuid, currentSourceId);
-            }
-            refreshPromise
-              .catch(function() {})
-              .finally(function() {
-                bsModal.hide();
-              });
-          }
-          return;
-        }
-
-        var pair = pairs[index++];
-        fetch('/collection/' + currentUuid + '/cti-tag', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
-          body: JSON.stringify({predicate: pair.predicate, value: pair.value, source: currentSourceId}),
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (!data.ok) errors.push(pair.predicate + ': ' + (data.error || 'failed'));
-          next();
-        })
-        .catch(function() {
-          errors.push(pair.predicate + ': request failed');
-          next();
-        });
-      }
-
-      next();
+      window.zsazsaCollectionApply();
     });
   }
 
-  // Open CTI Evaluation tab in intelligence reference modal if clicked from here
-  modal.addEventListener('click', function(e) {
-    var link = e.target.closest('[data-bs-force-tab]');
-    if (!link) return;
-    var tabId = link.getAttribute('data-bs-force-tab');
-    var refModal = document.getElementById('admiralty-modal');
-    if (!refModal) return;
-    refModal.addEventListener('shown.bs.modal', function onShown() {
-      var tabBtn = document.getElementById(tabId);
-      if (tabBtn) new bootstrap.Tab(tabBtn).show();
-      refModal.removeEventListener('shown.bs.modal', onShown);
-    }, {once: true});
-  });
+  /* Hide-rejected toggle */
+  var hideRejBtn = document.getElementById('hide-rejected-btn');
+  if (hideRejBtn) {
+    hideRejBtn.addEventListener('click', function() {
+      var s = window.zsazsaCollectionState;
+      if (!s) return;
+      s.hideRejected = !s.hideRejected;
+      window.zsazsaCollectionApply();
+    });
+  }
+
+  /* Run once after shared JS initialises */
+  setTimeout(refreshToggleBtnStates, 50);
+
+  /* Bulk-reject events matching briefing exclusions */
+  var bulkRejectBtn = document.getElementById('bulk-reject-btn');
+  var bulkRejectResult = document.getElementById('bulk-reject-result');
+  if (bulkRejectBtn) {
+    bulkRejectBtn.addEventListener('click', function() {
+      if (!confirm('Set workflow:state=rejected on all events matching the daily briefing exclusion patterns?\n\nThis will tag ' + bulkRejectBtn.textContent.trim().replace(/^Reject\s+/, '').replace(/\s+matching.*$/, '') + ' in MISP. The action cannot be undone from here.')) {
+        return;
+      }
+      var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+      bulkRejectBtn.disabled = true;
+      bulkRejectBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:.75rem;"></i> Rejecting…';
+      if (bulkRejectResult) { bulkRejectResult.className = 'small d-none'; bulkRejectResult.textContent = ''; }
+
+      fetch('{{ url_for("data_collection.bulk_reject_excluded") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: '{}',
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        bulkRejectBtn.disabled = false;
+        bulkRejectBtn.innerHTML = '<i class="fas fa-ban" style="font-size:.75rem;"></i> Reject events matching exclusions';
+        if (bulkRejectResult) {
+          bulkRejectResult.textContent = data.message || (data.ok ? 'Done.' : 'Error.');
+          bulkRejectResult.className = 'small ms-1 ' + (data.ok ? 'text-success' : 'text-danger');
+        }
+        if (data.ok && data.rejected > 0) {
+          setTimeout(function() { window.location.reload(); }, 1500);
+        }
+      })
+      .catch(function() {
+        bulkRejectBtn.disabled = false;
+        bulkRejectBtn.innerHTML = '<i class="fas fa-ban" style="font-size:.75rem;"></i> Reject events matching exclusions';
+        if (bulkRejectResult) {
+          bulkRejectResult.textContent = 'Request failed.';
+          bulkRejectResult.className = 'small ms-1 text-danger';
+        }
+      });
+    });
+  }
+
 })();
 </script>
 {% endblock %}

@@ -173,25 +173,17 @@ def _extract_event_detail(event) -> dict:
     }
 
 
-@bp.route("/")
-def index():
-    try:
-        limit = max(1, min(int(request.args.get("limit", _DEFAULT_LIMIT)), 500))
-    except ValueError:
-        limit = _DEFAULT_LIMIT
-
+def _build_list_context() -> dict:
     sources = _sources()
     label_map = {s["id"]: s["label"] for s in sources}
     all_source_ids = [s["id"] for s in sources]
 
-    # Always load a large set from cache; the limit is applied client-side.
     events = collection_cache.get_events(all_source_ids, [], 2000)
     kind_map = {s["id"]: s["kind"] for s in sources}
     for ev in events:
         ev["source_label"] = label_map.get(ev["source_id"], ev["source_id"])
         ev["source_kind"] = kind_map.get(ev["source_id"], "misp")
 
-    # PIR/GIR relevance matching
     try:
         pirs, girs = _matching.get_requirements()
         req_matches = _matching.match_events(events, pirs, girs)
@@ -202,7 +194,6 @@ def index():
         for ev in events:
             ev["req_matches"] = []
 
-    # Cache status per source
     cache_status = collection_cache.get_source_status()
     source_errors = {sid: st["error"] for sid, st in cache_status.items() if st.get("error")}
     now = time.time()
@@ -215,7 +206,6 @@ def index():
                 last_fetch_ts = st["last_fetch"]
     cache_interval_s = int(getattr(config, "COLLECTION_CACHE_INTERVAL", 15)) * 60
 
-    # Tag frequency map
     counter = Counter()
     for ev in events:
         for t in ev["tags"]:
@@ -223,7 +213,6 @@ def index():
                 counter[t] += 1
     all_tags = sorted(counter.keys(), key=str.casefold)
 
-    # Org list: {org_name: {source_id: source_label}} - only non-empty orgs
     org_map: dict[str, dict[str, str]] = {}
     for ev in events:
         org = (ev.get("orgc") or "").strip()
@@ -237,24 +226,31 @@ def index():
         key=lambda x: x["name"].lower(),
     )
 
-    total_reports = sum(ev.get("report_count", 0) for ev in events)
-    has_manual_sources = any(s.get("kind") == "manual" for s in sources)
+    # Daily briefing title exclusion matching
+    excl_raw = getattr(config, "DAILY_BRIEFING_TITLE_EXCLUSIONS", []) or []
+    if isinstance(excl_raw, str):
+        excl_raw = excl_raw.splitlines()
+    excl_patterns = [str(p).strip().lower() for p in excl_raw if str(p).strip()]
+    briefing_excluded_uuids: set[str] = set()
+    briefing_pending_reject_uuids: set[str] = set()
+    if excl_patterns:
+        for ev in events:
+            title = (ev.get("info") or "").lower()
+            if any(p in title for p in excl_patterns):
+                briefing_excluded_uuids.add(ev["uuid"])
+                if 'workflow:state="rejected"' not in ev.get("tags", []):
+                    briefing_pending_reject_uuids.add(ev["uuid"])
 
-    followup_tag = getattr(config, "TAG_COLLECTION_FOLLOWUP", 'zsazsa:collection="follow-up"')
-
-    flagged_uuids = collection_cache.get_flagged_uuids()
-
-    return render_template(
-        "data_collection/list.html",
+    return dict(
         events=events,
         all_tags=all_tags,
         org_list=org_list,
-        limit=limit,
+        limit=_DEFAULT_LIMIT,
         marker_tag=config.SCRAPER_MARKER_TAG,
-        followup_tag=followup_tag,
-        total_reports=total_reports,
+        followup_tag=getattr(config, "TAG_COLLECTION_FOLLOWUP", 'zsazsa:collection="follow-up"'),
+        total_reports=sum(ev.get("report_count", 0) for ev in events),
         sources=sources,
-        has_manual_sources=has_manual_sources,
+        has_manual_sources=any(s.get("kind") == "manual" for s in sources),
         source_errors=source_errors,
         cache_ages=cache_ages,
         cache_status=cache_status,
@@ -263,8 +259,15 @@ def index():
         tag_briefing=config.TAG_BRIEFING,
         tag_flash_intel=config.TAG_FLASH_INTEL,
         tag_vea=config.TAG_VEA,
-        flagged_uuids=flagged_uuids,
+        flagged_uuids=collection_cache.get_flagged_uuids(),
+        briefing_excluded_uuids=briefing_excluded_uuids,
+        briefing_pending_reject_uuids=briefing_pending_reject_uuids,
     )
+
+
+@bp.route("/")
+def index():
+    return render_template("data_collection/list.html", **_build_list_context())
 
 
 @bp.route("/refresh", methods=["POST"])
@@ -780,6 +783,79 @@ def cti_tag(uuid):
 
     audit.record("tag", "misp-event", entity_id=uuid, details=tag_name)
     return jsonify({"ok": True, "tag": tag_name})
+
+
+_WORKFLOW_REJECTED_TAG = 'workflow:state="rejected"'
+
+
+@bp.route("/bulk-reject-excluded", methods=["POST"])
+def bulk_reject_excluded():
+    """Apply workflow:state="rejected" to every cached event whose title matches
+    DAILY_BRIEFING_TITLE_EXCLUSIONS, skipping those already rejected.
+
+    Returns JSON: {ok, rejected, already_rejected, errors, message}
+    """
+    excl_raw = getattr(config, "DAILY_BRIEFING_TITLE_EXCLUSIONS", []) or []
+    if isinstance(excl_raw, str):
+        excl_raw = excl_raw.splitlines()
+    excl_patterns = [str(p).strip().lower() for p in excl_raw if str(p).strip()]
+
+    if not excl_patterns:
+        return jsonify({"ok": True, "rejected": 0, "already_rejected": 0, "errors": 0,
+                        "message": "No exclusion patterns configured."})
+
+    all_source_ids = [s["id"] for s in _sources()]
+    events = collection_cache.get_events(all_source_ids, [], 2000)
+
+    def _title_matches(ev):
+        return any(p in (ev.get("info") or "").lower() for p in excl_patterns)
+
+    to_reject = [ev for ev in events
+                 if _title_matches(ev) and _WORKFLOW_REJECTED_TAG not in ev.get("tags", [])]
+    already_rejected = sum(1 for ev in events
+                           if _title_matches(ev) and _WORKFLOW_REJECTED_TAG in ev.get("tags", []))
+
+    misp_cache: dict[str, object] = {}
+    rejected = errors = 0
+
+    for ev in to_reject:
+        src_id = ev.get("source_id") or _SCRAPER_SOURCE_ID
+        if src_id not in misp_cache:
+            m, err_msg = _misp_for_source(src_id)
+            if m is None:
+                logger.warning("bulk_reject_excluded: cannot connect to %s: %s", src_id, err_msg)
+            misp_cache[src_id] = m
+        misp = misp_cache[src_id]
+        if misp is None:
+            errors += 1
+            continue
+        uuid = ev.get("uuid")
+        try:
+            r = misp.tag(uuid, _WORKFLOW_REJECTED_TAG, local=False)
+            if isinstance(r, dict) and "errors" in r:
+                errors += 1
+                logger.warning("bulk_reject_excluded: MISP error for %s: %s", uuid, r["errors"])
+            else:
+                rejected += 1
+                audit.record("tag", "misp-event", entity_id=uuid, details=_WORKFLOW_REJECTED_TAG)
+                try:
+                    fresh = misp.get_event(uuid, pythonify=True)
+                    if fresh and not isinstance(fresh, dict):
+                        row = collection_cache._extract_row(fresh, src_id)
+                        collection_cache.insert_event(row)
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.warning("bulk_reject_excluded: failed to tag %s: %s", uuid, exc)
+            errors += 1
+
+    parts = [f"{rejected} event(s) set to rejected"]
+    if already_rejected:
+        parts.append(f"{already_rejected} already rejected")
+    if errors:
+        parts.append(f"{errors} error(s)")
+    return jsonify({"ok": True, "rejected": rejected, "already_rejected": already_rejected,
+                    "errors": errors, "message": ", ".join(parts)})
 
 
 @bp.route("/<string:uuid>/flag", methods=["POST"])

@@ -232,6 +232,24 @@
             <input name="affected_assets" class="form-control"
               value="{{ fia.affected_assets if fia else '' }}">
           </div>
+          {% if threat_actor_types %}
+          <div class="col-12">
+            <label class="form-label">Threat actor type</label>
+            <div class="d-flex flex-wrap gap-2">
+              {% set selected_types = (fia.actor_types if fia and fia.actor_types else []) %}
+              {% for tat in threat_actor_types %}
+              <label class="actor-type-pill{% if tat.name in selected_types %} selected{% endif %}"
+                     title="{{ tat.description }}">
+                <input type="checkbox" name="actor_types" value="{{ tat.name }}"
+                       {% if tat.name in selected_types %}checked{% endif %}
+                       style="display:none;">
+                {{ tat.name }}
+              </label>
+              {% endfor %}
+            </div>
+            <div class="form-text">Select one or more. Hover for description.</div>
+          </div>
+          {% endif %}
           <div class="col-12">
             <label class="form-label">Threat actor context</label>
             <textarea name="actor_context" class="form-control" rows="2">{{ fia.actor_context if fia else '' }}</textarea>
@@ -241,30 +259,24 @@
         <hr class="my-3">
         <p class="small text-muted mb-3"><i class="fas fa-crosshairs me-1"></i>Scope: which geography, sectors, and threat actors are relevant to this alert.</p>
 
-        <div class="row g-3">
+        <div class="row g-3 fia-scope-row">
           <div class="col-md-6">
             <label class="form-label">Geographic scope</label>
-            <div class="gms-wrapper" style="max-height:180px;overflow-y:auto;border:1px solid var(--bs-border-color);border-radius:.375rem;padding:.5rem;">
-              {{ galaxy_multiselect("geographic_scope",
-                  values=(fia.geographic_scope if fia else []),
-                  items=geo_items) }}
-            </div>
+            {{ galaxy_multiselect("geographic_scope",
+                values=(fia.geographic_scope if fia else []),
+                items=geo_items) }}
           </div>
           <div class="col-md-6">
             <label class="form-label">Sector scope</label>
-            <div class="gms-wrapper" style="max-height:180px;overflow-y:auto;border:1px solid var(--bs-border-color);border-radius:.375rem;padding:.5rem;">
-              {{ galaxy_multiselect("sectors",
-                  values=(fia.sectors if fia else []),
-                  items=sector_items) }}
-            </div>
+            {{ galaxy_multiselect("sectors",
+                values=(fia.sectors if fia else []),
+                items=sector_items) }}
           </div>
           <div class="col-md-6">
             <label class="form-label">Threat actors</label>
-            <div class="gms-wrapper" style="max-height:180px;overflow-y:auto;border:1px solid var(--bs-border-color);border-radius:.375rem;padding:.5rem;">
-              {{ galaxy_multiselect("threat_actors",
-                  values=(fia.threat_actors if fia else []),
-                  items=threat_actor_items) }}
-            </div>
+            {{ galaxy_multiselect("threat_actors",
+                values=(fia.threat_actors if fia else []),
+                items=threat_actor_items) }}
           </div>
           <div class="col-md-6">
             <label class="form-label">Threat types</label>
@@ -918,6 +930,25 @@
       checkGalaxy('sectors', f.sectors);
       checkGalaxy('threat_actors', f.threat_actors);
 
+      /* Threat actor type pills (ENISA taxonomy) */
+      if (f.actor_types && f.actor_types.length) {
+        var actorTypeLower = f.actor_types.map(function(v) { return v.toLowerCase(); });
+        document.querySelectorAll('.actor-type-pill').forEach(function(pill) {
+          var cb = pill.querySelector('input[type="checkbox"]');
+          if (cb && actorTypeLower.indexOf(cb.value.toLowerCase()) !== -1) {
+            cb.checked = true;
+            pill.classList.add('selected');
+          }
+        });
+      }
+
+      /* Tag-input fields populated from the Scope section */
+      setTi('threat_types', f.threat_types);
+      setTi('technology', f.technology);
+      setTi('vendor', f.vendor);
+      setTi('incident', f.incident);
+      setTi('campaign', f.campaign);
+
       buildAiBtn.innerHTML = '<i class="fas fa-check me-1"></i>Done';
       buildAiBtn.classList.remove('btn-outline-success');
       buildAiBtn.classList.add('btn-success');
@@ -958,5 +989,55 @@
   });
   _updateFiaAudienceBtns();
 })();
+
+/* ── Threat actor type pills ── */
+(function() {
+  var pills = document.querySelectorAll('.actor-type-pill');
+  pills.forEach(function(pill) {
+    var cb = pill.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    cb.addEventListener('change', function() {
+      pill.classList.toggle('selected', cb.checked);
+    });
+    /* Tooltip via Bootstrap if available */
+    if (window.bootstrap && bootstrap.Tooltip && pill.title) {
+      new bootstrap.Tooltip(pill, {placement: 'top', trigger: 'hover'});
+    }
+  });
+})();
 </script>
+
+<style>
+/* Scope selector: scroll only the checkbox list, leave selected badges visible below */
+.fia-scope-row .gms-list {
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid var(--bs-border-color);
+  border-radius: .375rem;
+  padding: .4rem .5rem;
+}
+.fia-scope-row .gms-selected-display { margin-top: .4rem; }
+
+.actor-type-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: .3rem .75rem;
+  border: 1.5px solid #dee2e6;
+  border-radius: .4rem;
+  font-size: .85rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: #fff;
+  color: #6c757d;
+  user-select: none;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.actor-type-pill:hover { border-color: #adb5bd; background: #f8f9fa; color: #495057; }
+.actor-type-pill.selected {
+  border-color: #0078f1;
+  background: #ddeeff;
+  color: #00408a;
+  font-weight: 600;
+}
+</style>
 {% endblock %}

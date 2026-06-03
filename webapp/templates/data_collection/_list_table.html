@@ -1,0 +1,490 @@
+{# Shared table, modals, and offcanvas for all data-collection list variants.
+   Requires VALUE_CHIP_CONFIG to be set in the calling template's context. #}
+
+{# Chip badge macro #}
+{% macro chip_badge(tag, val, cfg) -%}
+<span class="badge tag-row-badge" data-tag="{{ tag }}"
+      style="background:{{ cfg.bg }};color:{{ cfg.color }};border:1px solid {{ cfg.border }};cursor:pointer;"
+      title="{% if cfg.label %}{{ cfg.label }}: {% endif %}{{ val }} · Click to filter">
+  <i class="fas {{ cfg.icon }} fa-xs me-1"></i>{% if cfg.label %}{{ cfg.label }}: {% endif %}{{ val }}
+</span>
+{%- endmacro %}
+
+{# Hidden source checkboxes backing the JS state #}
+<div id="source-cb-container" style="display:none;">
+  {% for s in sources %}
+  <input type="checkbox" name="source" value="{{ s.id }}" checked class="source-cb">
+  {% endfor %}
+</div>
+
+{# Pull event modal #}
+<div class="modal fade" id="pull-event-modal" tabindex="-1" aria-labelledby="pull-event-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pull-event-modal-label">
+          <i class="fas fa-cloud-arrow-down me-2"></i>Pull event into cache
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Enter a MISP event UUID and choose a source. The event will be fetched immediately and added to the local cache. If it does not match the configured filters for the MISP scraper or other MISP servers, it will be removed on the next cache refresh.
+        </p>
+        <div class="mb-3">
+          <label for="pull-uuid-input" class="form-label">Event UUID</label>
+          <input type="text" class="form-control font-monospace" id="pull-uuid-input"
+                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <div class="mb-3">
+          <label for="pull-source-select" class="form-label">Source</label>
+          <select class="form-select" id="pull-source-select">
+            {% for s in sources %}
+              {% if s.kind != 'manual' %}
+              <option value="{{ s.id }}">{{ s.label }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div id="pull-result" class="d-none">
+          <div id="pull-result-ok" class="alert alert-success d-none py-2 small mb-0">
+            <i class="fas fa-check-circle me-1"></i><span id="pull-result-ok-msg"></span>
+          </div>
+          <div id="pull-result-err" class="alert alert-danger d-none py-2 small mb-0">
+            <i class="fas fa-triangle-exclamation me-1"></i><span id="pull-result-err-msg"></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="pull-confirm-btn">
+          <i class="fas fa-cloud-arrow-down me-1"></i>Pull
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Event preview offcanvas #}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="event-preview-offcanvas"
+     style="width:min(90vw,760px);">
+  <div class="offcanvas-header border-bottom py-2">
+    <div class="overflow-hidden">
+      <h6 class="offcanvas-title mb-0 text-truncate" id="event-preview-title" style="max-width:55vw;"></h6>
+      <small class="text-muted" id="event-preview-meta"></small>
+    </div>
+    <div class="d-flex gap-2 align-items-center ms-2 flex-shrink-0">
+      <a href="#" id="event-preview-detail-link" class="btn btn-sm btn-outline-secondary" title="Open full detail page" target="_blank">
+        <i class="fas fa-external-link-alt me-1"></i>Detail
+      </a>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+  </div>
+  <div class="offcanvas-body p-0">
+    <div id="event-preview-loading" class="text-center py-5 d-none">
+      <i class="fas fa-spinner fa-spin fa-2x text-muted"></i>
+    </div>
+    <div id="event-preview-content" class="p-3"></div>
+  </div>
+</div>
+
+{# Events table #}
+<div class="card content-card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <i class="fas fa-database me-2"></i>
+      <span id="table-count">{{ events | length }}</span>
+      event<span id="table-count-plural">{{ 's' if events|length != 1 }}</span>
+      <span id="table-count-of-total" class="text-muted small ms-1" style="display:none;"></span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if events %}
+    <div>
+      <table class="table zsazsa-table mb-0" id="events-table" style="width:100%;table-layout:fixed;">
+        <thead>
+          <tr>
+            <th style="width:2rem;">
+              <input type="checkbox" id="select-all-cb" class="form-check-input" title="Select all visible">
+            </th>
+            <th class="sort-col" data-col="date" style="width:6.5rem;white-space:nowrap;cursor:pointer;">
+              Date <i class="fas fa-arrow-down ms-1 small sort-th-icon active-asc-desc" id="th-date-icon"></i>
+            </th>
+            <th style="width:5.5rem;white-space:nowrap;">Event ID</th>
+            <th class="sort-col" data-col="title" style="cursor:pointer;">
+              Title <i class="fas fa-sort ms-1 small text-muted sort-th-icon" id="th-title-icon"></i>
+            </th>
+            <th class="sort-col" data-col="orgc" style="width:8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;" title="Creator org">
+              <i class="fas fa-building text-muted"></i> <i class="fas fa-sort ms-1 small text-muted sort-th-icon" id="th-orgc-icon"></i>
+            </th>
+            <th style="width:7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Source"><i class="fas fa-satellite-dish text-muted"></i></th>
+            <th class="text-end" style="width:4rem;" title="Reports"><i class="fas fa-file-lines text-muted"></i></th>
+            <th class="text-end" style="width:3rem;" title="AI summary"><i class="fas fa-wand-magic-sparkles fa-xs" title="AI summary"></i></th>
+            <th class="text-end" style="width:8rem;" title="Actions"><i class="fas fa-gear text-muted"></i></th>
+          </tr>
+        </thead>
+        <tbody id="events-tbody">
+          {% for e in events %}
+          <tr class="event-row{% if 'workflow:state="rejected"' in e.tags %} wf-rejected-row{% endif %}{% if e.uuid in briefing_excluded_uuids %} briefing-excluded-row{% endif %}"
+              data-date="{{ e.date or '' }}"
+              data-title="{{ e.info or '' | lower }}"
+              data-search-text="{{ ((e.info or '') ~ ' ' ~ (e.galaxy_names | join(' ') if e.galaxy_names is defined else '') ~ ' ' ~ (e.req_matches | map(attribute='id') | join(' '))) | lower | e }}"
+              data-tags='{{ e.tags | tojson }}'
+              data-source-id="{{ e.source_id }}"
+              data-source-kind="{{ e.source_kind }}"
+              data-uuid="{{ e.uuid }}"
+              data-orgc="{{ e.orgc or '' }}"
+              data-has-ai-summary="{{ 1 if e.has_ai_summary else 0 }}"
+              data-report-count="{{ e.report_count }}"
+              data-has-req-match="{{ 1 if e.req_matches else 0 }}"
+              data-has-vuln="{{ 1 if e.vulnerability_ids else 0 }}"
+              data-flagged="{{ 'true' if e.uuid in flagged_uuids else 'false' }}">
+            <td>
+              <input type="checkbox" class="form-check-input event-row-cb" value="{{ e.uuid }}"
+                     data-source-id="{{ e.source_id }}">
+            </td>
+            <td class="text-muted" style="white-space:nowrap;font-size:.72rem;">{{ e.date or '-' }}</td>
+            <td style="white-space:nowrap;">
+              <a href="#" class="event-preview-link font-monospace text-muted"
+                 data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
+                 style="font-size:.7rem;">{{ e.id or '-' }}</a>
+            </td>
+            <td>
+              <a href="#" class="event-preview-link"
+                 data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}">{{ e.info or '(untitled)' }}</a>
+              {%- if 'workflow:state="rejected"' in e.tags %}
+              <i class="fas fa-ban ms-1" style="font-size:.6rem;color:#adb5bd;cursor:default;vertical-align:middle;" title="Grayed out: workflow state is rejected"></i>
+              {%- endif %}
+              {%- if e.uuid in briefing_excluded_uuids %}
+              <i class="fas fa-newspaper ms-1" style="font-size:.6rem;color:#c49a0a;cursor:default;vertical-align:middle;" title="Grayed out: title matches a daily briefing exclusion pattern — this event is skipped from automated briefings"></i>
+              {%- endif %}
+              {% set ns = namespace(
+                has_tags=false,
+                src_source_tag='', src_source_val='',
+                src_domain_tag='',  src_domain_val='',
+                adm_rel_tag='',    adm_rel_val='',
+                adm_cred_tag='',   adm_cred_val='',
+                retention_tag='',
+                workflow_tag='', workflow_val=''
+              ) %}
+              {% for t in e.tags %}
+                {% if t.startswith('scraper:data-collection-source') %}
+                  {% set ns.src_source_tag = t %}
+                  {% set ns.src_source_val = t | replace('scraper:data-collection-source=', '') | replace('scraper:data-collection-source:', '') | replace('"', '') | trim %}
+                  {% set ns.has_tags = true %}
+                {% elif t.startswith('scraper:primary-data-collection-source') %}
+                  {% set ns.src_domain_tag = t %}
+                  {% set ns.src_domain_val = t | replace('scraper:primary-data-collection-source=', '') | replace('scraper:primary-data-collection-source:', '') | replace('"', '') | trim %}
+                  {% set ns.has_tags = true %}
+                {% elif t.startswith('admiralty-scale:source-reliability') %}
+                  {% set ns.adm_rel_tag = t %}
+                  {% set ns.adm_rel_val = t | replace('admiralty-scale:source-reliability=', '') | replace('admiralty-scale:source-reliability:', '') | replace('"', '') | trim %}
+                  {% set ns.has_tags = true %}
+                {% elif t.startswith('admiralty-scale:information-credibility') %}
+                  {% set ns.adm_cred_tag = t %}
+                  {% set ns.adm_cred_val = t | replace('admiralty-scale:information-credibility=', '') | replace('admiralty-scale:information-credibility:', '') | replace('"', '') | trim %}
+                  {% set ns.has_tags = true %}
+                {% elif t.startswith('workflow:state') %}
+                  {% set ns.workflow_tag = t %}
+                  {% set ns.workflow_val = t | replace('workflow:state="', '') | replace('workflow:state=', '') | replace('"', '') | trim %}
+                  {% set ns.has_tags = true %}
+                {% elif t.startswith('retention') %}
+                  {% set ns.retention_tag = t %}
+                  {% set ns.has_tags = true %}
+                {% elif t != marker_tag %}
+                  {% set ns.has_tags = true %}
+                {% endif %}
+              {% endfor %}
+              {% if ns.has_tags %}
+              <div class="tag-cell-inner mt-1">
+                {% if ns.workflow_val %}
+                  {% if ns.workflow_val == 'draft' %}
+                    <span class="badge tag-row-badge wf-badge wf-draft" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: draft · Click to filter"><i class="fas fa-pen fa-xs me-1"></i>draft</span>
+                  {% elif ns.workflow_val == 'incomplete' %}
+                    <span class="badge tag-row-badge wf-badge wf-incomplete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: incomplete · Click to filter"><i class="fas fa-circle-exclamation fa-xs me-1"></i>incomplete</span>
+                  {% elif ns.workflow_val == 'ongoing' %}
+                    <span class="badge tag-row-badge wf-badge wf-ongoing" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: ongoing · Click to filter"><i class="fas fa-hourglass-half fa-xs me-1"></i>ongoing</span>
+                  {% elif ns.workflow_val == 'complete' %}
+                    <span class="badge tag-row-badge wf-badge wf-complete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: complete · Click to filter"><i class="fas fa-circle-check fa-xs me-1"></i>complete</span>
+                  {% elif ns.workflow_val == 'published' %}
+                    <span class="badge tag-row-badge wf-badge wf-published" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: published · Click to filter"><i class="fas fa-paper-plane fa-xs me-1"></i>published</span>
+                  {% else %}
+                    <span class="badge tag-row-badge wf-badge wf-other" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: {{ ns.workflow_val }} · Click to filter"><i class="fas fa-circle fa-xs me-1"></i>{{ ns.workflow_val }}</span>
+                  {% endif %}
+                {% endif %}
+                {% if ns.src_source_val %}{{ chip_badge(ns.src_source_tag, ns.src_source_val, VALUE_CHIP_CONFIG['scraper:data-collection-source']) }}{% endif %}
+                {% if ns.src_domain_val %}{{ chip_badge(ns.src_domain_tag, ns.src_domain_val, VALUE_CHIP_CONFIG['scraper:primary-data-collection-source']) }}{% endif %}
+                {% if ns.adm_rel_val %}{{ chip_badge(ns.adm_rel_tag, ns.adm_rel_val, VALUE_CHIP_CONFIG['admiralty-scale:source-reliability']) }}{% endif %}
+                {% if ns.adm_cred_val %}{{ chip_badge(ns.adm_cred_tag, ns.adm_cred_val, VALUE_CHIP_CONFIG['admiralty-scale:information-credibility']) }}{% endif %}
+                {% if ns.src_source_val or ns.src_domain_val or ns.retention_tag %}
+                <span class="scraper-meta-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                      title="{% set sep = namespace(v='') %}{% if ns.src_source_tag %}{{ ns.src_source_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.src_domain_tag %}{{ sep.v }}{{ ns.src_domain_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.retention_tag %}{{ sep.v }}{{ ns.retention_tag }}{% endif %}">
+                  <i class="fas fa-circle-info" style="font-size:.72rem;color:#adb5bd;cursor:default;"></i>
+                </span>
+                {% endif %}
+                {% for t in e.tags %}
+                  {% if not (t == marker_tag
+                             or t.startswith('scraper:data-collection-source')
+                             or t.startswith('scraper:primary-data-collection-source')
+                             or t.startswith('admiralty-scale:source-reliability')
+                             or t.startswith('admiralty-scale:information-credibility')
+                             or t.startswith('workflow:state')
+                             or t.startswith('retention')) %}
+                    {% if t.startswith('tlp:') %}
+                      {% set tlp_val = t[4:] | lower %}
+                      <span class="badge tag-row-badge tlp-badge tlp-{{ tlp_val | replace('+strict','') | replace('+','') }}" data-tag="{{ t }}"
+                            style="cursor:pointer;" title="Click to filter · TLP classification">TLP:{{ tlp_val | upper }}</span>
+                    {% elif t.startswith('misp-galaxy:mitre-attack-pattern=') %}
+                      {% set tval = t[33:] %}
+                      {% set tparts = tval.split(' - ', 1) %}
+                      <span class="badge tag-row-badge" data-tag="{{ t }}"
+                            style="background:#fdecea;color:#7b1a10;border:1px solid #e8b4b0;cursor:pointer;"
+                            title="{{ tval }} · Click to filter">
+                        <span style="font-family:monospace;font-weight:700;">{{ tparts[0] }}</span>{% if tparts | length > 1 %} {{ tparts[1] }}{% endif %}
+                      </span>
+                    {% elif t.startswith('misp-galaxy:threat-actor=') %}
+                      <span class="badge tag-row-badge" data-tag="{{ t }}"
+                            style="background:#fef5e3;color:#7a4f0a;border:1px solid #f5d89a;cursor:pointer;"
+                            title="{{ t[25:] }} · Click to filter">
+                        <i class="fas fa-user-secret fa-xs me-1"></i>{{ t[25:] }}
+                      </span>
+                    {% elif t.startswith('misp-galaxy:sector=') or t.startswith('misp-galaxy:country=') or t.startswith('misp-galaxy:target-information=') %}
+                      {% if t.startswith('misp-galaxy:sector=') %}
+                        {% set ctx_label = t[19:] %}{% set ctx_icon = 'fa-building' %}
+                      {% elif t.startswith('misp-galaxy:country=') %}
+                        {% set ctx_label = t[20:] %}{% set ctx_icon = 'fa-globe' %}
+                      {% else %}
+                        {% set ctx_label = t[31:] %}{% set ctx_icon = 'fa-bullseye' %}
+                      {% endif %}
+                      <span class="badge tag-row-badge" data-tag="{{ t }}"
+                            style="background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;cursor:pointer;"
+                            title="{{ ctx_label }} · Click to filter">
+                        <i class="fas {{ ctx_icon }} fa-xs me-1"></i>{{ ctx_label }}
+                      </span>
+                    {% elif t.startswith('zsazsa:product=') %}
+                      {% set product_label = t[16:-1] %}
+                      <span style="display:inline-flex;align-items:stretch;background:#7c3aed;border:1px solid #6d28d9;border-radius:.3rem;overflow:hidden;vertical-align:middle;font-size:.62rem;font-weight:600;line-height:1;">
+                        <span class="product-tag-main-btn" data-tag="{{ t }}"
+                              style="color:#fff;padding:.18rem .35rem;cursor:pointer;"
+                              title="Used for: {{ product_label }} · Click to see linked products">
+                          <i class="fas fa-box-open fa-xs me-1"></i>{{ product_label }}
+                        </span>
+                        <span class="product-tag-filter-btn" data-tag="{{ t }}"
+                              style="color:rgba(255,255,255,.65);border-left:1px solid rgba(255,255,255,.25);padding:.18rem .3rem;cursor:pointer;display:flex;align-items:center;"
+                              title="Filter: show only events used for {{ product_label }}">
+                          <i class="fas fa-filter fa-xs"></i>
+                        </span>
+                      </span>
+                    {% elif t.startswith('cti-evaluation:') %}
+                      {% set eval_raw = t[15:] %}
+                      {% set eval_parts = eval_raw.split('=', 1) %}
+                      {% set eval_pred = eval_parts[0] | replace('-', ' ') %}
+                      {% set eval_value = (eval_parts[1] if eval_parts | length > 1 else '') | replace('"', '') | lower %}
+                      {% if eval_value == 'very-high' %}
+                        {% set eval_bg = '#dcfce7' %}{% set eval_color = '#166534' %}{% set eval_border = '#86efac' %}
+                      {% elif eval_value == 'high' %}
+                        {% set eval_bg = '#ecfccb' %}{% set eval_color = '#3f6212' %}{% set eval_border = '#bef264' %}
+                      {% elif eval_value == 'moderate' %}
+                        {% set eval_bg = '#fef9c3' %}{% set eval_color = '#854d0e' %}{% set eval_border = '#fde047' %}
+                      {% elif eval_value == 'low' %}
+                        {% set eval_bg = '#ffedd5' %}{% set eval_color = '#9a3412' %}{% set eval_border = '#fdba74' %}
+                      {% else %}
+                        {% set eval_bg = '#fee2e2' %}{% set eval_color = '#991b1b' %}{% set eval_border = '#fca5a5' %}
+                      {% endif %}
+                      <span class="badge tag-row-badge" data-tag="{{ t }}"
+                            style="background:{{ eval_bg }};color:{{ eval_color }};border:1px solid {{ eval_border }};cursor:pointer;"
+                            title="CTI evaluation · {{ eval_pred | title }}: {{ eval_value | replace('-', ' ') | title }} · Click to filter">
+                        <i class="fas fa-microscope fa-xs me-1"></i>{{ eval_pred | title }}: {{ eval_value | replace('-', ' ') | title }}
+                      </span>
+                    {% else %}
+                      <span class="badge tag-row-badge" data-tag="{{ t }}"
+                            style="background:#eef2f7;color:#455a7a;cursor:pointer;"
+                            title="{{ t }} · Click to filter">{{ t }}</span>
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if e.vulnerability_ids or e.req_matches %}
+              <div class="req-match-badges mt-1">
+                {% if e.vulnerability_ids %}
+                <span class="badge me-1"
+                      style="font-size:.68rem;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;"
+                      data-bs-toggle="tooltip" data-bs-placement="top"
+                      title="{{ e.vulnerability_ids | join(', ') }}">
+                  <i class="fas fa-shield-halved fa-xs me-1"></i>Vuln advisory
+                </span>
+                {% endif %}
+                {% for m in e.req_matches %}
+                {% set _is_pir = m.type == 'pir' %}
+                <a href="{{ url_for('requirements.pir_detail', id=m.uuid) if _is_pir else url_for('requirements.gir_detail', id=m.uuid) }}"
+                   class="badge me-1 text-decoration-none"
+                   target="_blank" rel="noopener"
+                   style="font-size:.68rem;{% if _is_pir %}background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;{% else %}background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;{% endif %}"
+                   data-bs-toggle="tooltip" data-bs-placement="top"
+                   title="{{ m.label | truncate(90) }}{% if m.matched_terms %} · {{ m.matched_terms | join(', ') }}{% endif %}">
+                  <i class="fas {% if _is_pir %}fa-crosshairs{% else %}fa-compass{% endif %} fa-xs me-1"></i>{{ m.id }}
+                </a>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </td>
+            <td class="text-muted small" style="white-space:nowrap;">{{ e.orgc or '-' }}</td>
+            <td class="text-muted small" style="white-space:nowrap;">
+              {% if e.source_kind == 'scraper' %}<i class="fas fa-spider me-1"></i>
+              {% else %}<i class="fas fa-server me-1"></i>{% endif %}
+              {{ e.source_label or '-' }}
+            </td>
+            <td class="text-end">{{ e.report_count }}</td>
+            <td class="text-end ai-summary-cell">
+              {% if e.has_ai_summary %}
+              <i class="fas fa-wand-magic-sparkles text-success ai-summary-icon"
+                 style="font-size:.8rem;" title="AI summary available"></i>
+              {% endif %}
+            </td>
+            <td class="text-end" style="white-space:nowrap;">
+              <div class="d-inline-flex gap-1 justify-content-end align-items-center">
+                {% set _flagged = e.uuid in flagged_uuids %}
+                <button class="btn btn-xs {{ 'btn-warning' if _flagged else 'btn-outline-warning' }} flag-review-btn"
+                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
+                        data-flagged="{{ 'true' if _flagged else 'false' }}"
+                        title="{{ 'Remove follow-up flag' if _flagged else 'Flag for follow-up review' }}">
+                  <i class="fas fa-flag"></i>
+                </button>
+                <button class="btn btn-xs btn-outline-primary cti-eval-btn"
+                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
+                        data-title="{{ e.info or '(untitled)' }}"
+                        title="Apply CTI evaluation tags to MISP">
+                  <i class="fas fa-microscope fa-xs"></i>
+                </button>
+                {% if e.source_kind == 'scraper' and not e.has_ai_summary %}
+                <button class="btn btn-xs btn-outline-secondary create-summary-btn"
+                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
+                        title="Generate LLM summary from first MISP report">
+                  <i class="fas fa-wand-magic-sparkles"></i>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state py-5 text-center">
+      <i class="fas fa-database text-muted d-block mb-2 fa-2x"></i>
+      <p class="text-muted mb-0">No events in cache yet. Click <strong>Refresh cache</strong> above to populate.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="load-more-container" class="text-center mt-3" style="display:none;">
+  <button type="button" class="btn btn-outline-secondary" id="load-more-btn">
+    <i class="fas fa-chevron-down me-1"></i>Load next 100
+  </button>
+  <div class="text-muted small mt-1" id="load-more-hint"></div>
+</div>
+<button type="button" class="btn btn-sm btn-secondary" id="go-to-top-btn" title="Back to top">
+  <i class="fas fa-arrow-up me-1"></i>Top
+</button>
+
+{# CTI Evaluation tagging modal #}
+<div class="modal fade" id="cti-eval-modal" tabindex="-1" aria-labelledby="cti-eval-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="overflow-hidden pe-3">
+          <h5 class="modal-title mb-0" id="cti-eval-modal-label">
+            <i class="fas fa-microscope me-2 text-primary"></i>CTI Evaluation
+          </h5>
+          <p class="small text-muted mb-0 mt-1 text-truncate" id="cti-eval-event-name"></p>
+        </div>
+        <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Rate this intelligence using the CTI Evaluation taxonomy. Tags are applied directly to the source MISP event and will sync. Leave any predicate at <em>Not set</em> to skip it.
+        </p>
+        <div class="row g-2">
+          <div class="col-md-6">
+            {% for pred, label, desc in [
+              ('overall-score', 'Overall Score', 'Composite quality rating across all dimensions'),
+              ('accuracy', 'Accuracy', 'Factual correctness, absence of errors'),
+              ('clarity', 'Clarity', 'Readability and ease of understanding'),
+              ('specificity', 'Specificity', 'Technical detail and actionable depth'),
+              ('relevance', 'Relevance', 'Alignment with your threat landscape'),
+              ('timeliness', 'Timeliness', 'Currency and actionability')
+            ] %}
+            <div class="cti-pred-row">
+              <div class="cti-pred-label">
+                <span class="fw-semibold small">{{ label }}</span>
+                <span class="text-muted cti-pred-desc">{{ desc }}</span>
+              </div>
+              <select class="form-select form-select-sm cti-eval-select" data-predicate="{{ pred }}">
+                <option value="">Not set</option>
+                <option value="very-low">Very Low</option>
+                <option value="low">Low</option>
+                <option value="moderate">Moderate</option>
+                <option value="high">High</option>
+                <option value="very-high">Very High</option>
+              </select>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="col-md-6">
+            {% for pred, label, desc in [
+              ('usefulness', 'Usefulness', 'Practical operational value'),
+              ('confidence', 'Confidence', 'Analytical confidence in the assessment'),
+              ('source-reliability', 'Source Reliability', 'Trustworthiness of the originating source'),
+              ('evidence-strength', 'Evidence Strength', 'Quality of evidence supporting claims'),
+              ('format-validity', 'Format Validity', 'Structural correctness of the MISP data'),
+              ('conversion-fidelity', 'Conversion Fidelity', 'Accuracy of data transformation from source')
+            ] %}
+            <div class="cti-pred-row">
+              <div class="cti-pred-label">
+                <span class="fw-semibold small">{{ label }}</span>
+                <span class="text-muted cti-pred-desc">{{ desc }}</span>
+              </div>
+              <select class="form-select form-select-sm cti-eval-select" data-predicate="{{ pred }}">
+                <option value="">Not set</option>
+                <option value="very-low">Very Low</option>
+                <option value="low">Low</option>
+                <option value="moderate">Moderate</option>
+                <option value="high">High</option>
+                <option value="very-high">Very High</option>
+              </select>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div id="cti-eval-feedback" class="mt-3 d-none">
+          <div id="cti-eval-ok" class="alert alert-success py-2 small d-none mb-0"></div>
+          <div id="cti-eval-err" class="alert alert-danger py-2 small d-none mb-0"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="cti-eval-submit-btn">
+          <i class="fas fa-tag me-1"></i>Apply tags to MISP
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="used-in-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-box-open me-2"></i>Used in products</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="used-in-modal-body">
+        <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>

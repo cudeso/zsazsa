@@ -46,6 +46,7 @@ def _form_data(form, fia_id=""):
         "information_credibility": form.get("information_credibility", ""),
         "likely_impact": form.get("likely_impact", ""),
         "affected_assets": form.get("affected_assets", ""),
+        "actor_types": form.getlist("actor_types"),
         "actor_context": form.get("actor_context", ""),
         "geographic_scope": form.getlist("geographic_scope"),
         "sectors": form.getlist("sectors"),
@@ -82,6 +83,7 @@ def _wizard_context(fia=None, source_events=None):
         "geo_items": misp_store.galaxy_geography(),
         "sector_items": misp_store.galaxy_sectors(),
         "threat_actor_items": misp_store.galaxy_threat_actors(),
+        "threat_actor_types": getattr(_cfg, "THREAT_ACTOR_TYPES", []),
         "action_presets_immediate": getattr(_cfg, "RECOMMENDED_ACTIONS_IMMEDIATE", []),
         "action_presets_near_term": getattr(_cfg, "RECOMMENDED_ACTIONS_NEAR_TERM", []),
         "pirs": misp_store.list_pirs(),
@@ -105,7 +107,7 @@ def _seed_from_sources(source_uuids, source_hints=None):
         summary="", action_required="",
         what_happened=[], source_description=", ".join(labels),
         source_reliability="", information_credibility="",
-        likely_impact="", affected_assets="", actor_context="",
+        likely_impact="", affected_assets="", actor_types=[], actor_context="",
         geographic_scope=[], sectors=[], threat_actors=[],
         threat_types=[], technology=[], vendor=[], incident=[], campaign=[],
         actions_immediate=[], actions_near_term=[],
@@ -330,15 +332,13 @@ def resend(id):
         flash("Only published alerts can be resent.", "warning")
         return redirect(url_for("flash_intel.review"))
     try:
+        from types import SimpleNamespace
         from notifier import mattermost
 
         stakeholders = _eligible_flash_recipients(fia)
-        sent_ok = mattermost.send_product_published(
-            "Flash intel alert",
-            fia.fia_id,
-            fia.title or "Flash intel alert",
-            stakeholders,
-        )
+        content = misp_store.render_fia_markdown(fia, fia.fia_id)
+        shim = SimpleNamespace(id=id, info=f"[zsazsa:fia] {fia.title or 'Untitled'}")
+        sent_ok = mattermost.send_flash_intel_alert(shim, fia.fia_id, content)
         audit.record(
             "notify",
             "fia",

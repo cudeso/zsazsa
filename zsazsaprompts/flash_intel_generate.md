@@ -7,8 +7,25 @@ A Flash Intel Alert is operational intelligence requiring immediate attention. W
 - Recommended actions must be specific and executable, not generic advice.
 - Reference MITRE ATT&CK techniques (Txxxx) where they are clearly identifiable from the article.
 - Do not fabricate information not present in the source article. Leave sections blank rather than invent content.
+- Never output "n/a", "N/A", "none", "not applicable", or any equivalent placeholder. If a field has no value, leave it completely blank or omit the line.
 - Set the author to "zsazsa-cti (automated)".
 - Use "FIA-#####" as the ID placeholder exactly as shown; it will be substituted after creation.
+
+For the Scope section, extract or infer every field the article supports:
+- Geographic scope: countries, regions, or continents mentioned or clearly implied as targets or origins.
+- Sectors: industry sectors named or clearly implied as targets (e.g. Energy, Finance, Healthcare).
+- Threat types: the nature of the threat (e.g. ransomware, phishing, supply chain, DDoS, credential theft).
+- Technology: specific platforms, operating systems, or software products named in the article.
+- Vendor: specific vendor names mentioned as the maker of a vulnerable or targeted product.
+- Incident: a named incident or breach identifier if the article describes one specific real-world incident.
+- Campaign: a named campaign or operation if the article describes a tracked threat campaign.
+Use comma-separated values for each field. Leave a field blank if the article gives no basis for it.
+
+For the Threat actor types field:
+- Review the list of available threat actor types provided in your system context.
+- Select the type(s) that best describe the actor behind this threat based on the article content.
+- Use the exact type names from the list, comma-separated.
+- If no actor type is clearly identifiable from the article, leave blank.
 
 Produce the report using this template, replacing all placeholders:
 
@@ -38,9 +55,9 @@ We assess with <high | moderate | low> confidence that <event or threat> is <imm
 - <Observed fact in Markdown>
 
 **Source:** <publication or author from the article>
-**Source reliability:** <single letter A-F only, e.g. C - A is completely reliable, F is reliability unknown>
-**Information credibility:** <single digit 1-6 only, e.g. 3 - 1 is confirmed by other sources, 6 is truth cannot be judged>
-**Information credibility justification:** <one sentence explaining why this score was assigned - e.g. corroboration status, single-source, vendor advisory, etc.>
+**Source reliability:** <single letter A-F only, e.g. C — A is completely reliable, F is reliability unknown>
+**Information credibility:** <single digit 1-6 only, e.g. 3 — 1 is confirmed by other sources, 6 is truth cannot be judged>
+**Information credibility justification:** <one sentence explaining why this score was assigned>
 
 ---
 
@@ -48,7 +65,20 @@ We assess with <high | moderate | low> confidence that <event or threat> is <imm
 
 - **Likely impact:** <availability, data loss, espionage, financial, reputational, etc.>
 - **Affected assets:** <systems, technologies, or sectors>
-- **Threat actor context:** <if a threat actor is identified in the article, brief description>
+- **Threat actor types:** <select from the available types in your system context, comma-separated, or leave blank>
+- **Threat actor context:** <if a threat actor is identified in the article, brief description of their motivation or capability>
+
+---
+
+## Scope
+
+- **Geographic scope:** <comma-separated countries, regions, or continents — only what the article mentions or strongly implies>
+- **Sectors:** <comma-separated industry sectors targeted or affected>
+- **Threat types:** <comma-separated, e.g. ransomware, phishing, supply chain>
+- **Technology:** <comma-separated specific platforms, OSes, or software named>
+- **Vendor:** <comma-separated vendor names, or leave blank>
+- **Incident:** <named incident or breach identifier, or leave blank>
+- **Campaign:** <named campaign or operation, or leave blank>
 
 ---
 
@@ -67,10 +97,10 @@ We assess with <high | moderate | low> confidence that <event or threat> is <imm
 ## Detection guidance
 
 **Relevant MITRE ATT&CK techniques:**
-- <Txxxx: Technique name - only include if clearly identifiable from the article>
+- <Txxxx: Technique name — only include if clearly identifiable from the article>
 
 **Hunting hypotheses:**
-- <Log source: what to search for - only include if the article provides sufficient detail>
+- <Log source: what to search for — only include if the article provides sufficient detail>
 
 ---
 

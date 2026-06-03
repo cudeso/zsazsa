@@ -66,6 +66,7 @@
   <ul>
     {% if fia.likely_impact %}<li><strong>Likely impact:</strong> {{ fia.likely_impact }}</li>{% endif %}
     {% if fia.affected_assets %}<li><strong>Affected assets:</strong> {{ fia.affected_assets }}</li>{% endif %}
+    {% if fia.actor_types %}<li><strong>Threat actor type:</strong> {{ fia.actor_types | join(', ') }}</li>{% endif %}
     {% if fia.actor_context %}<li><strong>Actor context:</strong> {{ fia.actor_context }}</li>{% endif %}
     {% if fia.geographic_scope %}<li><strong>Geography:</strong> {{ fia.geographic_scope | join(', ') }}</li>{% endif %}
     {% if fia.sectors %}<li><strong>Sectors:</strong> {{ fia.sectors | join(', ') }}</li>{% endif %}
