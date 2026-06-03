@@ -228,12 +228,16 @@
                     <span class="text-muted">No attribution data</span>
                     {% endif %}
                   </div>
-                  {% if f.external_references %}
+                  {% if f.external_references or f.source_event_uuids %}
                   <div class="border rounded p-2" style="font-size:.8rem;background:#fff;">
                     <div class="fw-semibold small mb-1">References</div>
                     <ul class="mb-0 ps-3">
                       {% for r in f.external_references %}
                       <li><a href="{{ r }}" target="_blank" rel="noopener noreferrer" style="word-break:break-all;font-size:.78rem;">{{ r }}</a></li>
+                      {% endfor %}
+                      {% for uid in f.source_event_uuids %}
+                      {% set event_url = misp_webapp_url.rstrip('/') ~ '/events/view/' ~ uid %}
+                      <li><a href="{{ event_url }}" target="_blank" rel="noopener noreferrer" style="word-break:break-all;font-size:.78rem;">{{ event_url }}</a></li>
                       {% endfor %}
                     </ul>
                   </div>

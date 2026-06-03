@@ -12,13 +12,27 @@ import os
 from flask import Blueprint, flash, redirect, render_template, request, url_for, Response
 
 from webapp import audit, misp_store
+from webapp.routes.source_event_utils import (
+    lookup_source_event_meta,
+    normalise_source_event_rows,
+    parse_source_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("flash_intel", __name__, url_prefix="/products/flash-intel")
 
 
+@bp.route("/source-event-meta")
+def source_event_meta():
+    return lookup_source_event_meta(request.args)
+
+
 def _form_data(form, fia_id=""):
+    source_event_refs = form.getlist("source_event_url_item") or form.getlist("source_event_uuid_item")
+    source_event_servers = form.getlist("source_event_server_item")
+    source_event_uuids, source_event_hints = normalise_source_event_rows(source_event_refs, source_event_servers)
+
     return {
         "fia_id": fia_id,
         "title": form.get("title", "").strip(),
@@ -49,7 +63,8 @@ def _form_data(form, fia_id=""):
                                  if r.strip() and r.strip().startswith(("http://", "https://"))],
         "feedback_deadline": form.get("feedback_deadline") or "",
         "author": form.get("author", ""),
-        "source_event_uuids": [u.strip() for u in form.getlist("source_event_uuid_item") if u.strip()],
+        "source_event_uuids": source_event_uuids,
+        "source_event_hints": source_event_hints,
         "context_tags": form.getlist("context_tags"),
         "linked_pir_uuid": form.get("linked_pir_uuid", ""),
         "review_state": form.get("review_state", misp_store.FIA_REVIEW_DRAFT),
@@ -74,12 +89,13 @@ def _wizard_context(fia=None, source_events=None):
     }
 
 
-def _seed_from_sources(source_uuids):
+def _seed_from_sources(source_uuids, source_hints=None):
     """Build a partial FIA seed from one or more source event UUIDs."""
     from types import SimpleNamespace
     if not source_uuids:
         return None, []
-    source_events = misp_store.fetch_source_events(source_uuids)
+    source_hints = source_hints or {}
+    source_events = misp_store.fetch_source_events(source_uuids, source_hints, strict_source=bool(source_hints))
     title = source_events[0]["info"] if source_events else ""
     labels = list(dict.fromkeys(ev["source_label"] for ev in source_events if ev.get("source_label")))
     seed = SimpleNamespace(
@@ -96,6 +112,7 @@ def _seed_from_sources(source_uuids):
         mitre_techniques=[], hunting_hypotheses=[],
         external_references=[], feedback_deadline=None,
         author="", source_event_uuids=source_uuids,
+        source_event_hints=source_hints,
         source_event_uuid=source_uuids[0] if source_uuids else "",
         review_state=misp_store.FIA_REVIEW_DRAFT,
         rejection_reason="", context_tags=[], linked_pir_uuid="",
@@ -155,11 +172,21 @@ def review():
 @bp.route("/new", methods=["GET", "POST"])
 def wizard_new():
     if request.method == "POST":
+        if request.form.get("prefill_only") == "1":
+            source_uuids, source_hints, _ = parse_source_tokens(request.form.getlist("source"))
+            seed, source_events = _seed_from_sources(source_uuids, source_hints)
+            return render_template("flash_intel/wizard.html", is_edit=False,
+                                   source_events=source_events, **_wizard_context(seed, source_events))
+
         data = _form_data(request.form)
+        source_hints = data.get("source_event_hints") or {}
+        source_events = misp_store.fetch_source_events(
+            data.get("source_event_uuids") or [], source_hints, strict_source=bool(source_hints)
+        )
         if not data["title"]:
             flash("Title is required.", "warning")
             return render_template("flash_intel/wizard.html", is_edit=False,
-                                   source_events=[], **_wizard_context())
+                                   source_events=source_events, **_wizard_context(data, source_events))
         action = request.form.get("action", "save")
         data["review_state"] = (misp_store.FIA_REVIEW_PENDING
                                 if action == "submit" else misp_store.FIA_REVIEW_DRAFT)
@@ -171,8 +198,8 @@ def wizard_new():
             return redirect(url_for("flash_intel.detail", id=uuid))
         except Exception as exc:
             flash(f"Could not create FIA: {exc}", "warning")
-    source_uuids = [u.strip() for u in request.args.getlist("source") if u.strip()]
-    seed, source_events = _seed_from_sources(source_uuids)
+    source_uuids, source_hints, _ = parse_source_tokens(request.args.getlist("source"))
+    seed, source_events = _seed_from_sources(source_uuids, source_hints)
     return render_template("flash_intel/wizard.html", is_edit=False,
                            source_events=source_events, **_wizard_context(seed, source_events))
 
@@ -201,6 +228,10 @@ def wizard_edit(id):
         return "FIA not found", 404
     if request.method == "POST":
         data = _form_data(request.form, fia_id=fia.fia_id)
+        source_hints = data.get("source_event_hints") or {}
+        source_events = misp_store.fetch_source_events(
+            data.get("source_event_uuids") or [], source_hints, strict_source=bool(source_hints)
+        )
         action = request.form.get("action", "save")
         if action == "submit":
             data["review_state"] = misp_store.FIA_REVIEW_PENDING
@@ -229,8 +260,13 @@ def wizard_edit(id):
             return redirect(url_for("flash_intel.detail", id=id))
         except Exception as exc:
             flash(f"Could not update FIA: {exc}", "warning")
+            return render_template("flash_intel/wizard.html", is_edit=True,
+                                   source_events=source_events, **_wizard_context(data, source_events))
+    source_uuids = list(getattr(fia, "source_event_uuids", []) or [])
+    source_hints = dict(getattr(fia, "source_event_hints", {}) or {})
+    source_events = misp_store.fetch_source_events(source_uuids, source_hints, strict_source=bool(source_hints))
     return render_template("flash_intel/wizard.html", is_edit=True,
-                           source_events=[], **_wizard_context(fia, []))
+                           source_events=source_events, **_wizard_context(fia, source_events))
 
 
 @bp.route("/<string:id>/approve", methods=["POST"])
@@ -345,11 +381,22 @@ def pdf(id):
     fia = misp_store.get_fia(id)
     if fia is None:
         return "FIA not found", 404
+    source_uuids = list(getattr(fia, "source_event_uuids", []) or [])
+    source_hints = dict(getattr(fia, "source_event_hints", {}) or {})
+    source_events = misp_store.fetch_source_events(source_uuids, source_hints, strict_source=bool(source_hints))
+    resolved_uuids = {str(ev.get("uuid", "")).lower() for ev in source_events if ev.get("uuid")}
+    unresolved_source_uuids = [u for u in source_uuids if str(u).lower() not in resolved_uuids]
     css_path = os.path.join(
         os.path.dirname(__file__), "..", "static", "css", "fia_pdf.css"
     )
     css_url = "file://" + os.path.abspath(css_path)
-    html = render_template("flash_intel/pdf.html", fia=fia, css_url=css_url)
+    html = render_template(
+        "flash_intel/pdf.html",
+        fia=fia,
+        css_url=css_url,
+        source_events=source_events,
+        unresolved_source_uuids=unresolved_source_uuids,
+    )
     try:
         import weasyprint
         pdf_bytes = weasyprint.HTML(string=html).write_pdf()

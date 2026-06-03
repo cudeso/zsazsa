@@ -11,7 +11,7 @@
   </button>
   <ul class="dropdown-menu dropdown-menu-end">
     <li>
-      <a class="dropdown-item" href="{{ url_for('flash_intel.wizard_new', source=event.uuid) }}">
+      <a class="dropdown-item" href="{{ url_for('flash_intel.wizard_new', source=(event.uuid ~ '|' ~ source_id) if source_id else event.uuid) }}">
         <i class="fas fa-bolt me-2"></i>Flash intel
       </a>
     </li>
@@ -21,7 +21,7 @@
       </a>
     </li>
     <li>
-      <a class="dropdown-item" href="{{ url_for('vea.wizard_new', source=event.uuid) }}">
+      <a class="dropdown-item" href="{{ url_for('vea.wizard_new', source=(event.uuid ~ '|' ~ source_id) if source_id else event.uuid) }}">
         <i class="fas fa-shield-halved me-2"></i>Vuln advisories
       </a>
     </li>

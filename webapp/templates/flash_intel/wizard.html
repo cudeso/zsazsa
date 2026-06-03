@@ -366,21 +366,52 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Source MISP event UUIDs <span class="text-muted small">(optional)</span></label>
+          <label class="form-label">Source MISP events</label>
           <div id="uuid-list">
             {% for u in (fia.source_event_uuids if fia else []) %}
+            {% set meta = (source_events | selectattr('uuid', 'equalto', u) | list | first) %}
+            {% set hinted_source = (fia.source_event_hints.get(u) if fia and fia.source_event_hints else '') %}
+            {% set event_base = ((meta.source_url if meta and meta.source_url else misp_webapp_url) or '') %}
+            {% set event_url = event_base.rstrip('/') ~ '/events/view/' ~ u %}
             <div class="uuid-row d-flex gap-2 mb-2">
-              <input type="text" name="source_event_uuid_item" class="form-control form-control-sm font-monospace"
-                     placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="{{ u }}">
-              <button type="button" class="btn btn-sm btn-outline-danger uuid-remove">
-                <i class="fas fa-minus"></i>
-              </button>
+              <div class="flex-grow-1">
+                <div class="d-flex gap-2">
+                  <input type="text" name="source_event_url_item" class="form-control form-control-sm font-monospace source-uuid-input"
+                         placeholder="https://misp.example/events/view/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="{{ event_url }}">
+                  <button type="button" class="btn btn-sm btn-outline-secondary uuid-server-toggle" title="Add server hint for this UUID">
+                    <i class="fas fa-server"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger uuid-remove">
+                    <i class="fas fa-minus"></i>
+                  </button>
+                </div>
+                <div class="mt-1 source-server-wrap" style="display:{{ '' if (hinted_source or (meta and meta.source_id)) else 'none' }};">
+                  <input type="text" name="source_event_server_item" class="form-control form-control-sm font-monospace source-server-input"
+                         placeholder="Server ID (optional), e.g. scraper"
+                         value="{{ hinted_source or (meta.source_id if meta else '') }}">
+                </div>
+                {% if meta %}
+                <div class="small text-muted mt-1 uuid-meta" style="line-height:1.45;">
+                  <div>
+                    <strong>Source:</strong> {{ meta.source_label or 'Unknown MISP source' }}<br>
+                    <strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">{{ meta.info or '(untitled event)' }}</span>
+                    <strong>Creator org:</strong> {{ meta.orgc or '-' }}
+                    <strong>Date:</strong> {{ meta.date or '-' }}
+                  </div>
+                </div>
+                {% else %}
+                <div class="small text-muted mt-1 uuid-meta">
+                  Event details unavailable for this UUID.
+                </div>
+                {% endif %}
+              </div>
             </div>
             {% endfor %}
           </div>
           <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="uuid-add">
-            <i class="fas fa-plus me-1"></i>Add UUID
+            <i class="fas fa-plus me-1"></i>Add MISP event
           </button>
+          <div class="form-text">Paste full MISP event URLs, for example https://misp.example/events/view/7f424591-c637-451b-9208-a241bf89a27e</div>
         </div>
 
         {% set saved_ctx_tags = (fia.context_tags if fia else []) %}
@@ -552,14 +583,117 @@
     if (btn) btn.closest('.ref-row').remove();
   });
 
-  // Dynamic source UUID rows
+  // Dynamic source MISP event rows
   var uuidList = document.getElementById('uuid-list');
+
+  function renderUuidMeta(row, meta, notFound) {
+    if (!row) return;
+    var box = row.querySelector('.uuid-meta');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'small text-muted mt-1 uuid-meta';
+      var holder = row.querySelector('.flex-grow-1');
+      if (holder) holder.appendChild(box);
+    }
+    if (notFound) {
+      box.textContent = 'Event details unavailable for this UUID.';
+      return;
+    }
+    var sourceText = meta.source_label || 'Unknown MISP source';
+    var titleText = meta.info || '(untitled event)';
+    box.innerHTML = ''
+      + '<div><strong>Source:</strong> ' + sourceText + '<br>'
+      + '<strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">' + titleText + '</span> '
+      + '<strong>Creator org:</strong> ' + (meta.orgc || '-') + ' '
+      + '<strong>Date:</strong> ' + (meta.date || '-') + '</div>';
+    var serverInput = row.querySelector('.source-server-input');
+    if (serverInput && meta.source_id) {
+      serverInput.value = meta.source_id;
+    }
+  }
+
+  function lookupUuidMeta(input) {
+    if (!input) return;
+    var eventRef = (input.value || '').trim();
+    var row = input.closest('.uuid-row');
+    if (!row) return;
+    var serverInput = row.querySelector('.source-server-input');
+    var serverId = serverInput ? (serverInput.value || '').trim() : '';
+    if (!eventRef) {
+      var emptyBox = row.querySelector('.uuid-meta');
+      if (emptyBox) emptyBox.textContent = '';
+      return;
+    }
+    var url = '/products/flash-intel/source-event-meta?event=' + encodeURIComponent(eventRef);
+    if (serverId) {
+      url += '&server=' + encodeURIComponent(serverId);
+    }
+    fetch(url)
+      .then(function(r) {
+        if (!r.ok) throw new Error('not-found');
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data || !data.ok) {
+          renderUuidMeta(row, null, true);
+          return;
+        }
+        renderUuidMeta(row, data, false);
+      })
+      .catch(function() {
+        renderUuidMeta(row, null, true);
+      });
+  }
+
+  function bindUuidInput(input) {
+    if (!input) return;
+    input.addEventListener('change', function() { lookupUuidMeta(input); });
+    input.addEventListener('blur', function() { lookupUuidMeta(input); });
+    input.addEventListener('click', function() {
+      var row = input.closest('.uuid-row');
+      var wrap = row ? row.querySelector('.source-server-wrap') : null;
+      if (wrap) wrap.style.display = '';
+    });
+    var row = input.closest('.uuid-row');
+    if (!row) return;
+    var serverToggle = row.querySelector('.uuid-server-toggle');
+    var serverWrap = row.querySelector('.source-server-wrap');
+    var serverInput = row.querySelector('.source-server-input');
+    if (serverToggle && serverWrap) {
+      serverToggle.addEventListener('click', function() {
+        var isHidden = serverWrap.style.display === 'none';
+        serverWrap.style.display = isHidden ? '' : 'none';
+        if (isHidden && serverInput) serverInput.focus();
+      });
+    }
+    if (serverInput) {
+      serverInput.addEventListener('change', function() { lookupUuidMeta(input); });
+      serverInput.addEventListener('blur', function() { lookupUuidMeta(input); });
+    }
+  }
+
+  uuidList.querySelectorAll('.source-uuid-input').forEach(bindUuidInput);
+  // Hydrate metadata for prefilled source events.
+  uuidList.querySelectorAll('.source-uuid-input').forEach(function(inp) {
+    if ((inp.value || '').trim()) lookupUuidMeta(inp);
+  });
+
   document.getElementById('uuid-add').addEventListener('click', function() {
     var row = document.createElement('div');
     row.className = 'uuid-row d-flex gap-2 mb-2';
-    row.innerHTML = '<input type="text" name="source_event_uuid_item" class="form-control form-control-sm font-monospace" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">'
-      + '<button type="button" class="btn btn-sm btn-outline-danger uuid-remove"><i class="fas fa-minus"></i></button>';
+    row.innerHTML = '<div class="flex-grow-1">'
+      + '<div class="d-flex gap-2">'
+      + '<input type="text" name="source_event_url_item" class="form-control form-control-sm font-monospace source-uuid-input" placeholder="https://misp.example/events/view/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">'
+      + '<button type="button" class="btn btn-sm btn-outline-secondary uuid-server-toggle" title="Add server hint for this UUID"><i class="fas fa-server"></i></button>'
+      + '<button type="button" class="btn btn-sm btn-outline-danger uuid-remove"><i class="fas fa-minus"></i></button>'
+      + '</div>'
+      + '<div class="mt-1 source-server-wrap" style="display:none;">'
+      + '<input type="text" name="source_event_server_item" class="form-control form-control-sm font-monospace source-server-input" placeholder="Server ID (optional), e.g. scraper">'
+      + '</div>'
+      + '<div class="small text-muted mt-1 uuid-meta"></div>'
+      + '</div>';
     uuidList.appendChild(row);
+    bindUuidInput(row.querySelector('.source-uuid-input'));
   });
   uuidList.addEventListener('click', function(e) {
     var btn = e.target.closest('.uuid-remove');

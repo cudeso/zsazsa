@@ -386,9 +386,51 @@
         {% endif %}
 
         <div>
-          <label class="form-label">Source MISP event UUID <span class="text-muted small">(optional)</span></label>
-          <input name="source_event_uuid" class="form-control font-monospace"
-                 value="{{ vea.source_event_uuid if vea else '' }}">
+          <label class="form-label">Source MISP events</label>
+          {% set existing_source_uuids = (vea.source_event_uuids if vea and vea.source_event_uuids else ([vea.source_event_uuid] if vea and vea.source_event_uuid else [])) %}
+          <div id="vea-uuid-list">
+            {% for u in existing_source_uuids %}
+            {% set meta = (source_events | selectattr('uuid', 'equalto', u) | list | first) %}
+            {% set hinted_source = (vea.source_event_hints.get(u) if vea and vea.source_event_hints else '') %}
+            {% set event_base = ((meta.source_url if meta and meta.source_url else misp_webapp_url) or '') %}
+            {% set event_url = event_base.rstrip('/') ~ '/events/view/' ~ u %}
+            <div class="vea-uuid-row d-flex gap-2 mb-2">
+              <div class="flex-grow-1">
+                <div class="d-flex gap-2">
+                  <input type="text" name="source_event_url_item" class="form-control form-control-sm font-monospace vea-source-uuid-input"
+                         placeholder="https://misp.example/events/view/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="{{ event_url }}">
+                  <button type="button" class="btn btn-sm btn-outline-secondary vea-uuid-server-toggle" title="Add server hint for this UUID">
+                    <i class="fas fa-server"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger vea-uuid-remove">
+                    <i class="fas fa-minus"></i>
+                  </button>
+                </div>
+                <div class="mt-1 vea-source-server-wrap" style="display:{{ '' if (hinted_source or (meta and meta.source_id)) else 'none' }};">
+                  <input type="text" name="source_event_server_item" class="form-control form-control-sm font-monospace vea-source-server-input"
+                         placeholder="Server ID (optional), e.g. scraper"
+                         value="{{ hinted_source or (meta.source_id if meta else '') }}">
+                </div>
+                {% if meta %}
+                <div class="small text-muted mt-1 vea-uuid-meta" style="line-height:1.45;">
+                  <div>
+                    <strong>Source:</strong> {{ meta.source_label or 'Unknown MISP source' }}<br>
+                    <strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">{{ meta.info or '(untitled event)' }}</span>
+                    <strong>Creator org:</strong> {{ meta.orgc or '-' }}
+                    <strong>Date:</strong> {{ meta.date or '-' }}
+                  </div>
+                </div>
+                {% else %}
+                <div class="small text-muted mt-1 vea-uuid-meta">Event details unavailable for this UUID.</div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="vea-uuid-add">
+            <i class="fas fa-plus me-1"></i>Add MISP event
+          </button>
+          <div class="form-text">Paste full MISP event URLs, for example https://misp.example/events/view/7f424591-c637-451b-9208-a241bf89a27e</div>
         </div>
       </div>
     </div>
@@ -549,6 +591,126 @@
       ta.value = cur ? cur + '\n' + btn.dataset.text : btn.dataset.text;
     });
   });
+
+  // Dynamic source MISP event rows
+  var veaUuidList = document.getElementById('vea-uuid-list');
+
+  function renderVeaUuidMeta(row, meta, notFound) {
+    if (!row) return;
+    var box = row.querySelector('.vea-uuid-meta');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'small text-muted mt-1 vea-uuid-meta';
+      var holder = row.querySelector('.flex-grow-1');
+      if (holder) holder.appendChild(box);
+    }
+    if (notFound) {
+      box.textContent = 'Event details unavailable for this UUID.';
+      return;
+    }
+    var sourceText = meta.source_label || 'Unknown MISP source';
+    var titleText = meta.info || '(untitled event)';
+    box.innerHTML = ''
+      + '<div><strong>Source:</strong> ' + sourceText + '<br>'
+      + '<strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">' + titleText + '</span> '
+      + '<strong>Creator org:</strong> ' + (meta.orgc || '-') + ' '
+      + '<strong>Date:</strong> ' + (meta.date || '-') + '</div>';
+    var serverInput = row.querySelector('.vea-source-server-input');
+    if (serverInput && meta.source_id) {
+      serverInput.value = meta.source_id;
+    }
+  }
+
+  function lookupVeaUuidMeta(input) {
+    if (!input) return;
+    var eventRef = (input.value || '').trim();
+    var row = input.closest('.vea-uuid-row');
+    if (!row) return;
+    var serverInput = row.querySelector('.vea-source-server-input');
+    var serverId = serverInput ? (serverInput.value || '').trim() : '';
+    if (!eventRef) {
+      var emptyBox = row.querySelector('.vea-uuid-meta');
+      if (emptyBox) emptyBox.textContent = '';
+      return;
+    }
+    var url = '/products/vea/source-event-meta?event=' + encodeURIComponent(eventRef);
+    if (serverId) {
+      url += '&server=' + encodeURIComponent(serverId);
+    }
+    fetch(url)
+      .then(function(r) {
+        if (!r.ok) throw new Error('not-found');
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data || !data.ok) {
+          renderVeaUuidMeta(row, null, true);
+          return;
+        }
+        renderVeaUuidMeta(row, data, false);
+      })
+      .catch(function() {
+        renderVeaUuidMeta(row, null, true);
+      });
+  }
+
+  function bindVeaUuidInput(input) {
+    if (!input) return;
+    input.addEventListener('change', function() { lookupVeaUuidMeta(input); });
+    input.addEventListener('blur', function() { lookupVeaUuidMeta(input); });
+    input.addEventListener('click', function() {
+      var row = input.closest('.vea-uuid-row');
+      var wrap = row ? row.querySelector('.vea-source-server-wrap') : null;
+      if (wrap) wrap.style.display = '';
+    });
+    var row = input.closest('.vea-uuid-row');
+    if (!row) return;
+    var serverToggle = row.querySelector('.vea-uuid-server-toggle');
+    var serverWrap = row.querySelector('.vea-source-server-wrap');
+    var serverInput = row.querySelector('.vea-source-server-input');
+    if (serverToggle && serverWrap) {
+      serverToggle.addEventListener('click', function() {
+        var isHidden = serverWrap.style.display === 'none';
+        serverWrap.style.display = isHidden ? '' : 'none';
+        if (isHidden && serverInput) serverInput.focus();
+      });
+    }
+    if (serverInput) {
+      serverInput.addEventListener('change', function() { lookupVeaUuidMeta(input); });
+      serverInput.addEventListener('blur', function() { lookupVeaUuidMeta(input); });
+    }
+  }
+
+  if (veaUuidList) {
+    veaUuidList.querySelectorAll('.vea-source-uuid-input').forEach(bindVeaUuidInput);
+    veaUuidList.querySelectorAll('.vea-source-uuid-input').forEach(function(inp) {
+      if ((inp.value || '').trim()) lookupVeaUuidMeta(inp);
+    });
+    var veaUuidAddBtn = document.getElementById('vea-uuid-add');
+    if (veaUuidAddBtn) {
+      veaUuidAddBtn.addEventListener('click', function() {
+        var row = document.createElement('div');
+        row.className = 'vea-uuid-row d-flex gap-2 mb-2';
+        row.innerHTML = '<div class="flex-grow-1">'
+          + '<div class="d-flex gap-2">'
+          + '<input type="text" name="source_event_url_item" class="form-control form-control-sm font-monospace vea-source-uuid-input" placeholder="https://misp.example/events/view/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">'
+          + '<button type="button" class="btn btn-sm btn-outline-secondary vea-uuid-server-toggle" title="Add server hint for this UUID"><i class="fas fa-server"></i></button>'
+          + '<button type="button" class="btn btn-sm btn-outline-danger vea-uuid-remove"><i class="fas fa-minus"></i></button>'
+          + '</div>'
+          + '<div class="mt-1 vea-source-server-wrap" style="display:none;">'
+          + '<input type="text" name="source_event_server_item" class="form-control form-control-sm font-monospace vea-source-server-input" placeholder="Server ID (optional), e.g. scraper">'
+          + '</div>'
+          + '<div class="small text-muted mt-1 vea-uuid-meta"></div>'
+          + '</div>';
+        veaUuidList.appendChild(row);
+        bindVeaUuidInput(row.querySelector('.vea-source-uuid-input'));
+      });
+    }
+    veaUuidList.addEventListener('click', function(e) {
+      var btn = e.target.closest('.vea-uuid-remove');
+      if (btn) btn.closest('.vea-uuid-row').remove();
+    });
+  }
 
   // Add to exploitation indicators - builds/updates a Markdown table
   function escCell(s) { return String(s).replace(/\|/g, '\\|'); }

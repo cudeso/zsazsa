@@ -21,8 +21,14 @@
     <tr><td>Date:</td><td>{{ fia.created_at.strftime('%Y-%m-%d') if fia.created_at else '-' }}</td></tr>
     <tr><td>Author:</td><td>{{ fia.author or '-' }}</td></tr>
     <tr><td>Audience:</td><td>{{ fia.audience or '-' }}</td></tr>
+    {% if fia.linked_pir_uuid %}
+    <tr><td>Linked PIR:</td><td>{{ fia.linked_pir_uuid }}</td></tr>
+    {% endif %}
     {% if fia.feedback_deadline %}
     <tr><td>Feedback by:</td><td>{{ fia.feedback_deadline.strftime('%Y-%m-%d') }}</td></tr>
+    {% endif %}
+    {% if fia.context_tags %}
+    <tr><td>Context tags:</td><td>{{ fia.context_tags | join(', ') }}</td></tr>
     {% endif %}
   </table>
 </div>
@@ -88,12 +94,24 @@
   {{ bullets(fia.hunting_hypotheses) }}
 </div>
 
-{% if fia.external_references %}
+{% if fia.external_references or source_events or unresolved_source_uuids %}
 <h2>References</h2>
 <div class="section-box">
   <ul>
     {% for r in fia.external_references %}
     <li>{{ r }}</li>
+    {% endfor %}
+    {% for ev in source_events %}
+    {% set event_url = (ev.source_url or misp_webapp_url).rstrip('/') ~ '/events/view/' ~ ev.uuid %}
+    <li>
+      {{ event_url }}
+      {% if ev.info %} | info: {{ ev.info }}{% endif %}
+      {% if ev.date %} | date: {{ ev.date }}{% endif %}
+      {% if ev.orgc %} | org: {{ ev.orgc }}{% endif %}
+    </li>
+    {% endfor %}
+    {% for uid in unresolved_source_uuids %}
+    <li>{{ misp_webapp_url.rstrip('/') ~ '/events/view/' ~ uid }}</li>
     {% endfor %}
   </ul>
 </div>

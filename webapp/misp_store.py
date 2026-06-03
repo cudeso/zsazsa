@@ -22,6 +22,7 @@ import os
 import threading
 import time
 import urllib3
+import re
 from datetime import date, datetime
 from types import SimpleNamespace
 
@@ -32,6 +33,13 @@ from webapp.models import STAKEHOLDER_ROLES
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
+
+_UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+
+
+def _extract_uuid(value: str) -> str:
+    m = _UUID_RE.search((value or "").strip())
+    return m.group(0).lower() if m else ""
 
 _FP_COMMENT = "zsazsa:fp"
 
@@ -1729,19 +1737,68 @@ def _split_lines(s):
     return [ln.strip() for ln in s.splitlines() if ln.strip()]
 
 
-def fetch_source_events(source_uuids, source_hints=None):
+def _clean_source_hints(raw, allowed_uuids):
+    """Filter a raw {uuid: source_id} mapping to the allowed UUID set."""
+    out = {}
+    if not isinstance(raw, dict):
+        return out
+    allowed = set(allowed_uuids or [])
+    for key, value in raw.items():
+        uid = _extract_uuid(str(key))
+        source_id = str(value or "").strip()
+        if uid and source_id and uid in allowed:
+            out[uid] = source_id
+    return out
+
+
+def _parse_source_uuid_blob(raw):
+    """Parse the stored source-event-uuid attribute, which may be a JSON list or a single UUID."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return [u for u in [_extract_uuid(raw)] if u]
+    if isinstance(parsed, list):
+        items = parsed
+    elif parsed:
+        items = [str(parsed)]
+    else:
+        items = []
+    return [u for u in (_extract_uuid(v) for v in items) if u]
+
+
+def _normalise_source_uuids_and_hints(source_uuids_raw, source_event_uuid_raw, source_hints_raw):
+    """Return cleaned source UUID list and UUID->source_id hints map."""
+    source_uuids = [_extract_uuid(str(v)) for v in (source_uuids_raw or [])]
+    source_uuids = [u for u in source_uuids if u]
+    if not source_uuids and source_event_uuid_raw:
+        first = _extract_uuid(str(source_event_uuid_raw))
+        if first:
+            source_uuids = [first]
+    return source_uuids, _clean_source_hints(source_hints_raw, source_uuids)
+
+
+def fetch_source_events(source_uuids, source_hints=None, strict_source=False):
     """Fetch event data for display in product wizard source event accordions.
 
-    source_hints is an optional dict mapping uuid -> source_id. When provided
-    the matching MISP client is tried first before falling back to others.
+    source_hints is an optional dict mapping uuid -> source_id.
+    When provided, the matching MISP client is tried first.
+    If strict_source=True, only the hinted client is queried for that UUID.
 
     For each UUID we try get_event first, then search(uuid=...) as a fallback
     because some MISP instances (e.g. those with distribution restrictions)
     allow bulk search but reject direct UUID lookups.
 
-    Returns a list of dicts with keys: uuid, info, date, orgc, source_label,
+    Returns a list of dicts with keys: uuid, info, date, orgc, source_id, source_label, source_url,
     tags, reports, attributes, objects.
     """
+    raw_values = list(source_uuids or [])
+    source_uuids = []
+    for raw in raw_values:
+        uid = _extract_uuid(str(raw))
+        if uid:
+            source_uuids.append(uid)
     if not source_uuids:
         return []
     import urllib3
@@ -1791,22 +1848,24 @@ def fetch_source_events(source_uuids, source_hints=None):
     result = []
     for uuid in source_uuids:
         ev = ev_misp = None
+        ev_source_id = ""
         ev_source_label = ""
         hinted_sid = hints.get(uuid, "")
 
         # Build a client order that puts the hinted source first
         if hinted_sid:
-            ordered = (
-                [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid == hinted_sid]
-                + [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid != hinted_sid]
-            )
+            hinted_only = [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid == hinted_sid]
+            if strict_source:
+                ordered = hinted_only
+            else:
+                ordered = hinted_only + [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid != hinted_sid]
         else:
             ordered = all_clients
 
         for sid, misp_client, label in ordered:
             fetched = _try_fetch(misp_client, uuid)
             if fetched is not None:
-                ev, ev_misp, ev_source_label = fetched, misp_client, label
+                ev, ev_misp, ev_source_id, ev_source_label = fetched, misp_client, sid, label
                 break
 
         if ev is None:
@@ -1845,7 +1904,9 @@ def fetch_source_events(source_uuids, source_hints=None):
             "info": ev.info or "",
             "date": str(ev.date) if ev.date else "",
             "orgc": orgc_name,
+            "source_id": ev_source_id,
             "source_label": ev_source_label,
+            "source_url": (getattr(ev_misp, "root_url", "") or "").rstrip("/"),
             "tags": tags,
             "attributes": attrs,
             "objects": objects,
@@ -2228,10 +2289,13 @@ def _fia_obj(data):
     _oa(obj, "author", data.get("author"))
     _oa(obj, "review-state", data.get("review_state", FIA_REVIEW_DRAFT))
     _oa(obj, "rejection-reason", data.get("rejection_reason"))
-    src_uuids = data.get("source_event_uuids") or []
-    if not src_uuids and data.get("source_event_uuid"):
-        src_uuids = [data["source_event_uuid"]]
+    src_uuids, src_hints = _normalise_source_uuids_and_hints(
+        data.get("source_event_uuids"),
+        data.get("source_event_uuid"),
+        data.get("source_event_hints"),
+    )
     _oa_json(obj, "source-event-uuid", src_uuids)
+    _oa_json(obj, "source-event-hints", src_hints)
     _oa_json(obj, "context-tags", data.get("context_tags", []))
     _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
     return obj
@@ -2245,12 +2309,13 @@ def _fia_ns(event):
         return _obj_attr(obj, rel) or ""
 
     review_state = g("review-state") or FIA_REVIEW_DRAFT
-    _src_raw = g("source-event-uuid")
+    source_event_uuids = _parse_source_uuid_blob(g("source-event-uuid"))
     try:
-        _src_parsed = json.loads(_src_raw) if _src_raw else []
-        source_event_uuids = _src_parsed if isinstance(_src_parsed, list) else ([str(_src_parsed)] if _src_parsed else [])
+        _src_hints_parsed = json.loads(g("source-event-hints") or "{}")
     except Exception:
-        source_event_uuids = [_src_raw] if _src_raw else []
+        _src_hints_parsed = {}
+    source_event_hints = _clean_source_hints(_src_hints_parsed, source_event_uuids)
+
     return SimpleNamespace(
         id=uuid,
         uuid=uuid,
@@ -2286,6 +2351,7 @@ def _fia_ns(event):
         review_state=review_state,
         rejection_reason=g("rejection-reason"),
         source_event_uuids=source_event_uuids,
+        source_event_hints=source_event_hints,
         source_event_uuid=source_event_uuids[0] if source_event_uuids else "",
         context_tags=_json_list(g("context-tags")),
         linked_pir_uuid=g("linked-pir-uuid"),
@@ -2305,6 +2371,8 @@ def render_fia_markdown(fia, fia_id=None):
 
     def bullets(items):
         return "\n".join(f"- {ln}" for ln in items) if items else "- (none recorded)"
+
+    source_refs = [f"{config.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}" for uid in (getattr(fia, "source_event_uuids", []) or []) if uid]
 
     parts = [
         f"# Flash intel alert: {fia.title or '(untitled)'}",
@@ -2369,10 +2437,8 @@ def render_fia_markdown(fia, fia_id=None):
         "",
         "## References",
         "",
-        bullets(fia.external_references),
+        bullets((fia.external_references or []) + source_refs),
     ]
-    for uid in (getattr(fia, "source_event_uuids", None) or ([fia.source_event_uuid] if getattr(fia, "source_event_uuid", None) else [])):
-        parts.append(f"- Source MISP event: {uid}")
     if fia.feedback_deadline:
         parts.extend([
             "",
@@ -2441,7 +2507,11 @@ def create_fia(data):
         extra.append(f'admiralty-scale:information-credibility="{data["information_credibility"]}"')
 
     event = _make_event(info, config.TAG_FLASH_INTEL, extra_tags=extra)
-    src_uuids = data.get("source_event_uuids") or ([data.get("source_event_uuid")] if data.get("source_event_uuid") else [])
+    src_uuids, src_hints = _normalise_source_uuids_and_hints(
+        data.get("source_event_uuids") or [],
+        data.get("source_event_uuid"),
+        data.get("source_event_hints"),
+    )
     if src_uuids:
         event.extends_uuid = src_uuids[0]
 
@@ -2459,6 +2529,9 @@ def create_fia(data):
     fia.fia_id = fia_id
     _write_fia_report(misp, uuid, fia_id, render_fia_markdown(fia, fia_id))
     for src_uuid in src_uuids:
+        source_id = src_hints.get(src_uuid, "")
+        if source_id and source_id != "scraper":
+            continue
         _tag_scraper_event_as_product_source(src_uuid, "flash-intel")
     return uuid, fia_id
 
@@ -2754,7 +2827,13 @@ def _vea_obj(data):
     _oa(obj, "references", _join_lines(data.get("references")))
     _oa(obj, "review-state", data.get("review_state", VEA_REVIEW_DRAFT))
     _oa(obj, "rejection-reason", data.get("rejection_reason"))
-    _oa(obj, "source-event-uuid", data.get("source_event_uuid"))
+    src_uuids, src_hints = _normalise_source_uuids_and_hints(
+        data.get("source_event_uuids"),
+        data.get("source_event_uuid"),
+        data.get("source_event_hints"),
+    )
+    _oa_json(obj, "source-event-uuid", src_uuids)
+    _oa_json(obj, "source-event-hints", src_hints)
     _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
     _oa_json(obj, "context-tags", data.get("context_tags", []))
     return obj
@@ -2766,6 +2845,13 @@ def _vea_ns(event):
 
     def g(rel):
         return _obj_attr(obj, rel) or ""
+
+    source_event_uuids = _parse_source_uuid_blob(g("source-event-uuid"))
+    try:
+        _src_hints_parsed = json.loads(g("source-event-hints") or "{}")
+    except Exception:
+        _src_hints_parsed = {}
+    source_event_hints = _clean_source_hints(_src_hints_parsed, source_event_uuids)
 
     return SimpleNamespace(
         id=uuid,
@@ -2803,7 +2889,9 @@ def _vea_ns(event):
         references=g("references").splitlines(),
         review_state=g("review-state") or VEA_REVIEW_DRAFT,
         rejection_reason=g("rejection-reason"),
-        source_event_uuid=g("source-event-uuid"),
+        source_event_uuids=source_event_uuids,
+        source_event_hints=source_event_hints,
+        source_event_uuid=source_event_uuids[0] if source_event_uuids else "",
         linked_pir_uuid=g("linked-pir-uuid"),
         context_tags=_json_list(g("context-tags")),
         published=bool(getattr(event, "published", False)),
@@ -2821,6 +2909,12 @@ def render_vea_markdown(vea, vea_id=None):
 
     def bullets(items):
         return "\n".join(f"- {ln}" for ln in items) if items else "- (none recorded)"
+
+    source_refs = [
+        f"{config.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}"
+        for uid in (getattr(vea, "source_event_uuids", []) or [])
+        if uid
+    ]
 
     lines = [
         f"# Vulnerability exploitation advisory: {vea.cve_id or vid}",
@@ -2908,10 +3002,8 @@ def render_vea_markdown(vea, vea_id=None):
         "",
         "## References",
         "",
-        bullets(vea.references),
+        bullets(list(dict.fromkeys((vea.references or []) + source_refs))),
     ]
-    if vea.source_event_uuid:
-        lines.append(f"- Source MISP event: {vea.source_event_uuid}")
     return "\n".join(lines)
 
 
@@ -2964,8 +3056,13 @@ def create_vea(data):
         extra.append(f'admiralty-scale:source-reliability="{data["source_reliability"].lower()}"')
 
     event = _make_event(info, config.TAG_VEA, extra_tags=extra)
-    if data.get("source_event_uuid"):
-        event.extends_uuid = data["source_event_uuid"]
+    src_uuids, src_hints = _normalise_source_uuids_and_hints(
+        data.get("source_event_uuids") or [],
+        data.get("source_event_uuid"),
+        data.get("source_event_hints"),
+    )
+    if src_uuids:
+        event.extends_uuid = src_uuids[0]
 
     result = _check(misp.add_event(event, pythonify=True), "create VEA")
     uuid = _event_uuid(result)
@@ -2980,8 +3077,11 @@ def create_vea(data):
     vea = _vea_ns(result)
     vea.vea_id = vea_id
     _write_vea_report(misp, uuid, vea_id, render_vea_markdown(vea, vea_id))
-    if data.get("source_event_uuid"):
-        _tag_scraper_event_as_product_source(data["source_event_uuid"], "vea")
+    for uid in src_uuids:
+        source_id = src_hints.get(uid, "")
+        if source_id and source_id != "scraper":
+            continue
+        _tag_scraper_event_as_product_source(uid, "vea")
     return uuid, vea_id
 
 
@@ -3041,6 +3141,8 @@ def set_vea_review_state(uuid, state, reason=None):
             "exploitation_indicators": v.exploitation_indicators,
             "detection_rules": v.detection_rules,
             "references": v.references,
+            "source_event_uuids": list(getattr(v, "source_event_uuids", []) or []),
+            "source_event_hints": dict(getattr(v, "source_event_hints", {}) or {}),
             "source_event_uuid": v.source_event_uuid,
             "linked_pir_uuid": v.linked_pir_uuid,
             "review_state": state,
@@ -3673,7 +3775,11 @@ def find_products_using_source(src_uuid: str) -> list:
         logger.warning("find_products_using_source briefings failed: %s", exc)
     try:
         for f in list_fias():
-            uuids = list(getattr(f, "source_event_uuids", []) or [])
+            uuids = []
+            for value in getattr(f, "source_event_uuids", []) or []:
+                uid = _extract_uuid(value)
+                if uid:
+                    uuids.append(uid)
             if src_uuid in uuids:
                 results.append({
                     "type": "flash-intel",

@@ -185,15 +185,21 @@
       "description": "UUID of the originating scraper event",
       "disable_correlation": true
     },
-    "linked-pir-uuid": {
+    "source-event-hints": {
       "misp-attribute": "text",
       "ui-priority": 30,
+      "description": "JSON map of source event UUID to source server id",
+      "disable_correlation": true
+    },
+    "linked-pir-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 31,
       "description": "UUID of the linked PIR event",
       "disable_correlation": true
     },
     "context-tags": {
       "misp-attribute": "text",
-      "ui-priority": 31,
+      "ui-priority": 32,
       "description": "JSON array of context tag strings",
       "disable_correlation": true
     }

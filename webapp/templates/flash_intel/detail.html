@@ -73,7 +73,7 @@
         {{ bullets(fia.hunting_hypotheses) }}
         <hr>
         <h5>References</h5>
-        {% if fia.external_references %}
+        {% if fia.external_references or fia.source_event_uuids %}
           <ul class="mb-0">
             {% for r in fia.external_references %}
               {% if r.startswith('http://') or r.startswith('https://') %}
@@ -82,14 +82,15 @@
               <li>{{ r }}</li>
               {% endif %}
             {% endfor %}
+            {% for uid in fia.source_event_uuids %}
+              {% set event_url = misp_webapp_url.rstrip('/') ~ '/events/view/' ~ uid %}
+              <li>
+                <a href="{{ event_url }}" target="_blank" rel="noopener noreferrer">{{ event_url }}</a>
+              </li>
+            {% endfor %}
           </ul>
         {% else %}
           <span class="text-muted">none recorded</span>
-        {% endif %}
-        {% if fia.source_event_uuids %}
-          {% for uid in fia.source_event_uuids %}
-          <p class="mt-2 mb-0 small">Originating MISP event: <code>{{ uid }}</code></p>
-          {% endfor %}
         {% endif %}
       </div>
     </div>

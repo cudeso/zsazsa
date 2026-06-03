@@ -2203,11 +2203,43 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
         return;
       }
       if (action === 'flash-intel') {
-        window.location.href = '{{ url_for("flash_intel.wizard_new") }}?' +
-          selected.map(function(s) { return 'source=' + encodeURIComponent(s.uuid); }).join('&');
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("flash_intel.wizard_new") }}';
+        var csrfInp = document.createElement('input');
+        csrfInp.type = 'hidden'; csrfInp.name = 'csrf_token'; csrfInp.value = csrfToken;
+        form.appendChild(csrfInp);
+        var prefillInp = document.createElement('input');
+        prefillInp.type = 'hidden'; prefillInp.name = 'prefill_only'; prefillInp.value = '1';
+        form.appendChild(prefillInp);
+        selected.forEach(function(s) {
+          var inp = document.createElement('input');
+          inp.type = 'hidden';
+          inp.name = 'source';
+          inp.value = s.uuid + (s.sourceId ? ('|' + s.sourceId) : '');
+          form.appendChild(inp);
+        });
+        document.body.appendChild(form);
+        form.submit();
       } else if (action === 'vea') {
-        window.location.href = '{{ url_for("vea.wizard_new") }}?' +
-          selected.map(function(s) { return 'source=' + encodeURIComponent(s.uuid + '|' + (s.sourceId || '')); }).join('&');
+        var veaForm = document.createElement('form');
+        veaForm.method = 'POST';
+        veaForm.action = '{{ url_for("vea.wizard_new") }}';
+        var veaCsrfInp = document.createElement('input');
+        veaCsrfInp.type = 'hidden'; veaCsrfInp.name = 'csrf_token'; veaCsrfInp.value = csrfToken;
+        veaForm.appendChild(veaCsrfInp);
+        var veaPrefillInp = document.createElement('input');
+        veaPrefillInp.type = 'hidden'; veaPrefillInp.name = 'prefill_only'; veaPrefillInp.value = '1';
+        veaForm.appendChild(veaPrefillInp);
+        selected.forEach(function(s) {
+          var inp = document.createElement('input');
+          inp.type = 'hidden';
+          inp.name = 'source';
+          inp.value = s.uuid + (s.sourceId ? ('|' + s.sourceId) : '');
+          veaForm.appendChild(inp);
+        });
+        document.body.appendChild(veaForm);
+        veaForm.submit();
       } else if (action === 'daily-briefing') {
         var form = document.createElement('form');
         form.method = 'POST';

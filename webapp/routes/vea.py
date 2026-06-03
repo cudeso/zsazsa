@@ -5,6 +5,11 @@ import re
 
 import config as _cfg
 from flask import Blueprint, flash, redirect, render_template, request, url_for
+from webapp.routes.source_event_utils import (
+    lookup_source_event_meta,
+    normalise_source_event_rows,
+    parse_source_tokens,
+)
 
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d{4,}\b', re.IGNORECASE)
 
@@ -14,7 +19,16 @@ logger = logging.getLogger(__name__)
 bp = Blueprint("vea", __name__, url_prefix="/products/vea")
 
 
+@bp.route("/source-event-meta")
+def source_event_meta():
+    return lookup_source_event_meta(request.args)
+
+
 def _form_data(form, vea_id=""):
+    source_event_refs = form.getlist("source_event_url_item") or form.getlist("source_event_uuid_item")
+    source_event_servers = form.getlist("source_event_server_item")
+    source_event_uuids, source_event_hints = normalise_source_event_rows(source_event_refs, source_event_servers)
+
     return {
         "vea_id": vea_id,
         "cve_id": ", ".join(l.strip() for l in form.get("cve_id", "").splitlines() if l.strip()),
@@ -48,7 +62,9 @@ def _form_data(form, vea_id=""):
         "references": misp_store._split_lines(form.get("references")),
         "context_tags": form.getlist("context_tags"),
         "review_state": form.get("review_state", misp_store.VEA_REVIEW_DRAFT),
-        "source_event_uuid": form.get("source_event_uuid", ""),
+        "source_event_uuids": source_event_uuids,
+        "source_event_hints": source_event_hints,
+        "source_event_uuid": source_event_uuids[0] if source_event_uuids else "",
         "linked_pir_uuid": form.get("linked_pir_uuid", ""),
     }
 
@@ -112,7 +128,56 @@ def _latest_notify_status(entity_id: str):
     }
 
 
+def _source_event_uuids(vea) -> list[str]:
+    uuids = list(getattr(vea, "source_event_uuids", []) or [])
+    if not uuids and getattr(vea, "source_event_uuid", ""):
+        uuids = [vea.source_event_uuid]
+    return [u for u in uuids if u]
+
+
+def _reference_urls(vea) -> list[str]:
+    """URLs used in markdown and notification output (flat list, deduplicated)."""
+    source_refs = [
+        f"{_cfg.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}"
+        for uid in _source_event_uuids(vea)
+    ]
+    return list(dict.fromkeys((vea.references or []) + source_refs))
+
+
+def _source_event_references(vea):
+    """Enriched references for source MISP events: url + title + date + creator org.
+
+    Returns a list of dicts with keys: url, info, date, orgc, source_label.
+    Falls back to a bare URL entry when event metadata cannot be fetched.
+    """
+    uuids = _source_event_uuids(vea)
+    if not uuids:
+        return []
+    hints = dict(getattr(vea, "source_event_hints", {}) or {})
+    events = misp_store.fetch_source_events(uuids, source_hints=hints, strict_source=bool(hints))
+    events_by_uuid = {ev.get("uuid"): ev for ev in events}
+    refs = []
+    for uid in uuids:
+        ev = events_by_uuid.get(uid)
+        if ev:
+            base = (ev.get("source_url") or _cfg.MISP_WEBAPP_URL).rstrip("/")
+            refs.append({
+                "url": f"{base}/events/view/{uid}",
+                "info": ev.get("info", ""),
+                "date": ev.get("date", ""),
+                "orgc": ev.get("orgc", ""),
+                "source_label": ev.get("source_label", ""),
+            })
+        else:
+            refs.append({
+                "url": f"{_cfg.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}",
+                "info": "", "date": "", "orgc": "", "source_label": "",
+            })
+    return refs
+
+
 def _vea_markdown(vea, preview_url: str = "") -> str:
+    reference_items = _reference_urls(vea)
     lines = [
         f"# {vea.vea_id}: Vulnerability exploitation advisory",
         "",
@@ -146,11 +211,10 @@ def _vea_markdown(vea, preview_url: str = "") -> str:
         for action in vea.immediate_actions:
             if action:
                 lines.append(f"- {action}")
-    if vea.references:
+    if reference_items:
         lines += ["", "## References", ""]
-        for ref in vea.references:
-            if ref:
-                lines.append(f"- {ref}")
+        for ref in reference_items:
+            lines.append(f"- {ref}")
     if preview_url:
         lines += ["", f"[Open advisory]({preview_url})"]
     return "\n".join(lines)
@@ -188,11 +252,24 @@ def review():
 @bp.route("/new", methods=["GET", "POST"])
 def wizard_new():
     if request.method == "POST":
+        if request.form.get("prefill_only") == "1":
+            source_uuids, source_hints, source_pairs = parse_source_tokens(request.form.getlist("source"))
+            source_events = misp_store.fetch_source_events(
+                source_uuids, source_hints=source_hints, strict_source=bool(source_hints)
+            ) if source_uuids else []
+            seed = _build_seed_from_sources(source_uuids, source_pairs, source_events)
+            return render_template("vea/wizard.html", is_edit=False,
+                                   source_events=source_events, **_wizard_context(seed, source_events))
+
         data = _form_data(request.form)
+        source_hints = data.get("source_event_hints") or {}
+        source_events = misp_store.fetch_source_events(
+            data.get("source_event_uuids") or [], source_hints=source_hints, strict_source=bool(source_hints)
+        )
         if not data["cve_id"] and not data["title"]:
             flash("CVE ID or title is required.", "warning")
             return render_template("vea/wizard.html", is_edit=False,
-                                   source_events=[], **_wizard_context())
+                                   source_events=source_events, **_wizard_context(data, source_events))
         action = request.form.get("action", "save")
         data["review_state"] = (misp_store.VEA_REVIEW_PENDING
                                 if action == "submit" else misp_store.VEA_REVIEW_DRAFT)
@@ -203,96 +280,11 @@ def wizard_new():
             return redirect(url_for("vea.detail", id=uuid))
         except Exception as exc:
             flash(f"Could not create VEA: {exc}", "warning")
-    # Parse "uuid|source_id" pairs from ?source= params
-    raw_sources = [u.strip() for u in request.args.getlist("source") if u.strip()]
-    source_pairs = []
-    for s in raw_sources:
-        if "|" in s:
-            uuid_part, sid_part = s.split("|", 1)
-            source_pairs.append((uuid_part.strip(), sid_part.strip()))
-        else:
-            source_pairs.append((s, ""))
-    source_uuids = [p[0] for p in source_pairs]
-    source_hints = {p[0]: p[1] for p in source_pairs if p[1]}
-    source_events = misp_store.fetch_source_events(source_uuids, source_hints=source_hints) if source_uuids else []
-    seed = None
-    if source_uuids:
-        from types import SimpleNamespace
-        def _all_attrs(ev):
-            attrs = list(ev.get("attributes", []))
-            for obj in ev.get("objects", []):
-                attrs.extend(obj.get("attributes", []))
-            return attrs
-
-        cve_ids = list(dict.fromkeys(
-            a["value"].strip()
-            for ev in source_events
-            for a in _all_attrs(ev)
-            if a.get("type") == "vulnerability" and a.get("value", "").strip()
-        ))
-        # Also scan event titles - some sources (e.g. CERT.be) only embed CVEs in the title
-        for ev in source_events:
-            for m in _CVE_RE.findall(ev.get("info", "")):
-                cve = m.upper()
-                if cve not in cve_ids:
-                    cve_ids.append(cve)
-        cached_rows = None
-        if not cve_ids:
-            # MISP fetch may have failed or returned no attributes; fall back to cache
-            cached_rows = collection_cache.get_events_by_uuids(source_uuids)
-            for row in cached_rows:
-                for vid in row.get("vulnerability_ids", []):
-                    if vid and vid not in cve_ids:
-                        cve_ids.append(vid)
-
-        labels = list(dict.fromkeys(ev["source_label"] for ev in source_events if ev.get("source_label")))
-        # Extract worst-case Admiralty values from source event tags
-        reliability_letters, credibility_numbers = [], []
-        tag_sources = source_events or cached_rows or collection_cache.get_events_by_uuids(source_uuids)
-        for ev in tag_sources:
-            for t in ev.get("tags", []):
-                if 'admiralty-scale:source-reliability=' in t:
-                    v = t.split('"')[1] if '"' in t else ''
-                    if v: reliability_letters.append(v.upper())
-                elif 'admiralty-scale:information-credibility=' in t:
-                    v = t.split('"')[1] if '"' in t else ''
-                    if v.isdigit(): credibility_numbers.append(int(v))
-        worst_reliability = max(reliability_letters) if reliability_letters else ""
-        worst_credibility = str(max(credibility_numbers)) if credibility_numbers else ""
-        first_title = (source_events[0]["info"] if source_events
-                       else (collection_cache.get_events_by_uuids([source_uuids[0]]) or [{}])[0].get("info", ""))
-
-        # Build references: one URL per source MISP event + one per CVE on CIRCL VL
-        _source_url_map = {"scraper": _cfg.MISP_URL, "webapp": _cfg.MISP_WEBAPP_URL}
-        for _s in getattr(_cfg, "MISP_SERVERS", []) or []:
-            _sid = _s.get("id") or _s.get("label") or ""
-            if _sid and _s.get("url"):
-                _source_url_map[_sid] = _s["url"].rstrip("/")
-        references = []
-        for uuid, sid in source_pairs:
-            base = _source_url_map.get(sid, _cfg.MISP_WEBAPP_URL).rstrip("/")
-            references.append(f"{base}/events/view/{uuid}")
-        for cve in cve_ids:
-            references.append(f"https://vulnerability.circl.lu/vuln/{cve}")
-
-        seed = SimpleNamespace(
-            vea_id="",
-            cve_id="\n".join(cve_ids),
-            title=first_title,
-            summary="", cvss="", cwe="",
-            tlp="amber", author="", audience="",
-            affected_product="", affected_versions="", fixed_version="", exposure="",
-            observed_exploitation="", exploit_availability="", exploitation_complexity="",
-            threat_actor_interest="", cisa_kev="",
-            source_description=", ".join(labels),
-            source_reliability=worst_reliability, information_credibility=worst_credibility,
-            worst_case="", most_likely="",
-            immediate_actions=[], patch_sla_internet="", patch_sla_internal="",
-            target_patch_version="", exploitation_indicators=[], detection_rules=[],
-            references=references, review_state=misp_store.VEA_REVIEW_DRAFT,
-            rejection_reason="", source_event_uuid=source_uuids[0], linked_pir_uuid="",
-            context_tags=[],
-        )
+    source_uuids, source_hints, source_pairs = parse_source_tokens(request.args.getlist("source"))
+    source_events = misp_store.fetch_source_events(
+        source_uuids, source_hints=source_hints, strict_source=bool(source_hints)
+    ) if source_uuids else []
+    seed = _build_seed_from_sources(source_uuids, source_pairs, source_events)
     return render_template("vea/wizard.html", is_edit=False,
                            source_events=source_events, **_wizard_context(seed, source_events))
 
@@ -308,6 +300,8 @@ def detail(id):
     return render_template(
         "vea/detail.html",
         vea=vea,
+        external_references=list(vea.references or []),
+        source_event_refs=_source_event_references(vea),
         feedback=feedback,
         recipients=recipients,
         notify_status=notify_status,
@@ -321,6 +315,10 @@ def wizard_edit(id):
         return "VEA not found", 404
     if request.method == "POST":
         data = _form_data(request.form, vea_id=vea.vea_id)
+        source_hints = data.get("source_event_hints") or {}
+        source_events = misp_store.fetch_source_events(
+            data.get("source_event_uuids") or [], source_hints=source_hints, strict_source=bool(source_hints)
+        )
         action = request.form.get("action", "save")
         if action == "submit":
             data["review_state"] = misp_store.VEA_REVIEW_PENDING
@@ -349,8 +347,112 @@ def wizard_edit(id):
             return redirect(url_for("vea.detail", id=id))
         except Exception as exc:
             flash(f"Could not update VEA: {exc}", "warning")
+            return render_template("vea/wizard.html", is_edit=True,
+                                   source_events=source_events, **_wizard_context(data, source_events))
+    source_uuids = list(getattr(vea, "source_event_uuids", []) or ([vea.source_event_uuid] if getattr(vea, "source_event_uuid", "") else []))
+    source_hints = dict(getattr(vea, "source_event_hints", {}) or {})
+    source_events = misp_store.fetch_source_events(
+        source_uuids, source_hints=source_hints, strict_source=bool(source_hints)
+    ) if source_uuids else []
     return render_template("vea/wizard.html", is_edit=True,
-                           source_events=[], **_wizard_context(vea, []))
+                           source_events=source_events, **_wizard_context(vea, source_events))
+
+
+def _build_seed_from_sources(source_uuids, source_pairs, source_events):
+    if not source_uuids:
+        return None
+    from types import SimpleNamespace
+
+    def _all_attrs(ev):
+        attrs = list(ev.get("attributes", []))
+        for obj in ev.get("objects", []):
+            attrs.extend(obj.get("attributes", []))
+        return attrs
+
+    cve_ids = list(dict.fromkeys(
+        a["value"].strip()
+        for ev in source_events
+        for a in _all_attrs(ev)
+        if a.get("type") == "vulnerability" and a.get("value", "").strip()
+    ))
+
+    for ev in source_events:
+        for m in _CVE_RE.findall(ev.get("info", "")):
+            cve = m.upper()
+            if cve not in cve_ids:
+                cve_ids.append(cve)
+
+    cached_rows = None
+    if not cve_ids:
+        cached_rows = collection_cache.get_events_by_uuids(source_uuids)
+        for row in cached_rows:
+            for vid in row.get("vulnerability_ids", []):
+                if vid and vid not in cve_ids:
+                    cve_ids.append(vid)
+
+    labels = list(dict.fromkeys(ev["source_label"] for ev in source_events if ev.get("source_label")))
+
+    reliability_letters, credibility_numbers = [], []
+    tag_sources = source_events or cached_rows or collection_cache.get_events_by_uuids(source_uuids)
+    for ev in tag_sources:
+        for t in ev.get("tags", []):
+            if 'admiralty-scale:source-reliability=' in t:
+                v = t.split('"')[1] if '"' in t else ''
+                if v:
+                    reliability_letters.append(v.upper())
+            elif 'admiralty-scale:information-credibility=' in t:
+                v = t.split('"')[1] if '"' in t else ''
+                if v.isdigit():
+                    credibility_numbers.append(int(v))
+    worst_reliability = max(reliability_letters) if reliability_letters else ""
+    worst_credibility = str(max(credibility_numbers)) if credibility_numbers else ""
+
+    first_title = (source_events[0]["info"] if source_events
+                   else (collection_cache.get_events_by_uuids([source_uuids[0]]) or [{}])[0].get("info", ""))
+
+    source_hints = {}
+    for uuid, sid in source_pairs:
+        if sid and not source_hints.get(uuid):
+            source_hints[uuid] = sid
+
+    references = []
+    for ev in source_events:
+        base = (ev.get("source_url") or _cfg.MISP_WEBAPP_URL).rstrip("/")
+        references.append(f"{base}/events/view/{ev.get('uuid')}")
+    if not references:
+        _source_url_map = {"scraper": _cfg.MISP_URL, "webapp": _cfg.MISP_WEBAPP_URL}
+        for _s in getattr(_cfg, "MISP_SERVERS", []) or []:
+            _sid = _s.get("id") or _s.get("label") or ""
+            if _sid and _s.get("url"):
+                _source_url_map[_sid] = _s["url"].rstrip("/")
+        for uuid, sid in source_pairs:
+            base = _source_url_map.get(sid, _cfg.MISP_WEBAPP_URL).rstrip("/")
+            references.append(f"{base}/events/view/{uuid}")
+
+    for cve in cve_ids:
+        references.append(f"https://vulnerability.circl.lu/vuln/{cve}")
+    references = list(dict.fromkeys(references))
+
+    return SimpleNamespace(
+        vea_id="",
+        cve_id="\n".join(cve_ids),
+        title=first_title,
+        summary="", cvss="", cwe="",
+        tlp="amber", author="", audience="",
+        affected_product="", affected_versions="", fixed_version="", exposure="",
+        observed_exploitation="", exploit_availability="", exploitation_complexity="",
+        threat_actor_interest="", cisa_kev="",
+        source_description=", ".join(labels),
+        source_reliability=worst_reliability, information_credibility=worst_credibility,
+        worst_case="", most_likely="",
+        immediate_actions=[], patch_sla_internet="", patch_sla_internal="",
+        target_patch_version="", exploitation_indicators=[], detection_rules=[],
+        references=references, review_state=misp_store.VEA_REVIEW_DRAFT,
+        rejection_reason="", source_event_uuids=source_uuids,
+        source_event_hints=source_hints,
+        source_event_uuid=source_uuids[0] if source_uuids else "", linked_pir_uuid="",
+        context_tags=[],
+    )
 
 
 @bp.route("/<string:id>/approve", methods=["POST"])

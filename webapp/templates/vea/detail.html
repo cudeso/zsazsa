@@ -124,15 +124,26 @@
     <div class="card content-card mb-3">
       <div class="card-header"><i class="fas fa-book me-2"></i>References</div>
       <div class="card-body">
-        {% if vea.references %}
+        {% if external_references or source_event_refs %}
         <ul class="mb-0">
-          {% for r in vea.references %}<li><a href="{{ r }}" target="_blank" rel="noopener">{{ r }}</a></li>{% endfor %}
+          {% for r in external_references %}
+            <li><a href="{{ r }}" target="_blank" rel="noopener">{{ r }}</a></li>
+          {% endfor %}
+          {% for ref in source_event_refs %}
+            <li>
+              <a href="{{ ref.url }}" target="_blank" rel="noopener">{{ ref.url }}</a>
+              {% if ref.info or ref.date or ref.orgc %}
+              <div class="small text-muted">
+                {% if ref.info %}<span><strong>Title:</strong> {{ ref.info }}</span>{% endif %}
+                {% if ref.date %}<span class="ms-2"><strong>Date:</strong> {{ ref.date }}</span>{% endif %}
+                {% if ref.orgc %}<span class="ms-2"><strong>Creator org:</strong> {{ ref.orgc }}</span>{% endif %}
+              </div>
+              {% endif %}
+            </li>
+          {% endfor %}
         </ul>
         {% else %}
         <span class="text-muted">none recorded</span>
-        {% endif %}
-        {% if vea.source_event_uuid %}
-        <p class="mt-2 small">Source MISP event: <code>{{ vea.source_event_uuid }}</code></p>
         {% endif %}
       </div>
     </div>
