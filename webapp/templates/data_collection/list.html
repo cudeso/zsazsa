@@ -46,9 +46,23 @@
 {% block page_title %}Data collection{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-sm btn-outline-secondary me-2" id="refresh-btn" title="Trigger background cache refresh">
+<button class="btn btn-sm btn-outline-secondary" id="refresh-btn" title="Trigger background cache refresh">
   <i class="fas fa-arrows-rotate me-1"></i> Refresh cache
 </button>
+<small class="text-muted ms-2 me-1" id="refresh-countdown"
+       data-interval-s="{{ cache_interval_s }}"
+       data-last-fetch="{{ cache_last_fetch_ts or '' }}"
+       title="Time until the next automatic cache refresh"
+       style="font-size: .7rem; font-variant-numeric: tabular-nums;
+              font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+              display: inline-block; min-width: 7.5em; text-align: right;"></small>
+<i class="fas fa-circle-info text-muted me-2" id="refresh-info"
+   role="button" tabindex="0"
+   style="cursor: help; font-size: .8rem;"
+   data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="bottom"
+   data-bs-html="true"
+   data-bs-title="How cache refresh works"
+   data-bs-content="The cache is refreshed automatically every <strong>{{ (cache_interval_s // 60) }} minutes</strong> by a background worker that polls every configured MISP source. The countdown shows time until the next automatic run. Clicking <strong>Refresh cache</strong> just wakes the worker early, it does not change the schedule."></i>
 <button class="btn btn-sm btn-outline-secondary me-2" id="pull-event-btn"
         title="Pull a specific event from a MISP source into the cache"
         data-bs-toggle="modal" data-bs-target="#pull-event-modal">
@@ -1265,6 +1279,50 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
 
   /* ── 2. Refresh cache button ──────────────────────────────────── */
   var refreshBtn = document.getElementById('refresh-btn');
+  var refreshCountdown = document.getElementById('refresh-countdown');
+
+  function fmtCountdown(secs) {
+    if (secs <= 0) return 'refresh due';
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    // Round seconds down to nearest 10 so the value matches the tick rate
+    s = s - (s % 10);
+    var ss = (s < 10 ? '0' : '') + s;
+    return 'next in ' + m + 'm ' + ss + 's';
+  }
+
+  if (refreshCountdown) {
+    var intervalS = parseInt(refreshCountdown.dataset.intervalS, 10) || 0;
+    var lastFetch = parseFloat(refreshCountdown.dataset.lastFetch);
+    var nextAt = (!isNaN(lastFetch) && lastFetch > 0 && intervalS > 0)
+      ? (lastFetch + intervalS) : null;
+
+    function tickCountdown() {
+      if (!nextAt) {
+        refreshCountdown.textContent = '';
+        return;
+      }
+      var remaining = Math.round(nextAt - (Date.now() / 1000));
+      refreshCountdown.textContent = fmtCountdown(remaining);
+    }
+    tickCountdown();
+    setInterval(tickCountdown, 10000);
+
+    // Expose so the button handler can reset the countdown on manual refresh
+    refreshCountdown._resetTimer = function() {
+      if (intervalS > 0) {
+        nextAt = (Date.now() / 1000) + intervalS;
+        tickCountdown();
+      }
+    };
+  }
+
+  // Initialise the info popover
+  var refreshInfo = document.getElementById('refresh-info');
+  if (refreshInfo && window.bootstrap && bootstrap.Popover) {
+    new bootstrap.Popover(refreshInfo);
+  }
+
   if (refreshBtn) {
     refreshBtn.addEventListener('click', function() {
       refreshBtn.disabled = true;
@@ -1275,6 +1333,9 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       fetch('{{ url_for("data_collection.refresh") }}', {method: 'POST', headers: headers})
         .then(function() {
           refreshBtn.innerHTML = '<i class="fas fa-check me-1"></i> Refresh started';
+          if (refreshCountdown && refreshCountdown._resetTimer) {
+            refreshCountdown._resetTimer();
+          }
           setTimeout(function() { window.location.reload(); }, 4000);
         })
         .catch(function() {

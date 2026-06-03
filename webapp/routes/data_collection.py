@@ -207,9 +207,13 @@ def index():
     source_errors = {sid: st["error"] for sid, st in cache_status.items() if st.get("error")}
     now = time.time()
     cache_ages = {}
+    last_fetch_ts = 0.0
     for sid, st in cache_status.items():
         if st.get("last_fetch"):
             cache_ages[sid] = int((now - st["last_fetch"]) / 60)
+            if st["last_fetch"] > last_fetch_ts:
+                last_fetch_ts = st["last_fetch"]
+    cache_interval_s = int(getattr(config, "COLLECTION_CACHE_INTERVAL", 15)) * 60
 
     # Tag frequency map
     counter = Counter()
@@ -254,6 +258,8 @@ def index():
         source_errors=source_errors,
         cache_ages=cache_ages,
         cache_status=cache_status,
+        cache_interval_s=cache_interval_s,
+        cache_last_fetch_ts=last_fetch_ts or None,
         tag_briefing=config.TAG_BRIEFING,
         tag_flash_intel=config.TAG_FLASH_INTEL,
         tag_vea=config.TAG_VEA,
