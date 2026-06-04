@@ -149,10 +149,16 @@
       "description": "Near-term (1-7d) actions, newline-separated",
       "disable_correlation": true
     },
-    "mitre-techniques": {
+    "mitre-attack-techniques": {
       "misp-attribute": "text",
       "ui-priority": 15,
-      "description": "Relevant MITRE ATT&CK techniques (Txxxx: name) one per line",
+      "description": "JSON array of MITRE ATT&CK technique values selected from the galaxy (scope)",
+      "disable_correlation": true
+    },
+    "mitre-techniques": {
+      "misp-attribute": "text",
+      "ui-priority": 16,
+      "description": "Relevant MITRE ATT&CK techniques (Txxxx: name) one per line — Detection guidance",
       "disable_correlation": true
     },
     "hunting-hypotheses": {

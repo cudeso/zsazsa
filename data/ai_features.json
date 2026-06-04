@@ -6,12 +6,12 @@
   },
   "generate_flash_intel": {
     "provider": "openai",
-    "model": "",
+    "model": "o4-mini",
     "prompt": "flash_intel_generate.md"
   },
   "generate_fia_draft": {
     "provider": "openai",
-    "model": "",
+    "model": "o4-mini",
     "prompt": "flash_intel_generate.md"
   },
   "draft_briefing_story": {
@@ -31,12 +31,12 @@
   },
   "summarise_report": {
     "provider": "openai",
-    "model": "",
+    "model": "gpt-4o",
     "prompt": "summarise_misp_report.md"
   },
   "draft_vea_sections": {
     "provider": "openai",
-    "model": "",
+    "model": "o4-mini",
     "prompt": "vea_draft.md"
   }
 }

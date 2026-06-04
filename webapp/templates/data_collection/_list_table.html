@@ -198,114 +198,84 @@
               {% endfor %}
               {% if ns.has_tags %}
               <div class="tag-cell-inner mt-1">
-                {% if ns.workflow_val %}
-                  {% if ns.workflow_val == 'draft' %}
-                    <span class="badge tag-row-badge wf-badge wf-draft" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: draft · Click to filter"><i class="fas fa-pen fa-xs me-1"></i>draft</span>
-                  {% elif ns.workflow_val == 'incomplete' %}
-                    <span class="badge tag-row-badge wf-badge wf-incomplete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: incomplete · Click to filter"><i class="fas fa-circle-exclamation fa-xs me-1"></i>incomplete</span>
-                  {% elif ns.workflow_val == 'ongoing' %}
-                    <span class="badge tag-row-badge wf-badge wf-ongoing" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: ongoing · Click to filter"><i class="fas fa-hourglass-half fa-xs me-1"></i>ongoing</span>
-                  {% elif ns.workflow_val == 'complete' %}
-                    <span class="badge tag-row-badge wf-badge wf-complete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: complete · Click to filter"><i class="fas fa-circle-check fa-xs me-1"></i>complete</span>
-                  {% elif ns.workflow_val == 'published' %}
-                    <span class="badge tag-row-badge wf-badge wf-published" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: published · Click to filter"><i class="fas fa-paper-plane fa-xs me-1"></i>published</span>
-                  {% else %}
-                    <span class="badge tag-row-badge wf-badge wf-other" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: {{ ns.workflow_val }} · Click to filter"><i class="fas fa-circle fa-xs me-1"></i>{{ ns.workflow_val }}</span>
+
+                {# ── Shared skip macro (inlined per loop) ─────────────────────────
+                   System = marker, scraper meta, admiralty, workflow, retention.
+                   Reuse the same {% set _s %}...{% endset %} pattern per loop.  #}
+
+                {# ── Line 1: workflow · source chips · info · TLP · CTI eval · products ── #}
+                <div class="tag-line">
+                  {% if ns.workflow_val %}
+                    {% if ns.workflow_val == 'draft' %}<span class="badge tag-row-badge wf-badge wf-draft" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: draft · Click to filter"><i class="fas fa-pen fa-xs me-1"></i>draft</span>
+                    {% elif ns.workflow_val == 'incomplete' %}<span class="badge tag-row-badge wf-badge wf-incomplete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: incomplete · Click to filter"><i class="fas fa-circle-exclamation fa-xs me-1"></i>incomplete</span>
+                    {% elif ns.workflow_val == 'ongoing' %}<span class="badge tag-row-badge wf-badge wf-ongoing" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: ongoing · Click to filter"><i class="fas fa-hourglass-half fa-xs me-1"></i>ongoing</span>
+                    {% elif ns.workflow_val == 'complete' %}<span class="badge tag-row-badge wf-badge wf-complete" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: complete · Click to filter"><i class="fas fa-circle-check fa-xs me-1"></i>complete</span>
+                    {% elif ns.workflow_val == 'published' %}<span class="badge tag-row-badge wf-badge wf-published" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: published · Click to filter"><i class="fas fa-paper-plane fa-xs me-1"></i>published</span>
+                    {% else %}<span class="badge tag-row-badge wf-badge wf-other" data-tag="{{ ns.workflow_tag }}" style="cursor:pointer;" title="Workflow: {{ ns.workflow_val }} · Click to filter"><i class="fas fa-circle fa-xs me-1"></i>{{ ns.workflow_val }}</span>{% endif %}
                   {% endif %}
-                {% endif %}
-                {% if ns.src_source_val %}{{ chip_badge(ns.src_source_tag, ns.src_source_val, VALUE_CHIP_CONFIG['scraper:data-collection-source']) }}{% endif %}
-                {% if ns.src_domain_val %}{{ chip_badge(ns.src_domain_tag, ns.src_domain_val, VALUE_CHIP_CONFIG['scraper:primary-data-collection-source']) }}{% endif %}
-                {% if ns.adm_rel_val %}{{ chip_badge(ns.adm_rel_tag, ns.adm_rel_val, VALUE_CHIP_CONFIG['admiralty-scale:source-reliability']) }}{% endif %}
-                {% if ns.adm_cred_val %}{{ chip_badge(ns.adm_cred_tag, ns.adm_cred_val, VALUE_CHIP_CONFIG['admiralty-scale:information-credibility']) }}{% endif %}
-                {% if ns.src_source_val or ns.src_domain_val or ns.retention_tag %}
-                <span class="scraper-meta-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
-                      title="{% set sep = namespace(v='') %}{% if ns.src_source_tag %}{{ ns.src_source_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.src_domain_tag %}{{ sep.v }}{{ ns.src_domain_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.retention_tag %}{{ sep.v }}{{ ns.retention_tag }}{% endif %}">
-                  <i class="fas fa-circle-info" style="font-size:.72rem;color:#adb5bd;cursor:default;"></i>
-                </span>
-                {% endif %}
-                {% for t in e.tags %}
-                  {% if not (t == marker_tag
-                             or t.startswith('scraper:data-collection-source')
-                             or t.startswith('scraper:primary-data-collection-source')
-                             or t.startswith('admiralty-scale:source-reliability')
-                             or t.startswith('admiralty-scale:information-credibility')
-                             or t.startswith('workflow:state')
-                             or t.startswith('retention')) %}
-                    {% if t.startswith('tlp:') %}
-                      {% set tlp_val = t[4:] | lower %}
-                      <span class="badge tag-row-badge tlp-badge tlp-{{ tlp_val | replace('+strict','') | replace('+','') }}" data-tag="{{ t }}"
-                            style="cursor:pointer;" title="Click to filter · TLP classification">TLP:{{ tlp_val | upper }}</span>
-                    {% elif t.startswith('misp-galaxy:mitre-attack-pattern=') %}
-                      {% set tval = t[33:] %}
-                      {% set tparts = tval.split(' - ', 1) %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#fdecea;color:#7b1a10;border:1px solid #e8b4b0;cursor:pointer;"
-                            title="{{ tval }} · Click to filter">
-                        <span style="font-family:monospace;font-weight:700;">{{ tparts[0] }}</span>{% if tparts | length > 1 %} {{ tparts[1] }}{% endif %}
-                      </span>
-                    {% elif t.startswith('misp-galaxy:threat-actor=') %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#fef5e3;color:#7a4f0a;border:1px solid #f5d89a;cursor:pointer;"
-                            title="{{ t[25:] }} · Click to filter">
-                        <i class="fas fa-user-secret fa-xs me-1"></i>{{ t[25:] }}
-                      </span>
-                    {% elif t.startswith('misp-galaxy:sector=') or t.startswith('misp-galaxy:country=') or t.startswith('misp-galaxy:target-information=') %}
-                      {% if t.startswith('misp-galaxy:sector=') %}
-                        {% set ctx_label = t[19:] %}{% set ctx_icon = 'fa-building' %}
-                      {% elif t.startswith('misp-galaxy:country=') %}
-                        {% set ctx_label = t[20:] %}{% set ctx_icon = 'fa-globe' %}
-                      {% else %}
-                        {% set ctx_label = t[31:] %}{% set ctx_icon = 'fa-bullseye' %}
-                      {% endif %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;cursor:pointer;"
-                            title="{{ ctx_label }} · Click to filter">
-                        <i class="fas {{ ctx_icon }} fa-xs me-1"></i>{{ ctx_label }}
-                      </span>
-                    {% elif t.startswith('zsazsa:product=') %}
-                      {% set product_label = t[16:-1] %}
-                      <span style="display:inline-flex;align-items:stretch;background:#7c3aed;border:1px solid #6d28d9;border-radius:.3rem;overflow:hidden;vertical-align:middle;font-size:.62rem;font-weight:600;line-height:1;">
-                        <span class="product-tag-main-btn" data-tag="{{ t }}"
-                              style="color:#fff;padding:.18rem .35rem;cursor:pointer;"
-                              title="Used for: {{ product_label }} · Click to see linked products">
-                          <i class="fas fa-box-open fa-xs me-1"></i>{{ product_label }}
-                        </span>
-                        <span class="product-tag-filter-btn" data-tag="{{ t }}"
-                              style="color:rgba(255,255,255,.65);border-left:1px solid rgba(255,255,255,.25);padding:.18rem .3rem;cursor:pointer;display:flex;align-items:center;"
-                              title="Filter: show only events used for {{ product_label }}">
-                          <i class="fas fa-filter fa-xs"></i>
-                        </span>
-                      </span>
-                    {% elif t.startswith('cti-evaluation:') %}
-                      {% set eval_raw = t[15:] %}
-                      {% set eval_parts = eval_raw.split('=', 1) %}
-                      {% set eval_pred = eval_parts[0] | replace('-', ' ') %}
-                      {% set eval_value = (eval_parts[1] if eval_parts | length > 1 else '') | replace('"', '') | lower %}
-                      {% if eval_value == 'very-high' %}
-                        {% set eval_bg = '#dcfce7' %}{% set eval_color = '#166534' %}{% set eval_border = '#86efac' %}
-                      {% elif eval_value == 'high' %}
-                        {% set eval_bg = '#ecfccb' %}{% set eval_color = '#3f6212' %}{% set eval_border = '#bef264' %}
-                      {% elif eval_value == 'moderate' %}
-                        {% set eval_bg = '#fef9c3' %}{% set eval_color = '#854d0e' %}{% set eval_border = '#fde047' %}
-                      {% elif eval_value == 'low' %}
-                        {% set eval_bg = '#ffedd5' %}{% set eval_color = '#9a3412' %}{% set eval_border = '#fdba74' %}
-                      {% else %}
-                        {% set eval_bg = '#fee2e2' %}{% set eval_color = '#991b1b' %}{% set eval_border = '#fca5a5' %}
-                      {% endif %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:{{ eval_bg }};color:{{ eval_color }};border:1px solid {{ eval_border }};cursor:pointer;"
-                            title="CTI evaluation · {{ eval_pred | title }}: {{ eval_value | replace('-', ' ') | title }} · Click to filter">
-                        <i class="fas fa-microscope fa-xs me-1"></i>{{ eval_pred | title }}: {{ eval_value | replace('-', ' ') | title }}
-                      </span>
-                    {% else %}
-                      <span class="badge tag-row-badge" data-tag="{{ t }}"
-                            style="background:#eef2f7;color:#455a7a;cursor:pointer;"
-                            title="{{ t }} · Click to filter">{{ t }}</span>
-                    {% endif %}
+                  {% if ns.src_source_val %}{{ chip_badge(ns.src_source_tag, ns.src_source_val, VALUE_CHIP_CONFIG['scraper:data-collection-source']) }}{% endif %}
+                  {% if ns.src_domain_val %}{{ chip_badge(ns.src_domain_tag, ns.src_domain_val, VALUE_CHIP_CONFIG['scraper:primary-data-collection-source']) }}{% endif %}
+                  {% if ns.adm_rel_val %}{{ chip_badge(ns.adm_rel_tag, ns.adm_rel_val, VALUE_CHIP_CONFIG['admiralty-scale:source-reliability']) }}{% endif %}
+                  {% if ns.adm_cred_val %}{{ chip_badge(ns.adm_cred_tag, ns.adm_cred_val, VALUE_CHIP_CONFIG['admiralty-scale:information-credibility']) }}{% endif %}
+                  {% if ns.src_source_val or ns.src_domain_val or ns.retention_tag %}
+                  <span class="scraper-meta-tooltip" data-bs-toggle="tooltip" data-bs-placement="top"
+                        title="{% set sep = namespace(v='') %}{% if ns.src_source_tag %}{{ ns.src_source_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.src_domain_tag %}{{ sep.v }}{{ ns.src_domain_tag }}{% set sep.v = ' · ' %}{% endif %}{% if ns.retention_tag %}{{ sep.v }}{{ ns.retention_tag }}{% endif %}">
+                    <i class="fas fa-circle-info" style="font-size:.72rem;color:#adb5bd;cursor:default;"></i>
+                  </span>
                   {% endif %}
-                {% endfor %}
+                  {# TLP #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('tlp:') %}{% set tlp_val = t[4:] | lower %}<span class="badge tag-row-badge tlp-badge tlp-{{ tlp_val | replace('+strict','') | replace('+','') }}" data-tag="{{ t }}" style="cursor:pointer;" title="TLP classification · Click to filter">TLP:{{ tlp_val | upper }}</span>{% endif %}
+                  {% endfor %}
+                  {# CTI evaluation #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('cti-evaluation:') %}{% set ev_raw = t[15:] %}{% set ev_parts = ev_raw.split('=',1) %}{% set ev_pred = ev_parts[0] | replace('-',' ') %}{% set ev_val = (ev_parts[1] if ev_parts|length>1 else '') | replace('"','') | lower %}{% if ev_val=='very-high' %}{% set ev_bg='#dcfce7' %}{% set ev_col='#166534' %}{% set ev_brd='#86efac' %}{% elif ev_val=='high' %}{% set ev_bg='#ecfccb' %}{% set ev_col='#3f6212' %}{% set ev_brd='#bef264' %}{% elif ev_val=='moderate' %}{% set ev_bg='#fef9c3' %}{% set ev_col='#854d0e' %}{% set ev_brd='#fde047' %}{% elif ev_val=='low' %}{% set ev_bg='#ffedd5' %}{% set ev_col='#9a3412' %}{% set ev_brd='#fdba74' %}{% else %}{% set ev_bg='#fee2e2' %}{% set ev_col='#991b1b' %}{% set ev_brd='#fca5a5' %}{% endif %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:{{ ev_bg }};color:{{ ev_col }};border:1px solid {{ ev_brd }};cursor:pointer;" title="CTI evaluation · {{ ev_pred|title }}: {{ ev_val|replace('-',' ')|title }} · Click to filter"><i class="fas fa-microscope fa-xs me-1"></i>{{ ev_pred|title }}: {{ ev_val|replace('-',' ')|title }}</span>{% endif %}
+                  {% endfor %}
+                  {# Product tags #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('zsazsa:product=') %}{% set plabel = t[16:-1] %}<span style="display:inline-flex;align-items:stretch;background:#7c3aed;border:1px solid #6d28d9;border-radius:.3rem;overflow:hidden;vertical-align:middle;font-size:.62rem;font-weight:600;line-height:1;"><span class="product-tag-main-btn" data-tag="{{ t }}" style="color:#fff;padding:.18rem .35rem;cursor:pointer;" title="Used for: {{ plabel }} · Click to see linked products"><i class="fas fa-box-open fa-xs me-1"></i>{{ plabel }}</span><span class="product-tag-filter-btn" data-tag="{{ t }}" style="color:rgba(255,255,255,.65);border-left:1px solid rgba(255,255,255,.25);padding:.18rem .3rem;cursor:pointer;display:flex;align-items:center;" title="Filter: show only events used for {{ plabel }}"><i class="fas fa-filter fa-xs"></i></span></span>{% endif %}
+                  {% endfor %}
+                </div>
+
+                {# ── Line 2: galaxy tags – threat actors · geo · sectors · ATT&CK · other ── #}
+                <div class="tag-line tag-line-galaxy">
+                  {# Threat actors #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('misp-galaxy:threat-actor=') %}{% set gv = t[25:] | replace('"','') | trim %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:#fef5e3;color:#7a4f0a;border:1px solid #f5d89a;cursor:pointer;" title="{{ gv }} · Click to filter"><i class="fas fa-user-secret fa-xs me-1"></i>{{ gv }}</span>{% endif %}
+                  {% endfor %}
+                  {# Geography (country + target-information) #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and (t.startswith('misp-galaxy:country=') or t.startswith('misp-galaxy:target-information=')) %}{% if t.startswith('misp-galaxy:country=') %}{% set gv = t[20:] | replace('"','') | trim %}{% else %}{% set gv = t[32:] | replace('"','') | trim %}{% endif %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;cursor:pointer;" title="{{ gv }} · Click to filter"><i class="fas fa-globe fa-xs me-1"></i>{{ gv }}</span>{% endif %}
+                  {% endfor %}
+                  {# Sectors #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('misp-galaxy:sector=') %}{% set gv = t[19:] | replace('"','') | trim %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;cursor:pointer;" title="{{ gv }} · Click to filter"><i class="fas fa-building fa-xs me-1"></i>{{ gv }}</span>{% endif %}
+                  {% endfor %}
+                  {# MITRE ATT&CK #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('misp-galaxy:mitre-attack-pattern=') %}{% set gv = t[34:] | replace('"','') | trim %}{% set gparts = gv.split(' - ', 1) %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:#fdecea;color:#7b1a10;border:1px solid #e8b4b0;cursor:pointer;" title="{{ gv }} · Click to filter"><i class="fas fa-shield-halved fa-xs me-1"></i><span style="font-family:monospace;font-weight:700;">{{ gparts[0] }}</span>{% if gparts|length > 1 %} {{ gparts[1] }}{% endif %}</span>{% endif %}
+                  {% endfor %}
+                  {# Other misp-galaxy types not listed above #}
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and t.startswith('misp-galaxy:') and not t.startswith('misp-galaxy:threat-actor=') and not t.startswith('misp-galaxy:country=') and not t.startswith('misp-galaxy:target-information=') and not t.startswith('misp-galaxy:sector=') and not t.startswith('misp-galaxy:mitre-attack-pattern=') %}{% set ns_strip2 = namespace(text='') %}{% for sp in collection_tag_strip_prefixes %}{% if not ns_strip2.text and t.startswith(sp) %}{% set ns_strip2.text = t[sp|length:] | replace('"','') | trim %}{% endif %}{% endfor %}{% if not ns_strip2.text %}{% set gp2 = t.split('=',1) %}{% set ns_strip2.text = (gp2[1]|replace('"','')|trim) if gp2|length>1 else t %}{% endif %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;cursor:pointer;" title="{{ t }} · Click to filter"><i class="fas fa-circle-nodes fa-xs me-1"></i>{{ ns_strip2.text }}</span>{% endif %}
+                  {% endfor %}
+                </div>
+
+                {# ── Line 3: all other tags ─────────────────────────────────────────── #}
+                <div class="tag-line">
+                  {% for t in e.tags %}{% set _s = namespace(skip=false) %}{% if t == marker_tag or t.startswith('scraper:data-collection-source') or t.startswith('scraper:primary-data-collection-source') or t.startswith('admiralty-scale:') or t.startswith('workflow:state') or t.startswith('retention') %}{% set _s.skip = true %}{% endif %}{% if not _s.skip %}{% for hp in collection_tag_hide_prefixes %}{% if not _s.skip and t.startswith(hp) %}{% set _s.skip = true %}{% endif %}{% endfor %}{% endif %}
+                    {% if not _s.skip and not t.startswith('tlp:') and not t.startswith('cti-evaluation:') and not t.startswith('zsazsa:product=') and not t.startswith('misp-galaxy:') %}{% set ns_strip3 = namespace(text='') %}{% for sp in collection_tag_strip_prefixes %}{% if not ns_strip3.text and t.startswith(sp) %}{% set ns_strip3.text = t[sp|length:] | replace('"','') | trim %}{% endif %}{% endfor %}<span class="badge tag-row-badge" data-tag="{{ t }}" style="background:#eef2f7;color:#455a7a;cursor:pointer;" title="{{ t }} · Click to filter">{{ ns_strip3.text if ns_strip3.text else t }}</span>{% endif %}
+                  {% endfor %}
+                </div>
+
               </div>
               {% endif %}
+              <div class="scope-btn-group mt-1">
+                <button class="scope-btn" data-scope-type="geo" data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}" title="Add geographic scope"><i class="fas fa-globe"></i></button>
+                <button class="scope-btn" data-scope-type="sectors" data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}" title="Add sector scope"><i class="fas fa-building"></i></button>
+                <button class="scope-btn" data-scope-type="threat_actors" data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}" title="Add threat actor scope"><i class="fas fa-user-secret"></i></button>
+                <button class="scope-btn" data-scope-type="mitre" data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}" title="Add MITRE ATT&amp;CK technique"><i class="fas fa-shield-halved"></i></button>
+              </div>
               {% if e.vulnerability_ids or e.req_matches %}
               <div class="req-match-badges mt-1">
                 {% if e.vulnerability_ids %}

@@ -49,6 +49,7 @@ def _form_data(form, fia_id=""):
         "affected_assets": form.get("affected_assets", ""),
         "actor_types": form.getlist("actor_types"),
         "actor_context": form.get("actor_context", ""),
+        "mitre_attack_techniques": form.getlist("mitre_attack_techniques"),
         "geographic_scope": form.getlist("geographic_scope"),
         "sectors": form.getlist("sectors"),
         "threat_actors": form.getlist("threat_actors"),
@@ -85,11 +86,36 @@ def _wizard_context(fia=None, source_events=None):
         "sector_items": misp_store.galaxy_sectors(),
         "threat_actor_items": misp_store.galaxy_threat_actors(),
         "threat_actor_types": getattr(_cfg, "THREAT_ACTOR_TYPES", []),
+        "mitre_attack_items": misp_store.galaxy_mitre_attack_patterns(),
         "action_presets_immediate": getattr(_cfg, "RECOMMENDED_ACTIONS_IMMEDIATE", []),
         "action_presets_near_term": getattr(_cfg, "RECOMMENDED_ACTIONS_NEAR_TERM", []),
         "pirs": misp_store.list_pirs(),
         "source_event_tags": sorted({t for ev in (source_events or []) for t in ev.get("tags", [])}),
     }
+
+
+def _extract_scope_from_tags(source_events):
+    """Extract geographic, sector, and threat-actor scope from source event galaxy tags."""
+    all_tags = [t for ev in source_events for t in ev.get("tags", [])]
+
+    def _vals(prefixes):
+        seen, result = set(), []
+        for tag in all_tags:
+            for prefix in prefixes:
+                if tag.startswith(prefix):
+                    val = tag[len(prefix):].strip().strip('"')
+                    if val and val not in seen:
+                        seen.add(val)
+                        result.append(val)
+                    break
+        return result
+
+    return (
+        _vals(['misp-galaxy:country=', 'misp-galaxy:target-information=']),
+        _vals(['misp-galaxy:sector=']),
+        _vals(['misp-galaxy:threat-actor=']),
+        _vals(['misp-galaxy:mitre-attack-pattern=']),
+    )
 
 
 def _seed_from_sources(source_uuids, source_hints=None):
@@ -100,6 +126,7 @@ def _seed_from_sources(source_uuids, source_hints=None):
     source_events = misp_store.fetch_source_events(source_uuids, source_hints, strict_source=bool(source_hints))
     title = source_events[0]["info"] if source_events else ""
     labels = list(dict.fromkeys(ev["source_label"] for ev in source_events if ev.get("source_label")))
+    geographic_scope, sectors, threat_actors, mitre_attack_techniques = _extract_scope_from_tags(source_events)
     seed = SimpleNamespace(
         fia_id="",
         title=title,
@@ -108,7 +135,8 @@ def _seed_from_sources(source_uuids, source_hints=None):
         what_happened=[], source_description=", ".join(labels),
         source_reliability="", information_credibility="",
         likely_impact="", affected_assets="", actor_types=[], actor_context="",
-        geographic_scope=[], sectors=[], threat_actors=[],
+        mitre_attack_techniques=mitre_attack_techniques,
+        geographic_scope=geographic_scope, sectors=sectors, threat_actors=threat_actors,
         threat_types=[], technology=[], vendor=[], incident=[], campaign=[],
         actions_immediate=[], actions_near_term=[],
         mitre_techniques=[], hunting_hypotheses=[],

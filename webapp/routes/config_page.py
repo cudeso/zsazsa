@@ -115,6 +115,8 @@ def _read() -> dict:
         {"name": str(t.get("name", "")).strip(), "description": str(t.get("description", "")).strip()}
         for t in raw_tat if isinstance(t, dict)
     ]
+    tag_strip_prefixes = [str(p).strip() for p in (getattr(_config, "COLLECTION_TAG_STRIP_PREFIXES", []) or []) if str(p).strip()]
+    tag_hide_prefixes = [str(p).strip() for p in (getattr(_config, "COLLECTION_TAG_HIDE_PREFIXES", []) or []) if str(p).strip()]
     openai_api_key = getattr(_config, "OPENAI_API_KEY", getattr(_config, "ANTHROPIC_API_KEY", ""))
     openai_model = getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", ""))
     return {
@@ -136,6 +138,8 @@ def _read() -> dict:
         "FOCUS_POINTS_THREAT_TYPES": focus_points_threat_types,
         "FOCUS_POINTS_THREAT_ACTORS": focus_points_threat_actors,
         "THREAT_ACTOR_TYPES": threat_actor_types,
+        "COLLECTION_TAG_STRIP_PREFIXES": tag_strip_prefixes,
+        "COLLECTION_TAG_HIDE_PREFIXES": tag_hide_prefixes,
         "TAG_STAKEHOLDER": _config.TAG_STAKEHOLDER,
         "TAG_PIR": _config.TAG_PIR,
         "TAG_GIR": _config.TAG_GIR,
@@ -184,6 +188,10 @@ def _write(values):
     fp_threat_types_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_threat_types) + "]"
     fp_threat_actors = values.get("FOCUS_POINTS_THREAT_ACTORS", [])
     fp_threat_actors_repr = "[\n" + "".join(f"    {p!r},\n" for p in fp_threat_actors) + "]"
+    tag_strip = values.get("COLLECTION_TAG_STRIP_PREFIXES", [])
+    tag_strip_repr = "[\n" + "".join(f"    {p!r},\n" for p in tag_strip) + "]"
+    tag_hide = values.get("COLLECTION_TAG_HIDE_PREFIXES", [])
+    tag_hide_repr = "[\n" + "".join(f"    {p!r},\n" for p in tag_hide) + "]"
     tat = values.get("THREAT_ACTOR_TYPES", [])
     if tat:
         tat_lines = ["[\n"]
@@ -287,6 +295,10 @@ TAG_BRIEFING    = {values['TAG_BRIEFING']!r}
 TAG_TLR         = {values['TAG_TLR']!r}
 TAG_COLLECTION_FOLLOWUP = {values['TAG_COLLECTION_FOLLOWUP']!r}
 
+# Data collection tag display settings
+COLLECTION_TAG_STRIP_PREFIXES = {tag_strip_repr}
+COLLECTION_TAG_HIDE_PREFIXES = {tag_hide_repr}
+
 # Recommended actions shown in flash intel and VEA wizards
 RECOMMENDED_ACTIONS_IMMEDIATE = {values.get('RECOMMENDED_ACTIONS_IMMEDIATE', [])!r}
 RECOMMENDED_ACTIONS_NEAR_TERM = {values.get('RECOMMENDED_ACTIONS_NEAR_TERM', [])!r}
@@ -355,6 +367,8 @@ def index():
             ]
         except (json.JSONDecodeError, ValueError):
             threat_actor_types = []
+        tag_strip_prefixes = [p.strip() for p in request.form.get("COLLECTION_TAG_STRIP_PREFIXES", "").splitlines() if p.strip()]
+        tag_hide_prefixes = [p.strip() for p in request.form.get("COLLECTION_TAG_HIDE_PREFIXES", "").splitlines() if p.strip()]
         values = {
             "MISP_URL": getattr(_config, "MISP_URL", ""),
             "MISP_KEY": getattr(_config, "MISP_KEY", ""),
@@ -374,6 +388,8 @@ def index():
             "FOCUS_POINTS_THREAT_TYPES": fp_threat_types,
             "FOCUS_POINTS_THREAT_ACTORS": fp_threat_actors,
             "THREAT_ACTOR_TYPES": threat_actor_types,
+            "COLLECTION_TAG_STRIP_PREFIXES": tag_strip_prefixes,
+            "COLLECTION_TAG_HIDE_PREFIXES": tag_hide_prefixes,
             "TAG_STAKEHOLDER": request.form.get("TAG_STAKEHOLDER", "").strip(),
             "TAG_PIR": request.form.get("TAG_PIR", "").strip(),
             "TAG_GIR": request.form.get("TAG_GIR", "").strip(),

@@ -6,10 +6,12 @@ Relevance criteria:
 - Articles reporting on threats, vulnerabilities, incidents, or campaigns that affect the configured focus points are relevant.
 - Generic security news with no connection to the focus points is not relevant.
 
+If the provided content is very short (fewer than 100 words), consists mainly of navigation elements, cookie notices, login prompts, or a paywall message, set relevant=false and confidence="low" with reason explaining the content is insufficient for assessment.
+
 Return a JSON object with exactly these fields:
 - "relevant": true or false
 - "matched_focus_points": list of matched items from the focus points (e.g. ["healthcare", "Fortinet"]), empty list if not relevant
-- "source_type": classify the article as one of: "blog-post", "technical-report", "news-report", "advisory"
+- "source_type": classify the article as one of: "blog-post", "technical-report", "news-report", "advisory", "vendor-advisory", "threat-intel-report"
 - "confidence": your confidence in the relevance assessment: "high", "moderate", or "low"
 - "reason": one sentence explaining your decision
 

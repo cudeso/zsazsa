@@ -23,14 +23,37 @@
       </div>
       <div class="card-body">
         <p style="white-space: pre-wrap;">{{ story.content or '(no content)' }}</p>
-        <div class="text-muted small mt-2">
+        <div class="mt-3 small" style="border-top:1px solid #f0f2f5;padding-top:.6rem;">
           {% if story.source_url %}
-          <strong>Source:</strong> <a href="{{ story.source_url }}" target="_blank" rel="noopener">{{ story.source_url }}</a> ·
+          <div class="text-muted mb-1">
+            <strong>Source:</strong>
+            <a href="{{ story.source_url }}" target="_blank" rel="noopener" class="text-decoration-none">
+              {{ story.source_url | truncate(90) }}<i class="fas fa-external-link-alt fa-xs ms-1 opacity-50"></i>
+            </a>
+          </div>
           {% endif %}
           {% if story.source_event_uuid %}
-          <strong>MISP event:</strong> <code>{{ story.source_event_uuid }}</code> ·
+          {% set ev = source_meta.get(story.source_event_uuid, {}) %}
+          <div class="text-muted mb-1">
+            <strong>MISP event:</strong>
+            <a href="{{ misp_webapp_url }}/events/view/{{ story.source_event_uuid }}"
+               target="_blank" rel="noopener" class="font-monospace text-decoration-none">
+              {{ story.source_event_uuid }}<i class="fas fa-external-link-alt fa-xs ms-1 opacity-50"></i>
+            </a>
+            {% if ev.get('date') %}
+            <span class="badge text-bg-light border ms-1">{{ ev.date }}</span>
+            {% endif %}
+            {% if ev.get('orgc') %}
+            <span class="badge text-bg-light border ms-1">{{ ev.orgc }}</span>
+            {% endif %}
+            {% if ev.get('info') %}
+            <div class="text-muted ms-1 mt-1" style="font-size:.78rem;font-style:italic;">{{ ev.info | truncate(120) }}</div>
+            {% endif %}
+          </div>
           {% endif %}
-          <strong>Correlation:</strong> {{ story.correlation or 'No' }}
+          <div class="text-muted">
+            <strong>Correlation:</strong> {{ story.correlation or 'No' }}
+          </div>
         </div>
       </div>
     </div>

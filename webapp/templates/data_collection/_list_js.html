@@ -1,7 +1,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
-.tag-cell-inner { display:flex;flex-wrap:wrap;gap:.2rem; }
+.tag-cell-inner { display:flex;flex-direction:column;gap:.25rem; }
+.tag-line { display:flex;flex-wrap:wrap;gap:.2rem;align-items:center; }
+.tag-line:empty { display:none; }
 .tag-row-badge { font-size:.62rem !important; padding:.15rem .4rem !important; }
 #go-to-top-btn {
   position:fixed; bottom:1.75rem; right:1.5rem; z-index:1030;
@@ -66,7 +68,8 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   var VALUE_CHIP_CONFIG = {{ VALUE_CHIP_CONFIG | tojson }};
   var CLOUD_HIDDEN_PREFIXES = Object.keys(VALUE_CHIP_CONFIG).filter(function(k) {
     return VALUE_CHIP_CONFIG[k].cloud_hide;
-  }).concat(['workflow:state', 'retention']);
+  }).concat(['workflow:state', 'retention'])
+    .concat({{ collection_tag_hide_prefixes | tojson }});
 
   var CTI_EVAL_RANK = {
     'very-low': 1, 'low': 2, 'moderate': 3, 'high': 4, 'very-high': 5,
@@ -972,6 +975,30 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       var selected = getSelectedEvents();
       if (!selected.length) { alert('Select at least one event using the checkboxes.'); return; }
 
+      /* Threat landscape queue: tag via AJAX, no wizard navigation */
+      if (action === 'threat-landscape-report') {
+        fetch('/collection/queue-for-tlr', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({events: selected}),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          var btn = document.getElementById('create-product-btn');
+          if (d.ok) {
+            if (btn) {
+              var orig = btn.innerHTML;
+              btn.innerHTML = '<i class="fas fa-check me-1"></i>' + d.tagged + ' queued';
+              setTimeout(function() { btn.innerHTML = orig; }, 2000);
+            }
+          } else {
+            alert('Could not queue events: ' + (d.error || 'unknown error'));
+          }
+        })
+        .catch(function() { alert('Request failed.'); });
+        return;
+      }
+
       var urlMap = {
         'flash-intel': '{{ url_for("flash_intel.wizard_new") }}',
         'vea': '{{ url_for("vea.wizard_new") }}',
@@ -1191,6 +1218,101 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   window.zsazsaCollectionState = state;
   window.zsazsaCollectionApply = applyAll;
   window.zsazsaClearAllFilters = clearAllFilters;
+
+  /* ── Restore a serialised filter preset ── */
+  window.zsazsaRestoreFilterState = function(saved) {
+    if (!saved || typeof saved !== 'object') return;
+    clearAllFilters();
+
+    /* Scalars */
+    if (saved.q !== undefined) state.q = saved.q;
+    if (saved.sortCol) state.sortCol = saved.sortCol;
+    if (saved.sortDir) state.sortDir = saved.sortDir;
+    if (saved.dateFilter) state.dateFilter = saved.dateFilter;
+    if (saved.aiFilter) state.aiFilter = saved.aiFilter;
+    if (saved.reportsFilter) state.reportsFilter = saved.reportsFilter;
+    if (saved.reqMatchFilter) state.reqMatchFilter = saved.reqMatchFilter;
+    if (saved.vulnFilter) state.vulnFilter = saved.vulnFilter;
+    if (saved.flagFilter) state.flagFilter = saved.flagFilter;
+    if (saved.anyProductFilter !== undefined) state.anyProductFilter = !!saved.anyProductFilter;
+    if (saved.hideRejected !== undefined) state.hideRejected = !!saved.hideRejected;
+    if (saved.ctiPredicate !== undefined) state.ctiPredicate = saved.ctiPredicate;
+    if (saved.ctiOperator) state.ctiOperator = saved.ctiOperator;
+    if (saved.ctiValue) state.ctiValue = saved.ctiValue;
+
+    /* Sets — validate sources against what still exists */
+    state.include = new Set(saved.include || []);
+    state.exclude = new Set(saved.exclude || []);
+    var savedSources = (saved.activeSources || []).filter(function(s) { return allSourceIds.indexOf(s) !== -1; });
+    state.activeSources = savedSources.length ? new Set(savedSources) : new Set(allSourceIds);
+    state.includeOrgs = new Set(saved.includeOrgs || []);
+    state.excludeOrgs = new Set(saved.excludeOrgs || []);
+
+    /* Sync search box */
+    var si = document.getElementById('search-input');
+    var sc = document.getElementById('search-clear');
+    if (si) si.value = state.q;
+    if (sc) sc.style.display = state.q ? '' : 'none';
+
+    /* Sync date buttons */
+    document.querySelectorAll('.date-filter-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.dateFilter === state.dateFilter);
+    });
+
+    /* Sync source checkboxes + toggles */
+    document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) {
+      cb.checked = state.activeSources.has(cb.value);
+    });
+    sessionStorage.setItem('zsazsa_active_sources', JSON.stringify(Array.from(state.activeSources)));
+    syncAllSourceVisuals();
+
+    /* Sync tag pills */
+    document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(pill) {
+      var tag = pill.dataset.tag || '';
+      var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(p) { return tag.startsWith(p); });
+      if (state.include.has(tag)) {
+        pill.dataset.state = 'include'; pill.className = 'tag-pill tag-pill-include' + (isMeta ? ' tag-pill-hidden' : '');
+      } else if (state.exclude.has(tag)) {
+        pill.dataset.state = 'exclude'; pill.className = 'tag-pill tag-pill-exclude' + (isMeta ? ' tag-pill-hidden' : '');
+      } else {
+        pill.dataset.state = 'neutral'; pill.className = 'tag-pill tag-pill-neutral' + (isMeta ? ' tag-pill-hidden' : '');
+      }
+    });
+
+    /* Sync org pills */
+    document.querySelectorAll('.org-pill').forEach(function(pill) {
+      var org = pill.dataset.org || '';
+      if (state.includeOrgs.has(org)) {
+        pill.dataset.state = 'include'; pill.className = 'tag-pill tag-pill-include org-pill';
+      } else if (state.excludeOrgs.has(org)) {
+        pill.dataset.state = 'exclude'; pill.className = 'tag-pill tag-pill-exclude org-pill';
+      } else {
+        pill.dataset.state = 'neutral'; pill.className = 'tag-pill tag-pill-neutral org-pill';
+      }
+    });
+
+    /* Sync tristate buttons */
+    document.querySelectorAll('.tristate-filter-btn').forEach(function(b) {
+      var key = b.dataset.filterKey; var val = b.dataset.filterValue;
+      if (!key) return;
+      b.classList.toggle('btn-secondary', state[key] === val);
+      b.classList.toggle('btn-outline-secondary', state[key] !== val);
+    });
+
+    /* Sync CTI dropdowns */
+    var ctiPredEl = document.getElementById('cti-predicate-filter');
+    var ctiOpEl   = document.getElementById('cti-operator-filter');
+    var ctiValEl  = document.getElementById('cti-value-filter');
+    if (ctiPredEl) ctiPredEl.value = state.ctiPredicate;
+    if (ctiOpEl)   ctiOpEl.value   = state.ctiOperator;
+    if (ctiValEl)  ctiValEl.value  = state.ctiValue;
+    syncCtiFilterUi();
+
+    sortRows();
+    updateTagSummary(); updateTagCountLabel();
+    updateOrgSummary(); updateOrgCountLabel(); updateOrgPillVisibility();
+    applyAll();
+  };
 
 })();
 

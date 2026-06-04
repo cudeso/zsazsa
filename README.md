@@ -6,7 +6,7 @@ It is designed for teams that want to run threat intelligence as an operational 
 
 ## Platform snapshots
 
-T### Overview
+### Overview
 
 ![zsazsa CTI Overview](docs/zsazsa-overview.png)
 

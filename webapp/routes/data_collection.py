@@ -54,7 +54,7 @@ def _split_tags(s: str) -> list[str]:
 
 
 def _source_slug(name: str) -> str:
-    return name.lower().replace(" ", "-").replace("/", "-")
+    return misp_store.source_slug(name)
 
 
 def _sources() -> list[dict]:
@@ -262,6 +262,9 @@ def _build_list_context() -> dict:
         flagged_uuids=collection_cache.get_flagged_uuids(),
         briefing_excluded_uuids=briefing_excluded_uuids,
         briefing_pending_reject_uuids=briefing_pending_reject_uuids,
+        collection_tag_strip_prefixes=getattr(config, "COLLECTION_TAG_STRIP_PREFIXES", []) or [],
+        collection_tag_hide_prefixes=getattr(config, "COLLECTION_TAG_HIDE_PREFIXES", []) or [],
+        scope_galaxy=misp_store.scope_galaxy_items(),
     )
 
 
@@ -785,7 +788,115 @@ def cti_tag(uuid):
     return jsonify({"ok": True, "tag": tag_name})
 
 
+_SCOPE_TAG_ALLOWED_PREFIXES = (
+    'misp-galaxy:country=',
+    'misp-galaxy:target-information=',
+    'misp-galaxy:sector=',
+    'misp-galaxy:threat-actor=',
+    'misp-galaxy:mitre-attack-pattern=',
+)
+
+
+@bp.route("/<string:uuid>/scope-tag", methods=["POST"])
+def scope_tag(uuid):
+    """Add or remove a galaxy scope tag on a collection event.
+
+    POST JSON: {"source": "...", "tag": "misp-galaxy:country=...", "action": "add"|"remove"}
+    """
+    data, err = _json_object()
+    if err:
+        return err
+    source_id = data.get("source") or _SCRAPER_SOURCE_ID
+    tag_name = (data.get("tag") or "").strip()
+    action = data.get("action", "add")
+
+    if not tag_name:
+        return jsonify({"ok": False, "error": "tag is required"}), 400
+    if not any(tag_name.startswith(p) for p in _SCOPE_TAG_ALLOWED_PREFIXES):
+        return jsonify({"ok": False, "error": "Only galaxy scope tags may be applied"}), 400
+    if action not in ("add", "remove"):
+        return jsonify({"ok": False, "error": "action must be add or remove"}), 400
+
+    misp, err_msg = _misp_for_source(source_id)
+    if misp is None:
+        return jsonify({"ok": False, "error": err_msg}), 502
+
+    try:
+        if action == "remove":
+            r = misp.untag(uuid, tag_name)
+            if isinstance(r, dict) and "errors" in r:
+                return jsonify({"ok": False, "error": str(r["errors"])}), 400
+        else:
+            r = misp.tag(uuid, tag_name)
+            if isinstance(r, dict) and "errors" in r:
+                misp_store._ensure_tag(misp, tag_name)
+                r = misp.tag(uuid, tag_name)
+                if isinstance(r, dict) and "errors" in r:
+                    return jsonify({"ok": False, "error": str(r["errors"])}), 400
+    except Exception as exc:
+        logger.warning("scope_tag failed for %s: %s", uuid, exc)
+        return jsonify({"ok": False, "error": "Could not apply tag"}), 502
+
+    try:
+        fresh = misp.get_event(uuid, pythonify=True)
+        if fresh and not isinstance(fresh, dict):
+            row = collection_cache._extract_row(fresh, source_id)
+            collection_cache.insert_event(row)
+    except Exception:
+        pass
+
+    audit.record("tag", "collection-scope", entity_id=uuid, details=f"{action}: {tag_name}")
+    return jsonify({"ok": True, "tag": tag_name, "action": action})
+
+
 _WORKFLOW_REJECTED_TAG = 'workflow:state="rejected"'
+
+
+@bp.route("/queue-for-tlr", methods=["POST"])
+def queue_for_tlr():
+    """Tag one or more collection events as candidates for the threat landscape report.
+
+    Applies zsazsa:product="threat-landscape-report" and advances workflow state
+    from 'incomplete' to 'ongoing'. Events already at 'complete' are not regressed.
+
+    POST JSON: {"events": [{"uuid": "...", "sourceId": "..."}]}
+    """
+    data, err = _json_object()
+    if err:
+        return err
+    events = data.get("events") or []
+    if not events:
+        return jsonify({"ok": False, "error": "No events provided"}), 400
+
+    tagged = 0
+    for ev in events:
+        uuid = (ev.get("uuid") or "").strip()
+        source_id = (ev.get("sourceId") or _SCRAPER_SOURCE_ID).strip()
+        if not uuid:
+            continue
+
+        misp_client, err_msg = _misp_for_source(source_id)
+        if misp_client is None:
+            logger.warning("queue_for_tlr: no MISP client for source %s: %s", source_id, err_msg)
+            continue
+
+        misp_store._tag_scraper_event_as_product_source(
+            uuid, "threat-landscape-report", misp_client=misp_client
+        )
+
+        # Refresh cache so the product badge is visible immediately
+        try:
+            fresh = misp_client.get_event(uuid, pythonify=True)
+            if fresh and not isinstance(fresh, dict):
+                row = collection_cache._extract_row(fresh, source_id)
+                collection_cache.insert_event(row)
+        except Exception:
+            pass
+        tagged += 1
+
+    audit.record("tag", "collection-tlr-queue",
+                 details=f"queued {tagged} event(s) for threat landscape")
+    return jsonify({"ok": True, "tagged": tagged})
 
 
 @bp.route("/bulk-reject-excluded", methods=["POST"])

@@ -10,6 +10,49 @@
 {% endblock %}
 
 {% block content %}
+
+{% if queued %}
+<div class="card content-card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-map me-2"></i>Queue <span class="badge text-bg-secondary ms-1">{{ queued | length }}</span></span>
+    <a href="{{ url_for('threat_landscape.wizard_new') }}" class="btn btn-sm btn-outline-primary">
+      <i class="fas fa-plus me-1"></i>Start report from queue
+    </a>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm zsazsa-table mb-0">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Title</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in queued %}
+        <tr>
+          <td class="text-muted small" style="white-space:nowrap;">{{ ev.date or '-' }}</td>
+          <td>
+            <a href="{{ url_for('data_collection.index') }}#{{ ev.uuid }}" class="text-decoration-none">
+              {{ ev.info or '(untitled)' }}
+            </a>
+          </td>
+          <td class="text-muted small">{{ ev.source_label or ev.source_id or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-3" role="alert">
+  <i class="fas fa-triangle-exclamation fa-lg flex-shrink-0"></i>
+  <span>
+    <strong>Work in progress.</strong>
+    The threat landscape report is still being developed. Features and output may be incomplete or change without notice.
+  </span>
+</div>
 <div class="card content-card">
   <div class="card-body p-0">
     {% if tlrs %}

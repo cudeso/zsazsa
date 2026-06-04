@@ -16,7 +16,7 @@ import config
 import weasyprint
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 
-from webapp import audit, misp_store
+from webapp import audit, collection_cache, misp_store
 from webapp.collection_cache import AI_SUMMARY_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -244,12 +244,29 @@ def detail(id):
     feedback = misp_store.list_product_feedback(briefing.uuid)
     recipients = misp_store.stakeholders_subscribed_to("Daily threat briefing")
     notify_status = _latest_notify_status(id)
+
+    # Enrich story source-event references with cache metadata (date, org, title)
+    source_uuids = [
+        getattr(s, "source_event_uuid", "")
+        for s in briefing.stories
+        if getattr(s, "source_event_uuid", "")
+    ]
+    source_meta = {}
+    if source_uuids:
+        try:
+            for ev in collection_cache.get_events_by_uuids(source_uuids):
+                source_meta[ev["uuid"]] = ev
+        except Exception:
+            pass
+
     return render_template(
         "daily_briefing/detail.html",
         briefing=briefing,
         feedback=feedback,
         recipients=recipients,
         notify_status=notify_status,
+        source_meta=source_meta,
+        misp_webapp_url=config.MISP_WEBAPP_URL.rstrip("/"),
     )
 
 

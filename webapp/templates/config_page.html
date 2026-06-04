@@ -615,6 +615,13 @@
                 {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:zsazsa:product=%22vea%22" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
               </div>
             </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Queued for Threat Landscape Report</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control form-control-sm font-monospace" value='zsazsa:product="threat-landscape-report"' readonly>
+                {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:zsazsa:product=%22threat-landscape-report%22" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -638,6 +645,35 @@
                         placeholder="One action per line">{{ cfg.RECOMMENDED_ACTIONS_NEAR_TERM | join('\n') }}</textarea>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-circle-nodes me-2"></i>Data collection: tag strip prefixes</div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">
+            When a tag starts with one of these prefixes, the prefix is stripped and only the value is shown as a badge.
+            Tags starting with <code>misp-galaxy:</code> also receive a
+            <i class="fas fa-circle-nodes fa-xs"></i> galaxy icon.
+            One prefix per line. Include the trailing <code>=</code> where applicable.
+          </p>
+          <textarea name="COLLECTION_TAG_STRIP_PREFIXES" class="form-control font-monospace" rows="{{ [cfg.COLLECTION_TAG_STRIP_PREFIXES | length + 2, 6] | max }}"
+                    placeholder="One prefix per line, e.g. misp-galaxy:threat-actor=">{{ cfg.COLLECTION_TAG_STRIP_PREFIXES | join('\n') }}</textarea>
+          <div class="form-text">Example: <code>misp-galaxy:malpedia=</code> turns <em>misp-galaxy:malpedia=Emotet</em> into <em>Emotet</em>.</div>
+        </div>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-eye-slash me-2"></i>Data collection: hidden tag prefixes</div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">
+            Tags whose prefix matches one of these entries are hidden completely from the data-collection tag display
+            and from the tag-cloud filter. They may still appear in the scraper metadata tooltip.
+            One prefix per line.
+          </p>
+          <textarea name="COLLECTION_TAG_HIDE_PREFIXES" class="form-control font-monospace" rows="{{ [cfg.COLLECTION_TAG_HIDE_PREFIXES | length + 2, 4] | max }}"
+                    placeholder="One prefix per line, e.g. retention">{{ cfg.COLLECTION_TAG_HIDE_PREFIXES | join('\n') }}</textarea>
+          <div class="form-text">Example: <code>retention</code> hides <em>retention:99d</em> from the event tag display.</div>
         </div>
       </div>
 

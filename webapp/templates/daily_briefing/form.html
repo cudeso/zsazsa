@@ -34,9 +34,13 @@
     </div>
   </div>
 
-  <div class="mb-3 d-flex gap-2 align-items-center">
+  <div class="mb-3 d-flex gap-2 align-items-center flex-wrap">
     <button type="button" class="btn btn-outline-info btn-sm" id="btn-draft-all">
       <i class="fas fa-wand-magic-sparkles me-1"></i> Draft all with AI
+    </button>
+    <button type="button" class="btn btn-outline-success btn-sm" id="btn-use-all-summaries"
+            title="Paste the existing MISP AI summary into every story that has one, skipping stories without an AI summary">
+      <i class="fas fa-robot me-1"></i> Use existing AI summaries
     </button>
     <button type="button" class="btn btn-outline-warning btn-sm" id="btn-check-overlap" disabled>
       <i class="fas fa-layer-group me-1"></i> Check overlap
@@ -509,6 +513,29 @@ document.getElementById('btn-draft-all').addEventListener('click', function() {
     });
   }
   doNext(0);
+});
+
+document.getElementById('btn-use-all-summaries').addEventListener('click', function() {
+  var cards = document.querySelectorAll('.story-card');
+  var applied = 0;
+  cards.forEach(function(card) {
+    var summaryEl = card.querySelector('.story-ai-summary-data');
+    var summary = summaryEl ? summaryEl.value.trim() : '';
+    if (!summary) return;
+    var textarea = card.querySelector('.story-content');
+    if (!textarea) return;
+    textarea.value = summary;
+    var statusEl = card.querySelector('[class^=ai-status]');
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'AI summary pasted. Review before saving.'; }
+    applied++;
+  });
+  var statusEl = document.getElementById('draft-all-status');
+  if (applied) {
+    statusEl.textContent = applied + ' AI ' + (applied === 1 ? 'summary' : 'summaries') + ' applied.';
+    updateOverlapButtonState();
+  } else {
+    statusEl.textContent = 'No existing AI summaries found on these stories.';
+  }
 });
 
 document.getElementById('btn-check-overlap').addEventListener('click', function() {

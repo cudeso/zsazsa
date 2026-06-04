@@ -278,6 +278,15 @@
                 values=(fia.threat_actors if fia else []),
                 items=threat_actor_items) }}
           </div>
+          <div class="col-12">
+            <label class="form-label">MITRE ATT&amp;CK techniques
+              <span class="text-muted fw-normal small">(from MITRE ATT&amp;CK galaxy)</span>
+            </label>
+            {{ galaxy_multiselect("mitre_attack_techniques",
+                values=(fia.mitre_attack_techniques if fia and fia.mitre_attack_techniques else []),
+                items=mitre_attack_items) }}
+            <div class="form-text">Selecting a technique here also adds it to the Detection guidance field below.</div>
+          </div>
           <div class="col-md-6">
             <label class="form-label">Threat types</label>
             {{ tag_input("threat_types", values=(fia.threat_types if fia else [])) }}
@@ -929,6 +938,7 @@
       checkGalaxy('geographic_scope', f.geographic_scope);
       checkGalaxy('sectors', f.sectors);
       checkGalaxy('threat_actors', f.threat_actors);
+      checkGalaxy('mitre_attack_techniques', f.mitre_attack_techniques);
 
       /* Threat actor type pills (ENISA taxonomy) */
       if (f.actor_types && f.actor_types.length) {
@@ -1040,4 +1050,45 @@
   font-weight: 600;
 }
 </style>
+
+<script>
+/* ── MITRE ATT&CK scope → Detection guidance textarea sync ── */
+(function() {
+  var textarea = document.querySelector('textarea[name="mitre_techniques"]');
+  if (!textarea) return;
+
+  function getLines() {
+    return textarea.value.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+  }
+
+  /* Sync all currently-checked MITRE scope items into the textarea.
+     Lines added by the galaxy are tracked with a prefix comment so they can
+     be removed cleanly when deselected without touching manually-typed lines. */
+  function syncMitreToTextarea() {
+    var checkboxes = document.querySelectorAll('input[name="mitre_attack_techniques"]');
+    var galaxyValues = new Set();
+    checkboxes.forEach(function(cb) { if (cb.checked) galaxyValues.add(cb.value); });
+
+    /* Keep lines that don't match any known galaxy value (manually typed) */
+    var allGalaxyValues = new Set();
+    checkboxes.forEach(function(cb) { allGalaxyValues.add(cb.value); });
+
+    var manualLines = getLines().filter(function(l) { return !allGalaxyValues.has(l); });
+    var galaxyLines = Array.from(galaxyValues);
+    var combined = galaxyLines.concat(manualLines);
+    textarea.value = combined.join('\n');
+  }
+
+  /* Wire up after the DOM is ready — use event delegation in case the
+     galaxy multiselect checkboxes are rendered after this script runs. */
+  document.addEventListener('change', function(e) {
+    if (e.target && e.target.name === 'mitre_attack_techniques') {
+      syncMitreToTextarea();
+    }
+  });
+
+  /* Initial sync in case the form was pre-filled (edit mode or seed from sources) */
+  syncMitreToTextarea();
+})();
+</script>
 {% endblock %}

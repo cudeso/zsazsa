@@ -2,6 +2,7 @@
 
 import logging
 import re
+from types import SimpleNamespace
 
 import config as _cfg
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -135,15 +136,6 @@ def _source_event_uuids(vea) -> list[str]:
     return [u for u in uuids if u]
 
 
-def _reference_urls(vea) -> list[str]:
-    """URLs used in markdown and notification output (flat list, deduplicated)."""
-    source_refs = [
-        f"{_cfg.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}"
-        for uid in _source_event_uuids(vea)
-    ]
-    return list(dict.fromkeys((vea.references or []) + source_refs))
-
-
 def _source_event_references(vea):
     """Enriched references for source MISP events: url + title + date + creator org.
 
@@ -176,49 +168,6 @@ def _source_event_references(vea):
     return refs
 
 
-def _vea_markdown(vea, preview_url: str = "") -> str:
-    reference_items = _reference_urls(vea)
-    lines = [
-        f"# {vea.vea_id}: Vulnerability exploitation advisory",
-        "",
-        f"**CVE:** {vea.cve_id or '-'}",
-        f"**Title:** {vea.title or '-'}",
-        f"**TLP:** TLP:{(vea.tlp or 'amber').upper()}",
-        f"**Author:** {vea.author or '-'}",
-        f"**Audience:** {vea.audience or '-'}",
-        "",
-        "## Summary",
-        "",
-        vea.summary or "(no summary)",
-        "",
-        "## Affected technology",
-        "",
-        f"Product: {vea.affected_product or '-'}",
-        f"Affected versions: {vea.affected_versions or '-'}",
-        f"Fixed version: {vea.fixed_version or '-'}",
-        f"Exposure: {vea.exposure or '-'}",
-        "",
-        "## Exploitation status",
-        "",
-        f"Observed exploitation: {vea.observed_exploitation or '-'}",
-        f"Exploit availability: {vea.exploit_availability or '-'}",
-        f"Exploitation complexity: {vea.exploitation_complexity or '-'}",
-        f"Threat actor interest: {vea.threat_actor_interest or '-'}",
-        f"CISA KEV: {vea.cisa_kev or '-'}",
-    ]
-    if vea.immediate_actions:
-        lines += ["", "## Immediate actions", ""]
-        for action in vea.immediate_actions:
-            if action:
-                lines.append(f"- {action}")
-    if reference_items:
-        lines += ["", "## References", ""]
-        for ref in reference_items:
-            lines.append(f"- {ref}")
-    if preview_url:
-        lines += ["", f"[Open advisory]({preview_url})"]
-    return "\n".join(lines)
-
 
 def _publish_and_notify(uuid):
     misp_store.publish_vea(uuid)
@@ -230,7 +179,7 @@ def _publish_and_notify(uuid):
 
         stakeholders = misp_store.stakeholders_subscribed_to("Vulnerability exploitation advisory")
         preview_url = url_for("vea.detail", id=uuid, _external=True)
-        markdown = _vea_markdown(vea, preview_url=preview_url)
+        markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
         return bool(mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders))
     except Exception as exc:
         logger.warning("mattermost notify failed for VEA %s: %s", uuid, exc)
@@ -361,7 +310,6 @@ def wizard_edit(id):
 def _build_seed_from_sources(source_uuids, source_pairs, source_events):
     if not source_uuids:
         return None
-    from types import SimpleNamespace
 
     def _all_attrs(ev):
         attrs = list(ev.get("attributes", []))
@@ -396,11 +344,11 @@ def _build_seed_from_sources(source_uuids, source_pairs, source_events):
     tag_sources = source_events or cached_rows or collection_cache.get_events_by_uuids(source_uuids)
     for ev in tag_sources:
         for t in ev.get("tags", []):
-            if 'admiralty-scale:source-reliability=' in t:
+            if t.startswith('admiralty-scale:source-reliability='):
                 v = t.split('"')[1] if '"' in t else ''
                 if v:
                     reliability_letters.append(v.upper())
-            elif 'admiralty-scale:information-credibility=' in t:
+            elif t.startswith('admiralty-scale:information-credibility='):
                 v = t.split('"')[1] if '"' in t else ''
                 if v.isdigit():
                     credibility_numbers.append(int(v))
@@ -520,7 +468,7 @@ def resend(id):
 
         stakeholders = _eligible_vea_recipients(vea)
         preview_url = url_for("vea.detail", id=id, _external=True)
-        markdown = _vea_markdown(vea, preview_url=preview_url)
+        markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
         sent_ok = mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders)
         audit.record(
             "notify",

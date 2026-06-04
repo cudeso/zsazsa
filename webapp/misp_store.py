@@ -275,6 +275,46 @@ def galaxy_threat_actors() -> list:
 _MITRE_CACHE_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "mitre-attack-pattern.json")
 
 
+def scope_galaxy_items() -> dict:
+    """Return galaxy items paired with their MISP tag strings for each scope category.
+
+    Used by the data-collection scope-tagging feature. Each category is a list of
+    {"value": str, "tag": str} dicts. Items without a resolvable tag are omitted.
+    """
+    def _pairs(values, *maps, fallback_prefix=None):
+        out = []
+        for v in values:
+            tag = None
+            for m in maps:
+                tag = m.get(v)
+                if tag:
+                    break
+            if not tag and fallback_prefix:
+                tag = f'{fallback_prefix}="{v}"'
+            if tag:
+                out.append({"value": v, "tag": tag})
+        return out
+
+    geo_map_c = _galaxy_tag_map(GALAXY_COUNTRY)
+    geo_map_t = _galaxy_tag_map(GALAXY_TARGET_INFORMATION)
+    sec_map = _galaxy_tag_map(GALAXY_SECTOR)
+    ta_map = _galaxy_tag_map(GALAXY_THREAT_ACTOR)
+    # No tag-map lookup for MITRE: the local JSON file (used when available) does
+    # not populate _galaxy_cache, so _galaxy_tag_map would trigger a live API call
+    # only to be superseded by the fallback prefix anyway.  The tag format is fixed.
+
+    return {
+        "geo": _pairs(galaxy_geography(), geo_map_c, geo_map_t,
+                      fallback_prefix="misp-galaxy:country"),
+        "sectors": _pairs(galaxy_sectors(), sec_map,
+                          fallback_prefix="misp-galaxy:sector"),
+        "threat_actors": _pairs(galaxy_threat_actors(), ta_map,
+                                fallback_prefix="misp-galaxy:threat-actor"),
+        "mitre": _pairs(galaxy_mitre_attack_patterns(),
+                        fallback_prefix="misp-galaxy:mitre-attack-pattern"),
+    }
+
+
 def galaxy_mitre_attack_patterns() -> list:
     """Return MITRE ATT&CK technique names.
 
@@ -334,29 +374,45 @@ def _make_event(info, tag=None, extra_tags=None):
     return e
 
 
-def _tag_scraper_event_as_product_source(src_uuid: str, product_label: str) -> None:
-    """Tag a scraper source event as having been used to create a product.
+def source_slug(name: str) -> str:
+    """Normalise a source name to the kebab-case ID used in the collection cache."""
+    return (name or "").lower().replace(" ", "-").replace("/", "-")
 
-    Sets workflow:state="ongoing" (so the analyser skips reprocessing) and adds
-    a zsazsa:product tag so the event is flagged in the collection view.
+
+def _tag_scraper_event_as_product_source(src_uuid: str, product_label: str,
+                                          misp_client=None) -> None:
+    """Tag a source event as having been used to create a product.
+
+    Advances workflow state from 'incomplete' to 'ongoing' and adds a
+    zsazsa:product tag. Events already in 'complete' (or any state other than
+    'incomplete') are left at their current workflow state so a finished event
+    is not regressed when reused as a source.
+
+    misp_client defaults to the scraper MISP. Pass a different client when the
+    event lives on another MISP instance (configured server or manual source).
     """
     if not src_uuid:
         return
     try:
-        scraper = _scraper_misp()
-        event = scraper.get_event(src_uuid, pythonify=True)
+        client = misp_client or _scraper_misp()
+        event = client.get_event(src_uuid, pythonify=True)
         if not event or isinstance(event, dict):
             return
-        for tag in list(getattr(event, "tags", []) or []):
-            if tag.name.startswith('workflow:state='):
+        current_wf = next(
+            (tag.name for tag in (getattr(event, "tags", []) or [])
+             if tag.name.startswith('workflow:state=')),
+            None,
+        )
+        if current_wf != 'workflow:state="complete"':
+            if current_wf:
                 try:
-                    scraper.untag(src_uuid, tag.name)
+                    client.untag(src_uuid, current_wf)
                 except Exception:
                     pass
-        scraper.tag(src_uuid, 'workflow:state="ongoing"', local=True)
-        scraper.tag(src_uuid, f'zsazsa:product="{product_label}"', local=True)
+            client.tag(src_uuid, 'workflow:state="ongoing"', local=True)
+        client.tag(src_uuid, f'zsazsa:product="{product_label}"', local=True)
     except Exception as exc:
-        logger.warning("Could not tag scraper source event %s: %s", src_uuid, exc)
+        logger.warning("Could not tag source event %s: %s", src_uuid, exc)
 
 
 def _build_obj(name):
@@ -1852,9 +1908,17 @@ def fetch_source_events(source_uuids, source_hints=None, strict_source=False):
         ev_source_label = ""
         hinted_sid = hints.get(uuid, "")
 
-        # Build a client order that puts the hinted source first
+        # Build a client order that puts the hinted source first.
+        # Manual collection sources (ids starting with "manual-") are stored on the
+        # webapp MISP and do not appear in all_clients, so fall back to _misp() when
+        # the hinted id does not match any known client.
         if hinted_sid:
             hinted_only = [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid == hinted_sid]
+            if not hinted_only:
+                try:
+                    hinted_only = [(hinted_sid, _misp(), hinted_sid)]
+                except Exception:
+                    pass
             if strict_source:
                 ordered = hinted_only
             else:
@@ -2273,6 +2337,7 @@ def _fia_obj(data):
     _oa(obj, "affected-assets", data.get("affected_assets"))
     _oa_json(obj, "actor-types", data.get("actor_types", []))
     _oa(obj, "actor-context", data.get("actor_context"))
+    _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
     _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
     _oa_json(obj, "sectors", data.get("sectors", []))
     _oa_json(obj, "threat-actors", data.get("threat_actors", []))
@@ -2335,6 +2400,7 @@ def _fia_ns(event):
         affected_assets=g("affected-assets"),
         actor_types=_json_list(g("actor-types")),
         actor_context=g("actor-context"),
+        mitre_attack_techniques=_json_list(g("mitre-attack-techniques")),
         geographic_scope=_json_list(g("geographic-scope")),
         sectors=_json_list(g("sectors")),
         threat_actors=_json_list(g("threat-actors")),
@@ -2419,6 +2485,7 @@ def render_fia_markdown(fia, fia_id=None):
         *([f"- **Geography:** {', '.join(fia.geographic_scope)}"] if fia.geographic_scope else []),
         *([f"- **Sectors:** {', '.join(fia.sectors)}"] if fia.sectors else []),
         *([f"- **Threat actors:** {', '.join(fia.threat_actors)}"] if fia.threat_actors else []),
+        *([f"- **MITRE ATT&CK:** {', '.join(getattr(fia, 'mitre_attack_techniques', []) or [])}"] if getattr(fia, 'mitre_attack_techniques', []) else []),
         *([f"- **Threat types:** {', '.join(getattr(fia, 'threat_types', []) or [])}"] if getattr(fia, 'threat_types', []) else []),
         *([f"- **Technology:** {', '.join(getattr(fia, 'technology', []) or [])}"] if getattr(fia, 'technology', []) else []),
         *([f"- **Vendor:** {', '.join(getattr(fia, 'vendor', []) or [])}"] if getattr(fia, 'vendor', []) else []),
@@ -2636,6 +2703,7 @@ def set_fia_review_state(uuid, state, reason=None):
         "affected_assets": fia.affected_assets,
         "actor_types": list(getattr(fia, "actor_types", []) or []),
         "actor_context": fia.actor_context,
+        "mitre_attack_techniques": list(getattr(fia, "mitre_attack_techniques", []) or []),
         "actions_immediate": fia.actions_immediate,
         "actions_near_term": fia.actions_near_term,
         "mitre_techniques": fia.mitre_techniques,
@@ -2644,6 +2712,9 @@ def set_fia_review_state(uuid, state, reason=None):
         "feedback_deadline": fia.feedback_deadline.isoformat() if fia.feedback_deadline else "",
         "author": fia.author,
         "source_event_uuids": list(getattr(fia, "source_event_uuids", []) or []),
+        "source_event_hints": dict(getattr(fia, "source_event_hints", {}) or {}),
+        "linked_pir_uuid": getattr(fia, "linked_pir_uuid", "") or "",
+        "context_tags": list(getattr(fia, "context_tags", []) or []),
         "geographic_scope": list(getattr(fia, "geographic_scope", []) or []),
         "sectors": list(getattr(fia, "sectors", []) or []),
         "threat_actors": list(getattr(fia, "threat_actors", []) or []),
@@ -2925,7 +2996,7 @@ def _vea_id_from_event_id(event_id):
     return f"VEA-{int(event_id):05d}"
 
 
-def render_vea_markdown(vea, vea_id=None):
+def render_vea_markdown(vea, vea_id=None, preview_url: str = ""):
     vid = vea_id or vea.vea_id or "VEA-#####"
     date_str = (vea.created_at or datetime.utcnow()).strftime("%Y-%m-%d")
 
@@ -3026,6 +3097,8 @@ def render_vea_markdown(vea, vea_id=None):
         "",
         bullets(list(dict.fromkeys((vea.references or []) + source_refs))),
     ]
+    if preview_url:
+        lines += ["", f"[Open advisory]({preview_url})"]
     return "\n".join(lines)
 
 

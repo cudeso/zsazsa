@@ -101,7 +101,7 @@
 
     </div>
 
-    <!-- Right: save -->
+    <!-- Right: save + queued sources -->
     <div class="col-lg-4">
       <div class="card content-card mb-4">
         <div class="card-header"><i class="fas fa-save me-2"></i>Save</div>
@@ -111,6 +111,30 @@
           </button>
         </div>
       </div>
+
+      {% if not is_edit and queued %}
+      <div class="card content-card mb-4">
+        <div class="card-header">
+          <i class="fas fa-map me-2"></i>Source queue
+          <span class="badge text-bg-secondary ms-1">{{ queued | length }}</span>
+        </div>
+        <div class="card-body p-0">
+          <div style="max-height:400px;overflow-y:auto;">
+            <ul class="list-group list-group-flush">
+              {% for ev in queued %}
+              <li class="list-group-item px-3 py-2">
+                <div class="small fw-semibold text-truncate">{{ ev.info or '(untitled)' }}</div>
+                <div class="text-muted" style="font-size:.7rem;">{{ ev.date or '' }}{% if ev.source_label %} · {{ ev.source_label }}{% endif %}</div>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <div class="card-footer text-muted" style="font-size:.75rem;">
+          Events tagged <code>zsazsa:product="threat-landscape-report"</code> in the collection view.
+        </div>
+      </div>
+      {% endif %}
     </div>
 
   </div>

@@ -45,6 +45,11 @@ Produce the report using this template, replacing all placeholders:
 
 We assess with <high | moderate | low> confidence that <event or threat> is <imminent | ongoing | likely> and is relevant to <matched focus points> because <brief reasoning>.
 
+Confidence guide — use this to choose the confidence level:
+- high: the article is a first-party vendor advisory, government CERT, or direct incident disclosure with named victims, CVEs, or confirmed indicators.
+- moderate: the article is secondary reporting by a credible publication, or a blog post with technical detail but no corroboration.
+- low: the source is a single unverified claim, a vendor blog with limited evidence, or coverage of unconfirmed speculation.
+
 **Action required:** <single sentence stating the required action>
 
 ---
