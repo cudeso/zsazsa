@@ -42,8 +42,8 @@
 {# ── Meta summary ─────────────────────────────────────────────── #}
 <div class="meta-block">
   <div class="meta-row">
-    <span class="meta-key">Date</span><span class="meta-val">{{ briefing.date or '—' }}</span>
-    <span class="meta-key">Author</span><span class="meta-val">{{ briefing.author or '—' }}</span>
+    <span class="meta-key">Date</span><span class="meta-val">{{ briefing.date or '-' }}</span>
+    <span class="meta-key">Author</span><span class="meta-val">{{ briefing.author or '-' }}</span>
     <span class="meta-key">Stories</span><span class="meta-val">{{ briefing.stories | length }}</span>
     <span class="meta-key">Classification</span>
     <span class="meta-val"><span class="tlp-pill tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</span></span>

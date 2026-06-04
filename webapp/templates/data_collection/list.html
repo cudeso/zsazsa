@@ -125,7 +125,7 @@
 }
 
 /* Hide-rejected toggle */
-/* Hide-rejected toggle — uses action-pill for sizing, only overrides state colours */
+/* Hide-rejected toggle: uses action-pill for sizing, only overrides state colours */
 .hide-rej-btn.is-hiding {
   background: #edf0f5;
   border-color: #b8c0cc;
@@ -133,7 +133,7 @@
 }
 .hide-rej-btn.is-hiding:hover { background: #e2e6ea; border-color: #9aa4b0; }
 .hide-rej-btn.is-showing {
-  /* neutral — inherits action-pill defaults */
+  /* neutral: inherits action-pill defaults */
   border-style: dashed;
 }
 
@@ -225,7 +225,7 @@
     </button>
   </div>
 
-  <!-- Date (dropdown — auto-closes on selection) -->
+  <!-- Date (dropdown, auto-closes on selection) -->
   <div class="dropdown">
     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" id="date-dd-btn" data-bs-toggle="dropdown">
       <i class="fas fa-calendar me-1 text-muted"></i><span id="date-btn-label">Date</span>
@@ -437,7 +437,7 @@
     <input type="text" id="tag-search" class="form-control form-control-sm mb-2"
            placeholder="Find tag…" style="max-width:240px;">
 
-    <!-- Tag cloud — cti-evaluation tags excluded from display here -->
+    <!-- Tag cloud: cti-evaluation tags excluded from display here -->
     <div id="tag-cloud" class="d-flex flex-wrap gap-1" style="max-height:7rem;overflow:hidden;">
       {% for t in all_tags %}
       {% if not t.startswith('cti-evaluation:') %}

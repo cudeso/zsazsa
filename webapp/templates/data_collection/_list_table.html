@@ -157,7 +157,7 @@
               <i class="fas fa-ban ms-1" style="font-size:.6rem;color:#adb5bd;cursor:default;vertical-align:middle;" title="Grayed out: workflow state is rejected"></i>
               {%- endif %}
               {%- if e.uuid in briefing_excluded_uuids %}
-              <i class="fas fa-newspaper ms-1" style="font-size:.6rem;color:#c49a0a;cursor:default;vertical-align:middle;" title="Grayed out: title matches a daily briefing exclusion pattern — this event is skipped from automated briefings"></i>
+              <i class="fas fa-newspaper ms-1" style="font-size:.6rem;color:#c49a0a;cursor:default;vertical-align:middle;" title="Grayed out: title matches a daily briefing exclusion pattern. This event is skipped from automated briefings."></i>
               {%- endif %}
               {% set ns = namespace(
                 has_tags=false,

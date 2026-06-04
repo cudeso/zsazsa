@@ -276,7 +276,7 @@ def send_flash_intel_alert(product_event, fia_id: str, fia_content: str) -> bool
         return False
     misp_url = f"{config.MISP_WEBAPP_URL}/events/view/{product_event.id}"
     body = (
-        f":rotating_light: **{fia_id} — Flash Intel Alert**\n\n"
+        f":rotating_light: **{fia_id}: Flash Intel Alert**\n\n"
         + fia_content
         + f"\n\n---\n[Open in MISP]({misp_url})"
     )

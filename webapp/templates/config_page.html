@@ -219,7 +219,7 @@
         </div>
         <div class="card-footer text-muted small">
           Threat actor taxonomy based on ENISA categories. Add your own types as needed.
-          Available to all CTI products — daily briefing, flash intel, vulnerability advisory.
+          Available to all CTI products: daily briefing, flash intel, vulnerability advisory.
         </div>
       </div>
 
@@ -822,7 +822,7 @@
           </p>
           <div class="row g-3">
             <div class="col-sm-4">
-              <label class="form-label">Colour 1 — primary</label>
+              <label class="form-label">Colour 1 (primary)</label>
               <div class="d-flex gap-2 align-items-center">
                 <input type="color" name="BRAND_COLOR_1" class="form-control form-control-color"
                        value="{{ cfg.BRAND_COLOR_1 }}" title="Primary colour">
@@ -831,7 +831,7 @@
               </div>
             </div>
             <div class="col-sm-4">
-              <label class="form-label">Colour 2 — accent</label>
+              <label class="form-label">Colour 2 (accent)</label>
               <div class="d-flex gap-2 align-items-center">
                 <input type="color" name="BRAND_COLOR_2" class="form-control form-control-color"
                        value="{{ cfg.BRAND_COLOR_2 }}" title="Accent colour">
@@ -840,7 +840,7 @@
               </div>
             </div>
             <div class="col-sm-4">
-              <label class="form-label">Colour 3 — secondary</label>
+              <label class="form-label">Colour 3 (secondary)</label>
               <div class="d-flex gap-2 align-items-center">
                 <input type="color" name="BRAND_COLOR_3" class="form-control form-control-color"
                        value="{{ cfg.BRAND_COLOR_3 }}" title="Secondary colour">
@@ -1208,7 +1208,7 @@
       const data = await resp.json();
       uploadBtn.disabled = false;
       if (data.ok) {
-        uploadResult.textContent = 'Saved — reload the page to see the preview';
+        uploadResult.textContent = 'Saved. Reload the page to see the preview.';
         uploadResult.className = 'small text-success';
       } else {
         uploadResult.textContent = data.error || 'Upload failed';

@@ -663,7 +663,7 @@ def ping_notification_channel():
         return jsonify({"ok": False, "error": "Channel has no webhook URL configured"}), 400
     verify_tls = bool(ch.get("verify_tls", True))
     try:
-        r = requests.post(url, json={"text": "zsazsa test notification — channel is reachable."}, timeout=10, verify=verify_tls)
+        r = requests.post(url, json={"text": "zsazsa test notification: channel is reachable."}, timeout=10, verify=verify_tls)
         r.raise_for_status()
         return jsonify({"ok": True})
     except requests.RequestException as exc:

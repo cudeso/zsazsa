@@ -1036,7 +1036,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
             icon.className = 'fas fa-wand-magic-sparkles text-success ai-summary-icon';
             icon.style.fontSize = '.8rem'; icon.title = 'AI summary available'; aiCell.appendChild(icon);
           }
-          // Creating a summary adds one MISP report — update the count in the row and the total.
+          // Creating a summary adds one MISP report. Update the count in the row and the total.
           if (row) {
             var newCount = parseInt(row.dataset.reportCount || '0', 10) + 1;
             row.dataset.reportCount = String(newCount);

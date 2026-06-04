@@ -105,19 +105,32 @@ You can configure:
 
 The configuration page organises settings across tabs (Connections, Products, System, Prompts, Context elements, Notifications). Collection sources - the MISP scraper connection, additional MISP servers, and manual sources - are managed at `/config/sources/`. MISP connections can be tested live. Each server entry can be saved individually. Manual sources have per-source enable/disable with an in-use guard against PIR/GIR references. The config file is backed up automatically before each save.
 
+## What you need before installing
+
+zsazsa sits on top of MISP and requires the following infrastructure to be in place first:
+
+- **A MISP server to store CTI program data.** This is where zsazsa saves its objects: stakeholders, PIRs, GIRs, flash intel alerts, advisories, briefings, and so on. This is the server you point `MISP_WEBAPP_URL` at.
+
+- **A MISP server running misp-scraper.** The scraper feeds threat events into a MISP instance that zsazsa polls for the data collection view and the analyser pipeline. This is the server you point `MISP_URL` at. It can be the same server as above.
+
+- **One or more additional MISP servers (optional but recommended).** zsazsa can pull threat events from other MISP instances configured under Collection sources. These act as supplementary intelligence feeds. Ideally these are separate servers from your own MISP, such as partner-operated or community instances.
+
+zsazsa does not install MISP or misp-scraper. Follow the official installation guides for those projects first.
+
 ## Installation
 
-zsazsa depends on a working MISP instance and a working misp-scraper deployment. This repository does not cover how to install MISP or misp-scraper themselves. Please follow the official installation guides for those projects first.
-
-Then install zsazsa from the project root:
+Installation is recommended inside the MISP custom application directory (create it if it doesn't already exist `mkdir /var/www/MISP/misp-custom ; chown www-data:www-data /var/www/MISP/misp-custom`) so that it runs under the same web user as MISP. On Ubuntu this means installing as `www-data`:
 
 ```bash
-bash docs/install.sh
+cd /var/www/MISP/misp-custom
+sudo -u www-data git clone <this-repo> zsazsa
+cd zsazsa
+sudo -u www-data bash docs/install.sh
 ```
 
-The installer creates and uses `venv` in the project root, installs Python dependencies, prepares the data directory, and creates `config/__init__.py` if needed.
+The installer creates a `venv` in the project root, installs Python dependencies, prepares the data directory, and creates `config/__init__.py` if needed.
 
-After installation, edit `config/__init__.py` and set your MISP and API settings. If you want to run zsazsa as a service, use `docs/zsazsa.service.template` as your systemd starting point.
+After installation, edit `config/__init__.py` and set your MISP URL and API key settings. If you want to run zsazsa as a systemd service, use `docs/zsazsa.service.template` as your starting point.
 
 ## Running the application
 

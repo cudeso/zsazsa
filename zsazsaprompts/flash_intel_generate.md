@@ -55,8 +55,8 @@ We assess with <high | moderate | low> confidence that <event or threat> is <imm
 - <Observed fact in Markdown>
 
 **Source:** <publication or author from the article>
-**Source reliability:** <single letter A-F only, e.g. C — A is completely reliable, F is reliability unknown>
-**Information credibility:** <single digit 1-6 only, e.g. 3 — 1 is confirmed by other sources, 6 is truth cannot be judged>
+**Source reliability:** <single letter A-F only, e.g. C; A is completely reliable, F is reliability unknown>
+**Information credibility:** <single digit 1-6 only, e.g. 3; 1 is confirmed by other sources, 6 is truth cannot be judged>
 **Information credibility justification:** <one sentence explaining why this score was assigned>
 
 ---
@@ -72,7 +72,7 @@ We assess with <high | moderate | low> confidence that <event or threat> is <imm
 
 ## Scope
 
-- **Geographic scope:** <comma-separated countries, regions, or continents — only what the article mentions or strongly implies>
+- **Geographic scope:** <comma-separated countries, regions, or continents; only what the article mentions or strongly implies>
 - **Sectors:** <comma-separated industry sectors targeted or affected>
 - **Threat types:** <comma-separated, e.g. ransomware, phishing, supply chain>
 - **Technology:** <comma-separated specific platforms, OSes, or software named>
@@ -97,10 +97,10 @@ We assess with <high | moderate | low> confidence that <event or threat> is <imm
 ## Detection guidance
 
 **Relevant MITRE ATT&CK techniques:**
-- <Txxxx: Technique name — only include if clearly identifiable from the article>
+- <Txxxx: Technique name; only include if clearly identifiable from the article>
 
 **Hunting hypotheses:**
-- <Log source: what to search for — only include if the article provides sufficient detail>
+- <Log source: what to search for; only include if the article provides sufficient detail>
 
 ---
 
