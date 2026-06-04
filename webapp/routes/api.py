@@ -329,8 +329,6 @@ def fetch_url():
 
 def _parse_fia_markdown(text: str) -> dict:
     """Parse flash_intel_generate.md LLM output into form field values."""
-    import re as _re
-
     def _csv(s):
         """Split a comma-separated value string into a clean list, drop placeholders."""
         return [v.strip() for v in (s or '').split(',') if v.strip() and not v.strip().startswith('<')]
@@ -351,7 +349,7 @@ def _parse_fia_markdown(text: str) -> dict:
         s = line.strip()
         if not s or s == '---':
             continue
-        m = _re.match(r'^#\s+Flash intel alert:\s*(.*)', s, _re.IGNORECASE)
+        m = re.match(r'^#\s+Flash intel alert:\s*(.*)', s, re.IGNORECASE)
         if m:
             fields['title'] = m.group(1).strip()
             continue
@@ -371,9 +369,9 @@ def _parse_fia_markdown(text: str) -> dict:
             elif 'near' in sl: section = 'actions_near_term'
             continue
         if section in ('detection', 'mitre', 'hunting'):
-            if _re.match(r'^\*\*Relevant MITRE', s, _re.IGNORECASE):
+            if s.startswith('**Relevant MITRE'):
                 section = 'mitre'; continue
-            if _re.match(r'^\*\*Hunting', s, _re.IGNORECASE):
+            if s.startswith('**Hunting'):
                 section = 'hunting'; continue
         if section == 'summary':
             if s.startswith('**Action required:**'):
@@ -490,10 +488,10 @@ def build_fia():
 
     reliability_letters, credibility_numbers = [], []
     for t in all_tags:
-        if 'admiralty-scale:source-reliability=' in t:
+        if t.startswith('admiralty-scale:source-reliability='):
             v = t.split('"')[1] if '"' in t else ''
             if v: reliability_letters.append(v.upper())
-        elif 'admiralty-scale:information-credibility=' in t:
+        elif t.startswith('admiralty-scale:information-credibility='):
             v = t.split('"')[1] if '"' in t else ''
             if v.isdigit(): credibility_numbers.append(int(v))
 
@@ -531,15 +529,10 @@ def build_fia():
                 extra.append(item)
         return known + extra
 
-    # Merge LLM-suggested geo/sector values into the tag-derived lists before galaxy inference
-    llm_geo = fields.pop('geographic_scope', [])
-    llm_sectors = fields.pop('sectors', [])
-    for v in llm_geo:
-        if v.lower() not in {x.lower() for x in geo_values}:
-            scope_text += ' ' + v.lower()
-    for v in llm_sectors:
-        if v.lower() not in {x.lower() for x in sector_values}:
-            scope_text += ' ' + v.lower()
+    # Remove LLM-parsed geo/sector from fields; _infer_scope will re-derive them
+    # from scope_text (which already includes the full LLM output) against the galaxy.
+    fields.pop('geographic_scope', None)
+    fields.pop('sectors', None)
 
     try:
         sector_values = _infer_scope(sector_values, misp_store.galaxy_sectors())

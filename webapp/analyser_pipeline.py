@@ -92,16 +92,6 @@ def _event_http_error(event) -> bool:
     return False
 
 
-def _extract_source_url(event) -> str:
-    feed_suffixes = (".xml", ".rss", ".atom", ".json")
-    links = [
-        a.value
-        for a in (getattr(event, "attributes", []) or [])
-        if a.type in ("url", "link")
-        and not any((a.value or "").lower().endswith(s) for s in feed_suffixes)
-    ]
-    return links[-1] if links else ""
-
 
 def _event_reports(misp, event):
     try:
@@ -211,12 +201,14 @@ def _common_candidate_events(progress=None) -> tuple:
     hard_rejected = 0
     kept = []
     summaries = {}
+    reports_cache: dict[str, list] = {}
     summary_created = 0
 
     _emit(progress, "filter-events", "in_progress", "Filtering hard negatives (HTTP errors / empty reports)...")
 
     for event in events:
         reports = _event_reports(misp, event)
+        reports_cache[event.uuid] = reports
         first_report = _first_non_empty_report_content(reports)
 
         if _event_http_error(event) or not first_report:
@@ -241,11 +233,11 @@ def _common_candidate_events(progress=None) -> tuple:
         "total_incomplete_today": len(events),
         "hard_rejected": hard_rejected,
         "summary_created": summary_created,
-    }
+    }, reports_cache
 
 
 def run_daily_briefing_action(progress=None) -> dict:
-    misp, events, summaries, stats = _common_candidate_events(progress=progress)
+    misp, events, summaries, stats, reports_cache = _common_candidate_events(progress=progress)
 
     exclusions = _daily_briefing_title_exclusions()
     excluded_by_title = 0
@@ -253,7 +245,7 @@ def run_daily_briefing_action(progress=None) -> dict:
         _emit(progress, "exclude-titles", "in_progress", "Applying title exclusions to daily briefing candidates...")
         kept = []
         for event in events:
-            reports = _event_reports(misp, event)
+            reports = reports_cache.get(event.uuid, [])
             if _event_or_report_title_excluded(event, reports, exclusions):
                 excluded_by_title += 1
                 continue
@@ -267,7 +259,7 @@ def run_daily_briefing_action(progress=None) -> dict:
     _emit(progress, "review-relevance", "in_progress", "Reviewing daily briefing relevance of candidate stories...")
     kept = []
     for event in events:
-        reports = _event_reports(misp, event)
+        reports = reports_cache.get(event.uuid, [])
         first_report = _first_non_empty_report_content(reports)
         report_title = (getattr(reports[0], "name", "") or "") if reports else ""
         decision = llm.review_briefing_relevance(
@@ -297,12 +289,11 @@ def run_daily_briefing_action(progress=None) -> dict:
     for event in events:
         story_text = (summaries.get(event.uuid) or "").strip()
         if not story_text:
-            reports = _event_reports(misp, event)
-            story_text = _first_non_empty_report_content(reports)
+            story_text = _first_non_empty_report_content(reports_cache.get(event.uuid, []))
         stories.append({
             "title": event.info or "",
             "content": story_text,
-            "source_url": _extract_source_url(event),
+            "source_url": misp_store.extract_source_url(event),
             "source_event_uuid": event.uuid,
             "correlation": "",
         })
@@ -386,7 +377,7 @@ def run_daily_briefing_action(progress=None) -> dict:
 
 
 def run_flash_intel_action(progress=None) -> dict:
-    _misp, events, summaries, stats = _common_candidate_events(progress=progress)
+    _misp, events, summaries, stats, _ = _common_candidate_events(progress=progress)
 
     _emit(progress, "match-requirements", "in_progress", "Matching eligible events against active PIR/GIR scope...")
     match_events = []
@@ -465,7 +456,7 @@ def run_flash_intel_action(progress=None) -> dict:
 
 
 def run_vea_action(progress=None) -> dict:
-    _misp, events, summaries, stats = _common_candidate_events(progress=progress)
+    _misp, events, summaries, stats, _ = _common_candidate_events(progress=progress)
 
     _emit(progress, "detect-cves", "in_progress", "Detecting CVE matches in eligible events...")
     cve_match_count = 0

@@ -14,15 +14,13 @@ from pathlib import Path
 
 import config
 import weasyprint
-from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 
 from webapp import audit, misp_store
 from webapp.collection_cache import AI_SUMMARY_PREFIX
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("daily_briefing", __name__, url_prefix="/briefing")
-
-_DEFAULT_TRIAGE_LIMIT = 50
 
 
 def _render_briefing_form(
@@ -59,22 +57,6 @@ def _render_briefing_form(
     )
 
 
-def _extract_source_url(event) -> str:
-    """Return the article URL from a MISP scraper event's link attributes.
-
-    Scraper events carry two link attributes: the RSS feed URL first, then the
-    article URL. We skip anything that looks like a feed (ends with .xml/.rss/.atom)
-    and return the last remaining link.
-    """
-    feed_suffixes = (".xml", ".rss", ".atom", ".json")
-    links = [
-        a.value
-        for a in (getattr(event, "attributes", []) or [])
-        if a.type in ("url", "link")
-        and not any((a.value or "").lower().endswith(s) for s in feed_suffixes)
-    ]
-    return links[-1] if links else ""
-
 
 def _extract_ai_summary(event) -> str:
     """Return the AI-generated summary report content if one exists on this event."""
@@ -82,35 +64,6 @@ def _extract_ai_summary(event) -> str:
         if (getattr(r, "name", "") or "").startswith(AI_SUMMARY_PREFIX):
             return (getattr(r, "content", "") or "").strip()
     return ""
-
-
-def _triage_events(limit=_DEFAULT_TRIAGE_LIMIT):
-    """Return recent scraper events for the triage queue."""
-    import config
-    misp = misp_store._scraper_misp()
-    try:
-        events = misp.search(
-            tags=[config.SCRAPER_MARKER_TAG],
-            limit=limit,
-            page=1,
-            pythonify=True,
-        )
-    except Exception as exc:
-        logger.warning("Scraper MISP search for triage failed: %s", exc)
-        return []
-    if not events or isinstance(events, dict):
-        return []
-    rows = []
-    for e in events:
-        ev_tags = [t.name for t in getattr(e, "tags", []) or []]
-        rows.append({
-            "uuid": e.uuid,
-            "info": e.info or "",
-            "date": str(e.date) if e.date else "",
-            "tags": ev_tags,
-            "report_count": len(getattr(e, "event_reports", []) or []),
-        })
-    return rows
 
 
 def _parse_stories_from_form(form):
@@ -132,51 +85,11 @@ def _parse_stories_from_form(form):
     return stories
 
 
-def _briefing_markdown(briefing, preview_url: str = "") -> str:
-    company = getattr(config, "BRAND_COMPANY", "")
-    dept = getattr(config, "BRAND_DEPARTMENT", "")
-    sender = " · ".join(p for p in [company, dept] if p) or "zsazsa CTI"
-    lines = [
-        f"# Daily threat briefing {briefing.date or ''}".strip(),
-        f"*{sender}*",
-        "",
-        f"**Date:** {briefing.date or '-'}",
-        f"**Author:** {briefing.author or '-'}",
-        f"**TLP:** TLP:{(briefing.tlp or 'amber').upper()}",
-        f"**Stories:** {len(briefing.stories or [])}",
-    ]
-    if briefing.title:
-        lines.append(f"**Title:** {briefing.title}")
-
-    for idx, story in enumerate(briefing.stories or [], start=1):
-        lines += [
-            "",
-            f"## Story {idx}: {story.title or '(untitled)'}",
-            "",
-            story.content or "(no content)",
-        ]
-        if story.source_url:
-            lines.append(f"Source: {story.source_url}")
-        if story.source_event_uuid:
-            lines.append(f"MISP event: {story.source_event_uuid}")
-        if story.correlation:
-            lines.append(f"Correlation: {story.correlation}")
-
-    if briefing.escalations:
-        lines += ["", "## Escalations", "", briefing.escalations]
-    if briefing.notes:
-        lines += ["", "## Notes", "", briefing.notes]
-    if preview_url:
-        lines += ["", f"[Open briefing]({preview_url})"]
-
-    return "\n".join(lines)
-
-
-def _notify_briefing_stakeholders(briefing, preview_url: str = "") -> int:
+def _notify_briefing_stakeholders(briefing, preview_url: str = "") -> tuple[int, bool]:
     from notifier import mattermost
 
     stakeholders = misp_store.stakeholders_subscribed_to("Daily threat briefing")
-    markdown = _briefing_markdown(briefing, preview_url=preview_url)
+    markdown = misp_store.render_briefing_markdown(briefing, preview_url=preview_url)
     sent_ok = mattermost.send_daily_briefing_notification(briefing, markdown, stakeholders=stakeholders)
     return len(stakeholders), bool(sent_ok)
 
@@ -241,7 +154,7 @@ def compose():
                         stories.append({
                             "title": ev.info or "",
                             "content": "",
-                            "source_url": _extract_source_url(ev),
+                            "source_url": misp_store.extract_source_url(ev),
                             "source_event_uuid": ev.uuid,
                             "correlation": "",
                             "ai_summary": _extract_ai_summary(ev),
@@ -274,7 +187,7 @@ def compose():
                 stories = [{
                     "title": ev.info or "",
                     "content": "",
-                    "source_url": _extract_source_url(ev),
+                    "source_url": misp_store.extract_source_url(ev),
                     "source_event_uuid": ev.uuid,
                     "correlation": "",
                     "ai_summary": _extract_ai_summary(ev),

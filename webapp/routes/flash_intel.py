@@ -5,6 +5,7 @@ drafts from the analyser pipeline land in the same review queue.
 """
 
 import logging
+from types import SimpleNamespace
 
 import config as _cfg
 import os
@@ -93,7 +94,6 @@ def _wizard_context(fia=None, source_events=None):
 
 def _seed_from_sources(source_uuids, source_hints=None):
     """Build a partial FIA seed from one or more source event UUIDs."""
-    from types import SimpleNamespace
     if not source_uuids:
         return None, []
     source_hints = source_hints or {}
@@ -332,12 +332,11 @@ def resend(id):
         flash("Only published alerts can be resent.", "warning")
         return redirect(url_for("flash_intel.review"))
     try:
-        from types import SimpleNamespace
         from notifier import mattermost
 
         stakeholders = _eligible_flash_recipients(fia)
         content = misp_store.render_fia_markdown(fia, fia.fia_id)
-        shim = SimpleNamespace(id=id, info=f"[zsazsa:fia] {fia.title or 'Untitled'}")
+        shim = SimpleNamespace(id=id)
         sent_ok = mattermost.send_flash_intel_alert(shim, fia.fia_id, content)
         audit.record(
             "notify",
@@ -418,12 +417,10 @@ def _publish_and_notify(uuid):
     if fia is None:
         return False
     try:
-        from types import SimpleNamespace
         from notifier import mattermost
         content = misp_store.render_fia_markdown(fia, fia.fia_id)
-        shim = SimpleNamespace(id=uuid, info=f"[zsazsa:fia] {fia.title or 'Untitled'}")
+        shim = SimpleNamespace(id=uuid)
         return bool(mattermost.send_flash_intel_alert(shim, fia.fia_id, content))
     except Exception as exc:
-        from logging import getLogger
-        getLogger(__name__).warning("mattermost notify failed for %s: %s", uuid, exc)
+        logger.warning("mattermost notify failed for %s: %s", uuid, exc)
         return False

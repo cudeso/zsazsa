@@ -3213,6 +3213,22 @@ def delete_vea(uuid):
 # ── Daily Threat Briefing ────────────────────────────────────────────────────
 
 
+def extract_source_url(event) -> str:
+    """Return the article URL from a MISP scraper event's link attributes.
+
+    Scraper events carry the RSS feed URL first, then the article URL.
+    Feed-like URLs (ending .xml / .rss / .atom / .json) are skipped;
+    the last remaining link is returned.
+    """
+    feed_suffixes = (".xml", ".rss", ".atom", ".json")
+    links = [
+        a.value
+        for a in (getattr(event, "attributes", []) or [])
+        if a.type in ("url", "link")
+        and not any((a.value or "").lower().endswith(s) for s in feed_suffixes)
+    ]
+    return links[-1] if links else ""
+
 
 BRIEFING_REVIEW_DRAFT = "draft"
 BRIEFING_REVIEW_PUBLISHED = "published"
@@ -3228,7 +3244,8 @@ def _briefing_obj(data):
     _oa(obj, "author", data.get("author"))
     _oa(obj, "tlp", data.get("tlp", "clear"))
     _oa(obj, "review-state", data.get("review_state", BRIEFING_REVIEW_DRAFT))
-    _oa(obj, "story-count", str(len(data.get("stories", []))))
+    count = data["story_count"] if "story_count" in data else len(data.get("stories", []))
+    _oa(obj, "story-count", str(count))
     _oa(obj, "escalations", data.get("escalations"))
     _oa(obj, "notes", data.get("notes"))
     return obj
@@ -3272,7 +3289,7 @@ def _briefing_ns(event):
     )
 
 
-def render_briefing_markdown(briefing):
+def render_briefing_markdown(briefing, preview_url: str = ""):
     date_str = briefing.date or (briefing.created_at.strftime("%Y-%m-%d") if briefing.created_at else "unknown")
     lines = [
         f"# Daily threat briefing - {date_str}",
@@ -3316,6 +3333,8 @@ def render_briefing_markdown(briefing):
             "",
             briefing.notes,
         ])
+    if preview_url:
+        lines += ["", f"[Open briefing]({preview_url})"]
     return "\n".join(lines)
 
 
@@ -3350,10 +3369,7 @@ def _write_briefing_summary_report(misp, event_uuid, briefing):
     er.name = f"briefing-{briefing.date or 'unknown'}"
     er.content = render_briefing_markdown(briefing)
     er.distribution = 0
-    try:
-        misp.add_event_report(event_uuid, er)
-    except Exception as exc:
-        logger.warning("add briefing summary report failed: %s", exc)
+    _check(misp.add_event_report(event_uuid, er), "add briefing summary report")
 
 
 def list_briefings():
@@ -3416,6 +3432,17 @@ def update_briefing(uuid, data):
     if isinstance(event, dict) or event is None:
         raise RuntimeError(f"Briefing event {uuid} not found")
 
+    existing = _briefing_ns(event)
+    existing_sources = {
+        getattr(s, "source_event_uuid", "") for s in existing.stories
+        if getattr(s, "source_event_uuid", "")
+    }
+    new_sources = {
+        s.get("source_event_uuid", "") for s in data.get("stories", [])
+        if s.get("source_event_uuid", "")
+    }
+    added_sources = new_sources - existing_sources
+
     old = _get_obj(event, "zsazsa-daily-briefing")
     if old:
         misp.delete_object(old.id)
@@ -3428,6 +3455,10 @@ def update_briefing(uuid, data):
     refreshed = misp.get_event(uuid, pythonify=True)
     briefing = _briefing_ns(refreshed)
     _write_briefing_summary_report(misp, uuid, briefing)
+
+    for src in added_sources:
+        _tag_scraper_event_as_product_source(src, "daily-briefing")
+
     return uuid
 
 
@@ -3446,13 +3477,6 @@ def publish_briefing(uuid):
         "review_state": BRIEFING_REVIEW_PUBLISHED,
         "story_count": briefing.story_count,
         "escalations": briefing.escalations, "notes": briefing.notes,
-        "stories": [
-            {"title": getattr(s, "title", ""), "content": getattr(s, "content", ""),
-             "source_url": getattr(s, "source_url", ""),
-             "source_event_uuid": getattr(s, "source_event_uuid", ""),
-             "correlation": getattr(s, "correlation", "")}
-            for s in briefing.stories
-        ],
     }
     _check(misp.add_object(_event_ref(event), _briefing_obj(data)), "publish briefing object")
     for tag in list(getattr(event, "tags", []) or []):
