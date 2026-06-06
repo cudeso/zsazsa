@@ -186,6 +186,8 @@ def _pipeline_status():
             age = (datetime.now(tz=timezone.utc) - dt).total_seconds() / 60
             status["minutes_since"] = int(age)
             status["stale"] = age > 90
+    except FileNotFoundError:
+        pass
     except Exception:
         logger.exception("Failed to read pipeline state from %s", config.STATE_FILE)
 
