@@ -55,6 +55,12 @@
     <!-- ── Connections tab ────────────────────────────────────────────── -->
     <div class="tab-pane fade show active" id="tab-connections" role="tabpanel">
 
+      <div class="d-flex justify-content-end mb-3">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
+
       <div class="card content-card mb-4">
         <div class="card-header"><i class="fas fa-server me-2"></i>MISP webapp store</div>
         <div class="card-body">
@@ -132,16 +138,16 @@
         </div>
       </div>
 
-      <div class="d-flex justify-content-end">
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-floppy-disk me-1"></i> Save configuration
-        </button>
-      </div>
-
     </div>
 
     <!-- ── Products tab ───────────────────────────────────────────────── -->
     <div class="tab-pane fade" id="tab-products" role="tabpanel">
+
+      <div class="d-flex justify-content-end mb-3">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
 
       <div class="card content-card mb-4">
         <div class="card-header"><i class="fas fa-boxes-stacked me-2"></i>Product types</div>
@@ -223,16 +229,16 @@
         </div>
       </div>
 
-      <div class="d-flex justify-content-end">
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-floppy-disk me-1"></i> Save configuration
-        </button>
-      </div>
-
     </div>
 
     <!-- ── System tab ─────────────────────────────────────────────────── -->
     <div class="tab-pane fade" id="tab-system" role="tabpanel">
+
+      <div class="d-flex justify-content-end mb-3">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
 
       <div class="card content-card mb-4">
         <div class="card-header"><i class="fas fa-gears me-2"></i>Analyser</div>
@@ -301,12 +307,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="d-flex justify-content-end">
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-floppy-disk me-1"></i> Save configuration
-        </button>
       </div>
 
     </div>
@@ -472,7 +472,7 @@
           your MISP instance. Edit the tag strings below if you need to align with a different
           taxonomy layout, then save.
         </p>
-        <button type="submit" class="btn btn-primary">
+        <button type="submit" class="btn btn-primary ms-3 flex-shrink-0">
           <i class="fas fa-floppy-disk me-1"></i> Save configuration
         </button>
       </div>
@@ -677,20 +677,19 @@
         </div>
       </div>
 
-      <div class="d-flex justify-content-end">
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-floppy-disk me-1"></i> Save configuration
-        </button>
-      </div>
-
     </div>
 
     <!-- ── Notifications tab ──────────────────────────────────────────────── -->
     <div class="tab-pane fade" id="tab-notifications" role="tabpanel">
 
-      <p class="text-muted small mb-4">
-        Configure notification channels for product publishing and requirement updates. Each channel can be enabled or disabled independently and assigned to specific stakeholders.
-      </p>
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <p class="text-muted small mb-0">
+          Configure notification channels for product publishing and requirement updates. Each channel can be enabled or disabled independently and assigned to specific stakeholders.
+        </p>
+        <button type="submit" class="btn btn-primary ms-3 flex-shrink-0">
+          <i class="fas fa-floppy-disk me-1"></i> Save configuration
+        </button>
+      </div>
 
       <!-- Channel list -->
       <div id="notification-channel-list">
@@ -788,12 +787,6 @@
         </div>
       </div>
 
-      <div class="d-flex justify-content-end">
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-floppy-disk me-1"></i> Save configuration
-        </button>
-      </div>
-
     </div>
 
     <!-- ── Styling tab ────────────────────────────────────────────────────── -->
@@ -886,12 +879,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="d-flex justify-content-end">
-        <button type="submit" class="btn btn-primary">
-          <i class="fas fa-floppy-disk me-1"></i> Save styling
-        </button>
       </div>
 
     </div>
