@@ -652,13 +652,18 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
 
   if (tagSearch) {
     tagSearch.addEventListener('input', function() {
-      var q = tagSearch.value.toLowerCase();
+      var q = tagSearch.value.toLowerCase().trim();
       document.querySelectorAll('.tag-pill:not(.org-pill)').forEach(function(p) {
         var tag = p.dataset.tag || '';
         var isMeta = CLOUD_HIDDEN_PREFIXES.some(function(pfx) { return tag.startsWith(pfx); });
-        if (isMeta) return;
-        if (!q || tag.toLowerCase().indexOf(q) !== -1) p.classList.remove('tag-pill-hidden');
-        else p.classList.add('tag-pill-hidden');
+        if (!q) {
+          /* No query: restore default visibility (meta pills hidden) */
+          p.classList.toggle('tag-pill-hidden', isMeta);
+          return;
+        }
+        /* With a query: substring match decides, even for meta-prefixed tags */
+        var match = tag.toLowerCase().indexOf(q) !== -1;
+        p.classList.toggle('tag-pill-hidden', !match);
       });
       updateTagCountLabel();
     });
@@ -1187,6 +1192,15 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     a.addEventListener('click', function(e) { e.preventDefault(); openPreview(a.dataset.uuid, a.dataset.sourceId); });
   });
 
+  /* ── Reports cell: clicking the report count opens the preview offcanvas,
+        which already shows the reports as its first section. ── */
+  document.querySelectorAll('.reports-cell-link').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      openPreview(a.dataset.uuid, a.dataset.sourceId);
+    });
+  });
+
   /* ── Flag for review ── */
   document.querySelectorAll('.flag-review-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -1211,6 +1225,109 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
         } else { btn.title = 'Error: ' + (data.error || 'unknown'); }
       })
       .catch(function() { btn.disabled = false; btn.title = 'Request failed'; });
+    });
+  });
+
+  /* ── Reject event (set workflow:state="rejected") ── */
+  var REJECTED_TAG = 'workflow:state="rejected"';
+
+  function showFeedback(message, category) {
+    /* Append a dismissible alert to #flash-container; reuse auto-dismiss logic from base.html */
+    var container = document.getElementById('flash-container');
+    if (!container) { return; }
+    var cls = category === 'success' ? 'alert-success'
+            : category === 'danger'  ? 'alert-danger'
+            : category === 'warning' ? 'alert-warning'
+            : 'alert-info';
+    var icon = category === 'success' ? 'fa-check-circle'
+             : category === 'danger'  ? 'fa-triangle-exclamation'
+             : category === 'warning' ? 'fa-triangle-exclamation'
+             : 'fa-circle-info';
+    var el = document.createElement('div');
+    el.className = 'alert ' + cls + ' alert-dismissible fade show alert-flash';
+    el.setAttribute('role', 'alert');
+    el.innerHTML = '<i class="fas ' + icon + ' me-2"></i>' +
+                   '<span class="alert-text"></span>' +
+                   '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    el.querySelector('.alert-text').textContent = message;
+    container.appendChild(el);
+    setTimeout(function() {
+      try { (new bootstrap.Alert(el)).close(); } catch (e) { el.remove(); }
+    }, 4000);
+  }
+
+  function updateRowRejectedState(row, rejected) {
+    if (!row) return;
+    row.classList.toggle('wf-rejected-row', rejected);
+
+    /* Keep data-tags in sync so existing filters (hideRejected etc.) work without reload */
+    var tags = [];
+    try { tags = JSON.parse(row.dataset.tags || '[]'); } catch (e) { tags = []; }
+    var hasTag = tags.indexOf(REJECTED_TAG) !== -1;
+    if (rejected && !hasTag) tags.push(REJECTED_TAG);
+    if (!rejected && hasTag) tags = tags.filter(function(t) { return t !== REJECTED_TAG; });
+    row.dataset.tags = JSON.stringify(tags);
+
+    /* Toggle the small ban icon next to the title */
+    var titleCell = row.querySelector('td:nth-child(4)');
+    if (titleCell) {
+      var marker = titleCell.querySelector('.reject-state-marker');
+      if (rejected && !marker) {
+        marker = document.createElement('i');
+        marker.className = 'fas fa-ban ms-1 reject-state-marker';
+        marker.style.cssText = 'font-size:.6rem;color:#adb5bd;cursor:default;vertical-align:middle;';
+        marker.title = 'Grayed out: workflow state is rejected';
+        var firstLink = titleCell.querySelector('a.event-preview-link');
+        if (firstLink && firstLink.nextSibling) {
+          titleCell.insertBefore(marker, firstLink.nextSibling);
+        } else {
+          titleCell.appendChild(marker);
+        }
+      } else if (!rejected && marker) {
+        marker.remove();
+      }
+    }
+  }
+
+  document.querySelectorAll('.reject-event-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var uuid = btn.dataset.uuid;
+      var sourceId = btn.dataset.sourceId;
+
+      if (!confirm('Reject this event?\n\nThis sets workflow:state="rejected" in MISP. The event will be greyed out and excluded from product workflows. To restore it, change the workflow state directly in MISP.')) {
+        return;
+      }
+
+      btn.disabled = true;
+      var originalHtml = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+      fetch('/collection/' + uuid + '/reject', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({source: sourceId}),
+      })
+      .then(function(r) { return r.json().then(function(d) { return {status: r.status, body: d}; }); })
+      .then(function(resp) {
+        var data = resp.body || {};
+        if (!data.ok) {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+          showFeedback(data.error || 'Could not update event state.', 'danger');
+          return;
+        }
+        /* Event left the 'incomplete' state, hide the button for this row */
+        var row = btn.closest('tr.event-row');
+        updateRowRejectedState(row, !!data.rejected);
+        btn.remove();
+        showFeedback(data.message || 'Event rejected.', 'warning');
+        applyAll();
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        showFeedback('Request failed. The event state was not changed.', 'danger');
+      });
     });
   });
 

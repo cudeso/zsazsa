@@ -14,7 +14,10 @@ def _api_key() -> str:
 
 
 def _default_model() -> str:
-    return getattr(config, "OPENAI_MODEL", getattr(config, "ANTHROPIC_MODEL", ""))
+    model = getattr(config, "OPENAI_MODEL", getattr(config, "ANTHROPIC_MODEL", ""))
+    if not model:
+        raise RuntimeError("No LLM model configured. Set OPENAI_MODEL or ANTHROPIC_MODEL.")
+    return model
 
 
 def _get_client() -> openai.OpenAI:

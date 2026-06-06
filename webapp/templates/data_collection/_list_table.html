@@ -108,10 +108,10 @@
             <th style="width:2rem;">
               <input type="checkbox" id="select-all-cb" class="form-check-input" title="Select all visible">
             </th>
-            <th class="sort-col" data-col="date" style="width:6.5rem;white-space:nowrap;cursor:pointer;">
+            <th class="sort-col" data-col="date" style="width:5rem;white-space:nowrap;cursor:pointer;">
               Date <i class="fas fa-arrow-down ms-1 small sort-th-icon active-asc-desc" id="th-date-icon"></i>
             </th>
-            <th style="width:5.5rem;white-space:nowrap;">Event ID</th>
+            <th style="width:4.5rem;white-space:nowrap;">Event ID</th>
             <th class="sort-col" data-col="title" style="cursor:pointer;">
               Title <i class="fas fa-sort ms-1 small text-muted sort-th-icon" id="th-title-icon"></i>
             </th>
@@ -121,7 +121,7 @@
             <th style="width:7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Source"><i class="fas fa-satellite-dish text-muted"></i></th>
             <th class="text-end" style="width:4rem;" title="Reports"><i class="fas fa-file-lines text-muted"></i></th>
             <th class="text-end" style="width:3rem;" title="AI summary"><i class="fas fa-wand-magic-sparkles fa-xs" title="AI summary"></i></th>
-            <th class="text-end" style="width:8rem;" title="Actions"><i class="fas fa-gear text-muted"></i></th>
+            <th class="text-end" style="width:10.5rem;" title="Actions"><i class="fas fa-gear text-muted"></i></th>
           </tr>
         </thead>
         <tbody id="events-tbody">
@@ -306,7 +306,15 @@
               {% else %}<i class="fas fa-server me-1"></i>{% endif %}
               {{ e.source_label or '-' }}
             </td>
-            <td class="text-end">{{ e.report_count }}</td>
+            <td class="text-end">
+              {% if e.report_count and e.report_count > 0 %}
+              <a href="#" class="reports-cell-link text-decoration-none fw-semibold"
+                 data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
+                 title="View {{ e.report_count }} attached report{{ 's' if e.report_count != 1 else '' }}">{{ e.report_count }}</a>
+              {% else %}
+              <span class="text-muted">{{ e.report_count or 0 }}</span>
+              {% endif %}
+            </td>
             <td class="text-end ai-summary-cell">
               {% if e.has_ai_summary %}
               <i class="fas fa-wand-magic-sparkles text-success ai-summary-icon"
@@ -316,12 +324,20 @@
             <td class="text-end" style="white-space:nowrap;">
               <div class="d-inline-flex gap-1 justify-content-end align-items-center">
                 {% set _flagged = e.uuid in flagged_uuids %}
+                {% set _workflow_incomplete = 'workflow:state="incomplete"' in e.tags %}
                 <button class="btn btn-xs {{ 'btn-warning' if _flagged else 'btn-outline-warning' }} flag-review-btn"
                         data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
                         data-flagged="{{ 'true' if _flagged else 'false' }}"
                         title="{{ 'Remove follow-up flag' if _flagged else 'Flag for follow-up review' }}">
                   <i class="fas fa-flag"></i>
                 </button>
+                {% if _workflow_incomplete %}
+                <button class="btn btn-xs btn-outline-danger reject-event-btn"
+                        data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
+                        title="Reject this event (workflow:state=rejected). Only shown while the event is still in 'incomplete' state.">
+                  <i class="fas fa-ban"></i>
+                </button>
+                {% endif %}
                 <button class="btn btn-xs btn-outline-primary cti-eval-btn"
                         data-uuid="{{ e.uuid }}" data-source-id="{{ e.source_id }}"
                         data-title="{{ e.info or '(untitled)' }}"

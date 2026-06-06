@@ -174,7 +174,7 @@ def _has_automated_subscriber(misp, product_name: str) -> bool:
                 continue
             try:
                 modes = json.loads(modes_attr.value)
-            except Exception:
+            except (json.JSONDecodeError, TypeError):
                 continue
             if isinstance(modes, dict) and modes.get(product_name) == "automated":
                 return True
@@ -188,15 +188,23 @@ def _auto_publish(misp, product_event, fia_id, content):
     # Re-fetch so newly attached objects are present with server IDs.
     fresh = misp.get_event(product_event.uuid, pythonify=True)
     if not isinstance(fresh, dict) and fresh is not None:
+        object_found = False
+        state_updated = False
         for obj in getattr(fresh, "objects", []) or []:
             if obj.name != "zsazsa-flash-intel":
                 continue
+            object_found = True
             for a in obj.attributes:
                 if a.object_relation == "review-state":
                     a.value = "approved"
                     misp.update_attribute(a)
+                    state_updated = True
                     break
             break
+        if not object_found:
+            logger.warning("Auto-publish %s: zsazsa-flash-intel object not found", fia_id)
+        elif not state_updated:
+            logger.warning("Auto-publish %s: review-state attribute not found", fia_id)
 
     tagger.set_workflow_state(misp, product_event, "complete")
     misp.publish(product_event.uuid)

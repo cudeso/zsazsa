@@ -307,7 +307,8 @@ def _fetch_event_timed(misp, uuid, timeout):
             return None, []
         try:
             reports = misp.get_event_reports(event.id, pythonify=True) or []
-        except Exception:
+        except Exception as exc:
+            logger.warning("pull: could not load reports for %s: %s", uuid, exc)
             reports = []
         return event, reports
 
@@ -557,14 +558,13 @@ def summarise(uuid):
             logger.warning("Could not apply scope tags to %s: %s", uuid, exc)
 
     # Refresh cache row so new tags/galaxies are immediately visible without a manual refresh
-    try:
-        fresh = misp.get_event(uuid, pythonify=True)
-        if fresh and not isinstance(fresh, dict):
-            row = collection_cache._extract_row(fresh, source_id)
-            row["has_ai_summary"] = True
-            collection_cache.insert_event(row)
-    except Exception as exc:
-        logger.warning("Could not refresh cache for %s after summarise: %s", uuid, exc)
+    _refresh_cached_event(
+        uuid,
+        source_id,
+        misp,
+        context="summarise",
+        row_mutator=lambda row: row.__setitem__("has_ai_summary", True),
+    )
 
     tag_note = f"; tagged: {', '.join(applied_tags)}" if applied_tags else ""
     audit.record(
@@ -744,6 +744,20 @@ def _misp_for_source(source_id):
     return misp_store._scraper_misp(), None
 
 
+def _refresh_cached_event(uuid: str, source_id: str, misp, context: str = "", row_mutator=None) -> None:
+    """Refresh one event row in the local collection cache after a MISP write."""
+    try:
+        fresh = misp.get_event(uuid, pythonify=True)
+        if fresh and not isinstance(fresh, dict):
+            row = collection_cache._extract_row(fresh, source_id)
+            if row_mutator is not None:
+                row_mutator(row)
+            collection_cache.insert_event(row)
+    except Exception as exc:
+        suffix = f" after {context}" if context else ""
+        logger.warning("Could not refresh cache for %s%s: %s", uuid, suffix, exc)
+
+
 @bp.route("/<string:uuid>/cti-tag", methods=["POST"])
 def cti_tag(uuid):
     """Apply a cti-evaluation taxonomy tag to a MISP event.
@@ -776,13 +790,7 @@ def cti_tag(uuid):
         return jsonify({"ok": False, "error": "Could not apply tag."}), 502
 
     # Refresh this event in local cache so the new CTI-evaluation tag appears immediately.
-    try:
-        fresh = misp.get_event(uuid, pythonify=True)
-        if fresh and not isinstance(fresh, dict):
-            row = collection_cache._extract_row(fresh, source_id)
-            collection_cache.insert_event(row)
-    except Exception as exc:
-        logger.warning("Could not refresh cache for %s after cti_tag: %s", uuid, exc)
+    _refresh_cached_event(uuid, source_id, misp, context="cti_tag")
 
     audit.record("tag", "misp-event", entity_id=uuid, details=tag_name)
     return jsonify({"ok": True, "tag": tag_name})
@@ -837,13 +845,7 @@ def scope_tag(uuid):
         logger.warning("scope_tag failed for %s: %s", uuid, exc)
         return jsonify({"ok": False, "error": "Could not apply tag"}), 502
 
-    try:
-        fresh = misp.get_event(uuid, pythonify=True)
-        if fresh and not isinstance(fresh, dict):
-            row = collection_cache._extract_row(fresh, source_id)
-            collection_cache.insert_event(row)
-    except Exception:
-        pass
+    _refresh_cached_event(uuid, source_id, misp, context="scope_tag")
 
     audit.record("tag", "collection-scope", entity_id=uuid, details=f"{action}: {tag_name}")
     return jsonify({"ok": True, "tag": tag_name, "action": action})
@@ -885,13 +887,7 @@ def queue_for_tlr():
         )
 
         # Refresh cache so the product badge is visible immediately
-        try:
-            fresh = misp_client.get_event(uuid, pythonify=True)
-            if fresh and not isinstance(fresh, dict):
-                row = collection_cache._extract_row(fresh, source_id)
-                collection_cache.insert_event(row)
-        except Exception:
-            pass
+        _refresh_cached_event(uuid, source_id, misp_client, context="queue_for_tlr")
         tagged += 1
 
     audit.record("tag", "collection-tlr-queue",
@@ -949,13 +945,7 @@ def bulk_reject_excluded():
             else:
                 rejected += 1
                 audit.record("tag", "misp-event", entity_id=uuid, details=_WORKFLOW_REJECTED_TAG)
-                try:
-                    fresh = misp.get_event(uuid, pythonify=True)
-                    if fresh and not isinstance(fresh, dict):
-                        row = collection_cache._extract_row(fresh, src_id)
-                        collection_cache.insert_event(row)
-                except Exception:
-                    pass
+                _refresh_cached_event(uuid, src_id, misp, context="bulk_reject_excluded")
         except Exception as exc:
             logger.warning("bulk_reject_excluded: failed to tag %s: %s", uuid, exc)
             errors += 1
@@ -1007,3 +997,65 @@ def flag_for_review(uuid):
     except Exception as exc:
         logger.warning("flag_for_review failed for %s: %s", uuid, exc)
         return jsonify({"ok": False, "error": "Could not update flag."}), 502
+
+
+@bp.route("/<string:uuid>/reject", methods=["POST"])
+def reject_event(uuid):
+    """Set workflow:state="rejected" on a single MISP event.
+
+    POST JSON: {"source": "<source_id>"}
+    Returns JSON: {ok, rejected: bool, message: str, event_title: str}
+    """
+    data, err = _json_object()
+    if err:
+        return err
+    source_id = (data.get("source") or _SCRAPER_SOURCE_ID).strip()
+
+    misp, err_msg = _misp_for_source(source_id)
+    if misp is None:
+        return jsonify({"ok": False, "error": err_msg or "Source not available"}), 502
+
+    try:
+        event = misp.get_event(uuid, pythonify=True)
+    except Exception as exc:
+        logger.warning("reject_event: cannot load %s: %s", uuid, exc)
+        return jsonify({"ok": False, "error": "Could not load event from source"}), 502
+    if not event or isinstance(event, dict):
+        return jsonify({"ok": False, "error": "Event not found"}), 404
+
+    event_title = (getattr(event, "info", "") or "").strip() or uuid
+    currently_rejected = any(
+        getattr(t, "name", "") == _WORKFLOW_REJECTED_TAG
+        for t in (getattr(event, "tags", []) or [])
+    )
+
+    if currently_rejected:
+        return jsonify({
+            "ok": True,
+            "rejected": True,
+            "event_title": event_title,
+            "message": f"Event '{event_title[:80]}' is already marked as rejected.",
+        })
+
+    try:
+        from analyser import tagger
+        tagger.set_workflow_state(misp, event, "rejected")
+        logger.info("reject_event: marked %s rejected (%s)", uuid, event_title)
+        audit.record(
+            "reject", "misp-event", entity_id=uuid, entity_label=event_title,
+            details=f"applied {_WORKFLOW_REJECTED_TAG}",
+        )
+        message = f"Event '{event_title[:80]}' marked as rejected."
+    except Exception as exc:
+        logger.warning("reject_event failed for %s: %s", uuid, exc)
+        return jsonify({"ok": False, "error": "Could not update workflow state."}), 502
+
+    # Refresh cache row so badge/state is immediately visible without a manual refresh
+    _refresh_cached_event(uuid, source_id, misp, context="reject_event")
+
+    return jsonify({
+        "ok": True,
+        "rejected": True,
+        "event_title": event_title,
+        "message": message,
+    })

@@ -25,14 +25,14 @@ def source_id_from_event_ref(event_ref: str) -> str:
         return ""
     try:
         host = (urlparse(raw).hostname or "").lower()
-    except Exception:
+    except (TypeError, ValueError):
         return ""
     if not host:
         return ""
 
     try:
         scraper_host = (urlparse(_cfg.MISP_URL).hostname or "").lower()
-    except Exception:
+    except (TypeError, ValueError):
         scraper_host = ""
     if scraper_host and host == scraper_host:
         return "scraper"
@@ -44,14 +44,14 @@ def source_id_from_event_ref(event_ref: str) -> str:
             continue
         try:
             server_host = (urlparse(source_url).hostname or "").lower()
-        except Exception:
+        except (TypeError, ValueError):
             server_host = ""
         if server_host and host == server_host:
             return source_id
 
     try:
         webapp_host = (urlparse(_cfg.MISP_WEBAPP_URL).hostname or "").lower()
-    except Exception:
+    except (TypeError, ValueError):
         webapp_host = ""
     if webapp_host and host == webapp_host:
         return "webapp"
