@@ -988,7 +988,7 @@ def bulk_reject_excluded():
             continue
         uuid = ev.get("uuid")
         try:
-            r = misp.tag(uuid, _WORKFLOW_REJECTED_TAG, local=False)
+            r = misp.tag(uuid, _WORKFLOW_REJECTED_TAG, local=True)
             if isinstance(r, dict) and "errors" in r:
                 errors += 1
                 logger.warning("bulk_reject_excluded: MISP error for %s: %s", uuid, r["errors"])

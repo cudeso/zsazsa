@@ -97,7 +97,7 @@ def process(misp, event, focus_points: dict) -> dict:
     product_event.add_tag(config.TAG_FLASH_INTEL)
     product_event.add_tag("tlp:amber")
     product_event.add_tag("curation:source:OSINT")
-    product_event.add_tag('workflow:state="ongoing"')
+    product_event.add_tag('workflow:state="ongoing"', local=True)
 
     product_event = misp.add_event(product_event, pythonify=True)
     if isinstance(product_event, dict):
