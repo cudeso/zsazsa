@@ -107,6 +107,39 @@
 </div>
 {% endif %}
 
+{% if actor_type_product_counts %}
+<div class="card content-card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span><i class="fas fa-user-shield me-2"></i>Products by threat actor type</span>
+    <span class="badge text-bg-light" style="font-size:.7rem;font-weight:400;">daily briefings + flash intel</span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Threat actor type</th>
+            <th class="text-end">Daily briefings</th>
+            <th class="text-end">Flash intel alerts</th>
+            <th class="text-end">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in actor_type_product_counts %}
+          <tr>
+            <td>{{ row.actor_type }}</td>
+            <td class="text-end">{{ row.daily_briefings }}</td>
+            <td class="text-end">{{ row.flash_intel_alerts }}</td>
+            <td class="text-end fw-semibold">{{ row.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if maturity_signals %}
 <div class="card content-card mb-4">
   <div class="card-header d-flex align-items-center justify-content-between">

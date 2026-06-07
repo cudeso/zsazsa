@@ -481,6 +481,67 @@ def _maturity_signals(program, pirs, girs, stakeholder_count, source_health):
     return results
 
 
+def _product_counts_by_threat_actor_type():
+    """Count products by threat actor type for briefings and flash intel.
+
+    Counts are per product, not per story occurrence: if a briefing has the
+    same actor type on multiple stories, it contributes 1 to that type.
+    """
+    briefing_counter = Counter()
+    fia_counter = Counter()
+
+    try:
+        briefings = misp_store.list_briefings()
+    except Exception:
+        briefings = []
+    try:
+        fias = misp_store.list_fias()
+    except Exception:
+        fias = []
+
+    for briefing in briefings or []:
+        types = set()
+        for story in getattr(briefing, "stories", []) or []:
+            for actor_type in getattr(story, "threat_actor_types", []) or []:
+                cleaned = (actor_type or "").strip()
+                if cleaned:
+                    types.add(cleaned)
+        if not types:
+            types = {"Unspecified"}
+        for actor_type in types:
+            briefing_counter[actor_type] += 1
+
+    for fia in fias or []:
+        types = {
+            (actor_type or "").strip()
+            for actor_type in (getattr(fia, "actor_types", []) or [])
+            if (actor_type or "").strip()
+        }
+        if not types:
+            types = {"Unspecified"}
+        for actor_type in types:
+            fia_counter[actor_type] += 1
+
+    all_types = sorted(
+        set(briefing_counter.keys()) | set(fia_counter.keys()),
+        key=lambda x: (x.lower() == "unspecified", x.lower()),
+    )
+
+    rows = []
+    for actor_type in all_types:
+        briefing_n = briefing_counter.get(actor_type, 0)
+        fia_n = fia_counter.get(actor_type, 0)
+        rows.append(
+            {
+                "actor_type": actor_type,
+                "daily_briefings": briefing_n,
+                "flash_intel_alerts": fia_n,
+                "total": briefing_n + fia_n,
+            }
+        )
+    return rows
+
+
 def _source_health():
     """Check connectivity and event volume for each configured collection source.
 
@@ -601,6 +662,7 @@ def index():
         logger.warning("source health check failed: %s", exc)
 
     indicator_stats = _indicator_stats()
+    actor_type_product_counts = _product_counts_by_threat_actor_type()
 
     maturity_signals = _maturity_signals(program, pirs, girs, stakeholder_count, source_health)
 
@@ -619,6 +681,7 @@ def index():
         program=program,
         source_health=source_health,
         indicator_stats=indicator_stats,
+        actor_type_product_counts=actor_type_product_counts,
         maturity_signals=maturity_signals,
     )
 
