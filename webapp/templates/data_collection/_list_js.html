@@ -1387,6 +1387,113 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     });
   });
 
+  /* ── Bulk actions on selected events (toolbar in the table header) ── */
+  var selectionToolbar = document.getElementById('selection-actions-toolbar');
+  var selectionActionsGear = document.getElementById('selection-actions-gear');
+
+  function updateSelectionToolbar() {
+    var anySelected = !!document.querySelector('.event-row-cb:checked');
+    if (selectionToolbar) selectionToolbar.style.display = anySelected ? 'inline-flex' : 'none';
+    if (selectionActionsGear) selectionActionsGear.style.display = anySelected ? 'none' : 'inline';
+  }
+  document.querySelectorAll('.event-row-cb').forEach(function(cb) { cb.addEventListener('change', updateSelectionToolbar); });
+  if (selectAllCb) selectAllCb.addEventListener('change', updateSelectionToolbar);
+  updateSelectionToolbar();
+
+  function runBulkAction(btn, url, confirmMessage, onDone) {
+    var selected = getSelectedEvents();
+    if (!selected.length) { alert('Select at least one event using the checkboxes.'); return; }
+    if (confirmMessage && !confirm(confirmMessage)) { return; }
+
+    btn.disabled = true;
+    var originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+      body: JSON.stringify({events: selected}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      if (!data.ok) {
+        showFeedback(data.error || 'Bulk action failed.', 'danger');
+        return;
+      }
+      showFeedback(data.message || 'Done.', 'success');
+      if (onDone) onDone(selected);
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      showFeedback('Request failed. No changes were made.', 'danger');
+    });
+  }
+
+  function findEventRow(uuid, sourceId) {
+    var selector = 'tr.event-row[data-uuid="' + uuid + '"]';
+    if (sourceId) selector += '[data-source-id="' + sourceId + '"]';
+    return document.querySelector(selector);
+  }
+
+  var selectionFlagBtn = document.getElementById('selection-flag-btn');
+  if (selectionFlagBtn) {
+    selectionFlagBtn.addEventListener('click', function() {
+      runBulkAction(selectionFlagBtn, SCRIPT_ROOT + '/collection/bulk-flag', null, function(selected) {
+        selected.forEach(function(s) {
+          var row = findEventRow(s.uuid, s.sourceId);
+          if (!row) return;
+          row.dataset.flagged = 'true';
+          var flagBtn = row.querySelector('.flag-review-btn');
+          if (flagBtn) {
+            flagBtn.dataset.flagged = 'true';
+            flagBtn.classList.add('btn-warning');
+            flagBtn.classList.remove('btn-outline-warning');
+            flagBtn.title = 'Remove follow-up flag';
+          }
+        });
+        applyAll();
+      });
+    });
+  }
+
+  var selectionRejectBtn = document.getElementById('selection-reject-btn');
+  if (selectionRejectBtn) {
+    selectionRejectBtn.addEventListener('click', function() {
+      runBulkAction(
+        selectionRejectBtn,
+        SCRIPT_ROOT + '/collection/bulk-reject',
+        'Reject the selected events?\n\nThis sets workflow:state="rejected" in MISP for each one. They will be greyed out and excluded from product workflows. To restore them, change the workflow state directly in MISP.',
+        function(selected) {
+          selected.forEach(function(s) {
+            var row = findEventRow(s.uuid, s.sourceId);
+            if (!row) return;
+            updateRowRejectedState(row, true);
+            var rejectBtn = row.querySelector('.reject-event-btn');
+            if (rejectBtn) rejectBtn.remove();
+          });
+          applyAll();
+        }
+      );
+    });
+  }
+
+  var selectionSummariseBtn = document.getElementById('selection-summarise-btn');
+  if (selectionSummariseBtn) {
+    selectionSummariseBtn.addEventListener('click', function() {
+      runBulkAction(
+        selectionSummariseBtn,
+        SCRIPT_ROOT + '/collection/bulk-summarise',
+        'Generate AI summaries for the selected events?\n\nThis only applies to scraper events that do not yet have a summary; the rest are skipped.',
+        function() {
+          setTimeout(function() { window.location.reload(); }, 1200);
+        }
+      );
+    });
+  }
+
   /* ── Export state and applyAll for tab-based variants ── */
   window.zsazsaCollectionState = state;
   window.zsazsaCollectionApply = applyAll;

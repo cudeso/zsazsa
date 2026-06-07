@@ -553,7 +553,7 @@
   <button class="action-pill action-pill-danger" id="bulk-reject-btn"
           title="Set workflow:state=rejected on every event matching a daily briefing title exclusion pattern that is not yet rejected">
     <i class="fas fa-ban" style="font-size:.75rem;"></i>
-    Reject {{ briefing_pending_reject_uuids | length }} event{{ 's' if briefing_pending_reject_uuids | length != 1 }} matching exclusions
+    Reject <span id="bulk-reject-count">{{ briefing_pending_reject_uuids | length }}</span> event{{ 's' if briefing_pending_reject_uuids | length != 1 }} matching exclusions
   </button>
   <span id="bulk-reject-result" class="small d-none"></span>
   {% endif %}
@@ -926,6 +926,30 @@
   /* Preview button: filter table to events pending rejection */
   var pendingRejectUuids = new Set({{ briefing_pending_reject_uuids | list | tojson }});
   var previewBtn = document.getElementById('preview-excluded-btn');
+  var bulkRejectCount = document.getElementById('bulk-reject-count');
+
+  function getVisiblePendingRejectUuids() {
+    var out = [];
+    document.querySelectorAll('#events-tbody tr.event-row').forEach(function(row) {
+      if (row.style.display === 'none') return;
+      var uuid = row.dataset.uuid || '';
+      if (uuid && pendingRejectUuids.has(uuid)) out.push(uuid);
+    });
+    return out;
+  }
+
+  function updateBulkRejectCount() {
+    if (!bulkRejectCount) return;
+    bulkRejectCount.textContent = String(getVisiblePendingRejectUuids().length);
+  }
+
+  if (tableCount) {
+    new MutationObserver(updateBulkRejectCount)
+      .observe(tableCount, {childList: true, characterData: true, subtree: true});
+  }
+
+  updateBulkRejectCount();
+
   if (previewBtn && pendingRejectUuids.size > 0) {
     previewBtn.addEventListener('click', function() {
       var s = window.zsazsaCollectionState;
@@ -958,7 +982,15 @@
   var bulkRejectResult = document.getElementById('bulk-reject-result');
   if (bulkRejectBtn) {
     bulkRejectBtn.addEventListener('click', function() {
-      if (!confirm('Set workflow:state=rejected on all events matching the daily briefing exclusion patterns?\n\nThis will tag ' + bulkRejectBtn.textContent.trim().replace(/^Reject\s+/, '').replace(/\s+matching.*$/, '') + ' in MISP. The action cannot be undone from here.')) {
+      var targetUuids = getVisiblePendingRejectUuids();
+      if (!targetUuids.length) {
+        if (bulkRejectResult) {
+          bulkRejectResult.textContent = 'No matching events in the current filtered view.';
+          bulkRejectResult.className = 'small ms-1 text-warning';
+        }
+        return;
+      }
+      if (!confirm('Set workflow:state=rejected on all currently visible events matching the daily briefing exclusion patterns?\n\nThis will tag ' + targetUuids.length + ' event(s) in MISP. The action cannot be undone from here.')) {
         return;
       }
       var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
@@ -969,7 +1001,7 @@
       fetch('{{ url_for("data_collection.bulk_reject_excluded") }}', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
-        body: '{}',
+        body: JSON.stringify({uuids: targetUuids}),
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {

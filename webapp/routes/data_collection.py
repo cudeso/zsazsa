@@ -495,38 +495,26 @@ def _apply_scope_tags(misp, event, sectors, geo, techniques):
     return applied
 
 
-@bp.route("/<string:uuid>/summarise", methods=["POST"])
-@rate_limited("collection_summarise", limit=15, window_s=60)
-def summarise(uuid):
-    data, err = _json_object()
-    if err:
-        return err
-    source_id = data.get("source") or _SCRAPER_SOURCE_ID
-    if source_id != _SCRAPER_SOURCE_ID:
-        return jsonify({"ok": False, "error": "Summarisation is only available for scraper events"}), 400
+def _generate_ai_summary(misp, event, source_id):
+    """Generate an LLM summary from an event's first MISP report and save it back to MISP.
 
-    misp = misp_store._scraper_misp()
-    try:
-        event = misp.get_event(uuid, pythonify=True)
-    except Exception as exc:
-        logger.warning("MISP get_event %s failed: %s", uuid, exc)
-        return jsonify({"ok": False, "error": "Could not fetch event from MISP"}), 502
-
-    if not event or isinstance(event, dict):
-        return jsonify({"ok": False, "error": "Event not found"}), 404
+    Shared by the single-event and bulk summarisation routes.
+    Returns (ok, message_or_error, http_status).
+    """
+    uuid = event.uuid
 
     try:
         reports = misp.get_event_reports(event.id, pythonify=True) or []
     except Exception as exc:
         logger.warning("Could not load reports for %s: %s", uuid, exc)
-        return jsonify({"ok": False, "error": "Could not load event reports"}), 502
+        return False, "Could not load event reports", 502
 
     if not reports:
-        return jsonify({"ok": False, "error": "No reports attached to this event"}), 400
+        return False, "No reports attached to this event", 400
 
     report_content = getattr(reports[0], "content", "") or ""
     if not report_content.strip():
-        return jsonify({"ok": False, "error": "First report has no content"}), 400
+        return False, "First report has no content", 400
 
     ev_tags = [t.name for t in getattr(event, "tags", []) or []]
 
@@ -535,10 +523,10 @@ def summarise(uuid):
         summary = llm.summarise_report(report_content, event_info=event.info or "", tags=ev_tags)
     except Exception as exc:
         logger.warning("LLM summarise failed for %s: %s", uuid, exc)
-        return jsonify({"ok": False, "error": "Failed to generate summary."}), 502
+        return False, "Failed to generate summary.", 502
 
     if summary.upper().startswith("QUALITY:"):
-        return jsonify({"ok": False, "error": summary}), 400
+        return False, summary, 400
 
     try:
         er = MISPEventReport()
@@ -548,7 +536,7 @@ def summarise(uuid):
         misp.add_event_report(event.id, er)
     except Exception as exc:
         logger.warning("Could not add summary report to %s: %s", uuid, exc)
-        return jsonify({"ok": False, "error": "Could not save summary to MISP."}), 502
+        return False, "Could not save summary to MISP.", 502
 
     collection_cache.mark_ai_summary(uuid, source_id)
 
@@ -585,7 +573,33 @@ def summarise(uuid):
         details=f"LLM summary created from first MISP report; workflow state updated to draft{tag_note}",
     )
 
-    return jsonify({"ok": True, "message": "Summary created and added to MISP event"})
+    return True, "Summary created and added to MISP event", 200
+
+
+@bp.route("/<string:uuid>/summarise", methods=["POST"])
+@rate_limited("collection_summarise", limit=15, window_s=60)
+def summarise(uuid):
+    data, err = _json_object()
+    if err:
+        return err
+    source_id = data.get("source") or _SCRAPER_SOURCE_ID
+    if source_id != _SCRAPER_SOURCE_ID:
+        return jsonify({"ok": False, "error": "Summarisation is only available for scraper events"}), 400
+
+    misp = misp_store._scraper_misp()
+    try:
+        event = misp.get_event(uuid, pythonify=True)
+    except Exception as exc:
+        logger.warning("MISP get_event %s failed: %s", uuid, exc)
+        return jsonify({"ok": False, "error": "Could not fetch event from MISP"}), 502
+
+    if not event or isinstance(event, dict):
+        return jsonify({"ok": False, "error": "Event not found"}), 404
+
+    ok, message, status = _generate_ai_summary(misp, event, source_id)
+    if not ok:
+        return jsonify({"ok": False, "error": message}), status
+    return jsonify({"ok": True, "message": message})
 
 
 @bp.route("/<string:uuid>/preview")
@@ -862,7 +876,21 @@ def scope_tag(uuid):
     return jsonify({"ok": True, "tag": tag_name, "action": action})
 
 
+_WORKFLOW_STATE_PREFIX = "workflow:state="
 _WORKFLOW_REJECTED_TAG = 'workflow:state="rejected"'
+
+
+def _force_workflow_tag(row: dict, tag_name: str) -> None:
+    """Overwrite the cached row's workflow:state tag with the one we just applied.
+
+    MISP can take a moment to reflect a tag change in get_event responses, so a
+    refetch right after tagging may still return the old workflow:state tag.
+    Forcing it here keeps the cache consistent with what we just wrote, without
+    waiting for a full cache refresh.
+    """
+    tags = [t for t in row.get("tags", []) if not t.startswith(_WORKFLOW_STATE_PREFIX)]
+    tags.append(tag_name)
+    row["tags"] = tags
 
 
 @bp.route("/queue-for-tlr", methods=["POST"])
@@ -922,8 +950,19 @@ def bulk_reject_excluded():
         return jsonify({"ok": True, "rejected": 0, "already_rejected": 0, "errors": 0,
                         "message": "No exclusion patterns configured."})
 
+    data, err = _json_object()
+    if err:
+        return err
+    requested_uuids = {
+        (u or "").strip()
+        for u in (data.get("uuids") or [])
+        if (u or "").strip()
+    }
+
     all_source_ids = [s["id"] for s in _sources()]
     events = collection_cache.get_events(all_source_ids, [], 2000)
+    if requested_uuids:
+        events = [ev for ev in events if (ev.get("uuid") or "") in requested_uuids]
 
     def _title_matches(ev):
         return any(p in (ev.get("info") or "").lower() for p in excl_patterns)
@@ -967,6 +1006,208 @@ def bulk_reject_excluded():
     if errors:
         parts.append(f"{errors} error(s)")
     return jsonify({"ok": True, "rejected": rejected, "already_rejected": already_rejected,
+                    "errors": errors, "message": ", ".join(parts)})
+
+
+_BULK_SUMMARISE_LIMIT = 10
+
+
+@bp.route("/bulk-flag", methods=["POST"])
+def bulk_flag():
+    """Flag one or more selected collection events for follow-up review.
+
+    POST JSON: {"events": [{"uuid": "...", "sourceId": "..."}]}
+    Events already flagged are left untouched.
+    Returns JSON: {ok, flagged, already_flagged, errors, message}
+    """
+    data, err = _json_object()
+    if err:
+        return err
+    events = data.get("events") or []
+    if not events:
+        return jsonify({"ok": False, "error": "No events provided"}), 400
+
+    tag = getattr(config, "TAG_COLLECTION_FOLLOWUP", 'zsazsa:collection="follow-up"')
+    misp_cache: dict[str, object] = {}
+    flagged = already_flagged = errors = 0
+
+    for ev in events:
+        uuid = (ev.get("uuid") or "").strip()
+        source_id = (ev.get("sourceId") or _SCRAPER_SOURCE_ID).strip()
+        if not uuid:
+            continue
+        if collection_cache.is_flagged(uuid):
+            already_flagged += 1
+            continue
+
+        if source_id not in misp_cache:
+            m, err_msg = _misp_for_source(source_id)
+            if m is None:
+                logger.warning("bulk_flag: no MISP client for %s: %s", source_id, err_msg)
+            misp_cache[source_id] = m
+        misp = misp_cache[source_id]
+        if misp is None:
+            errors += 1
+            continue
+
+        try:
+            r = misp.tag(uuid, tag, local=True)
+            if isinstance(r, dict) and "errors" in r:
+                logger.warning("bulk_flag: MISP error for %s: %s", uuid, r["errors"])
+                errors += 1
+                continue
+            collection_cache.flag_event(uuid)
+            audit.record("flag", "misp-event", entity_id=uuid)
+            flagged += 1
+        except Exception as exc:
+            logger.warning("bulk_flag: failed to flag %s: %s", uuid, exc)
+            errors += 1
+
+    parts = [f"{flagged} event(s) flagged"]
+    if already_flagged:
+        parts.append(f"{already_flagged} already flagged")
+    if errors:
+        parts.append(f"{errors} error(s)")
+    return jsonify({"ok": True, "flagged": flagged, "already_flagged": already_flagged,
+                    "errors": errors, "message": ", ".join(parts)})
+
+
+@bp.route("/bulk-reject", methods=["POST"])
+def bulk_reject():
+    """Set workflow:state="rejected" on one or more selected collection events.
+
+    POST JSON: {"events": [{"uuid": "...", "sourceId": "..."}]}
+    Events already rejected are left untouched.
+    Returns JSON: {ok, rejected, already_rejected, errors, message}
+    """
+    data, err = _json_object()
+    if err:
+        return err
+    events = data.get("events") or []
+    if not events:
+        return jsonify({"ok": False, "error": "No events provided"}), 400
+
+    misp_cache: dict[str, object] = {}
+    rejected = already_rejected = errors = 0
+
+    for ev in events:
+        uuid = (ev.get("uuid") or "").strip()
+        source_id = (ev.get("sourceId") or _SCRAPER_SOURCE_ID).strip()
+        if not uuid:
+            continue
+
+        if source_id not in misp_cache:
+            m, err_msg = _misp_for_source(source_id)
+            if m is None:
+                logger.warning("bulk_reject: no MISP client for %s: %s", source_id, err_msg)
+            misp_cache[source_id] = m
+        misp = misp_cache[source_id]
+        if misp is None:
+            errors += 1
+            continue
+
+        try:
+            event = misp.get_event(uuid, pythonify=True)
+        except Exception as exc:
+            logger.warning("bulk_reject: cannot load %s: %s", uuid, exc)
+            errors += 1
+            continue
+        if not event or isinstance(event, dict):
+            errors += 1
+            continue
+
+        currently_rejected = any(
+            getattr(t, "name", "") == _WORKFLOW_REJECTED_TAG
+            for t in (getattr(event, "tags", []) or [])
+        )
+        if currently_rejected:
+            already_rejected += 1
+            continue
+
+        try:
+            from analyser import tagger
+            tagger.set_workflow_state(misp, event, "rejected")
+            audit.record(
+                "reject", "misp-event", entity_id=uuid, entity_label=event.info or uuid,
+                details=f"applied {_WORKFLOW_REJECTED_TAG}",
+            )
+            _refresh_cached_event(
+                uuid, source_id, misp, context="bulk_reject",
+                row_mutator=lambda row: _force_workflow_tag(row, _WORKFLOW_REJECTED_TAG),
+            )
+            rejected += 1
+        except Exception as exc:
+            logger.warning("bulk_reject: failed to reject %s: %s", uuid, exc)
+            errors += 1
+
+    parts = [f"{rejected} event(s) rejected"]
+    if already_rejected:
+        parts.append(f"{already_rejected} already rejected")
+    if errors:
+        parts.append(f"{errors} error(s)")
+    return jsonify({"ok": True, "rejected": rejected, "already_rejected": already_rejected,
+                    "errors": errors, "message": ", ".join(parts)})
+
+
+@bp.route("/bulk-summarise", methods=["POST"])
+@rate_limited("collection_summarise", limit=15, window_s=60)
+def bulk_summarise():
+    """Generate LLM summaries for a batch of selected scraper-sourced collection events.
+
+    POST JSON: {"events": [{"uuid": "...", "sourceId": "..."}]}
+    Non-scraper events and events that already have a summary are skipped. To
+    keep the request bounded, only the first _BULK_SUMMARISE_LIMIT events are processed.
+    Returns JSON: {ok, summarised, skipped, errors, message}
+    """
+    data, err = _json_object()
+    if err:
+        return err
+    events = data.get("events") or []
+    if not events:
+        return jsonify({"ok": False, "error": "No events provided"}), 400
+
+    uuids = [(ev.get("uuid") or "").strip() for ev in events if (ev.get("uuid") or "").strip()]
+    cached_by_uuid = {row["uuid"]: row for row in collection_cache.get_events_by_uuids(uuids)}
+
+    misp = misp_store._scraper_misp()
+    summarised = skipped = errors = 0
+
+    for ev in events[:_BULK_SUMMARISE_LIMIT]:
+        uuid = (ev.get("uuid") or "").strip()
+        source_id = (ev.get("sourceId") or _SCRAPER_SOURCE_ID).strip()
+        if not uuid or source_id != _SCRAPER_SOURCE_ID:
+            skipped += 1
+            continue
+        if cached_by_uuid.get(uuid, {}).get("has_ai_summary"):
+            skipped += 1
+            continue
+
+        try:
+            event = misp.get_event(uuid, pythonify=True)
+        except Exception as exc:
+            logger.warning("bulk_summarise: cannot load %s: %s", uuid, exc)
+            errors += 1
+            continue
+        if not event or isinstance(event, dict):
+            errors += 1
+            continue
+
+        ok, message, _status = _generate_ai_summary(misp, event, source_id)
+        if ok:
+            summarised += 1
+        else:
+            logger.warning("bulk_summarise: failed for %s: %s", uuid, message)
+            errors += 1
+
+    skipped_extra = max(0, len(events) - _BULK_SUMMARISE_LIMIT)
+    skipped += skipped_extra
+
+    parts = [f"{summarised} summary/summaries created"]
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    if errors:
+        parts.append(f"{errors} error(s)")
+    return jsonify({"ok": True, "summarised": summarised, "skipped": skipped,
                     "errors": errors, "message": ", ".join(parts)})
 
 
@@ -1062,7 +1303,10 @@ def reject_event(uuid):
         return jsonify({"ok": False, "error": "Could not update workflow state."}), 502
 
     # Refresh cache row so badge/state is immediately visible without a manual refresh
-    _refresh_cached_event(uuid, source_id, misp, context="reject_event")
+    _refresh_cached_event(
+        uuid, source_id, misp, context="reject_event",
+        row_mutator=lambda row: _force_workflow_tag(row, _WORKFLOW_REJECTED_TAG),
+    )
 
     return jsonify({
         "ok": True,

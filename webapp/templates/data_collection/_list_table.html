@@ -121,7 +121,20 @@
             <th style="width:7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Source"><i class="fas fa-satellite-dish text-muted"></i></th>
             <th class="text-end" style="width:4rem;" title="Reports"><i class="fas fa-file-lines text-muted"></i></th>
             <th class="text-end" style="width:3rem;" title="AI summary"><i class="fas fa-wand-magic-sparkles fa-xs" title="AI summary"></i></th>
-            <th class="text-end" style="width:10.5rem;" title="Actions"><i class="fas fa-gear text-muted"></i></th>
+            <th class="text-end" style="width:10.5rem;" title="Actions">
+              <span id="selection-actions-toolbar" class="gap-1 justify-content-end" style="display:none;">
+                <button type="button" class="btn btn-xs btn-outline-warning" id="selection-flag-btn" title="Flag selected events for follow-up">
+                  <i class="fas fa-flag"></i>
+                </button>
+                <button type="button" class="btn btn-xs btn-outline-danger" id="selection-reject-btn" title="Reject selected events">
+                  <i class="fas fa-ban"></i>
+                </button>
+                <button type="button" class="btn btn-xs btn-outline-secondary" id="selection-summarise-btn" title="Generate AI summaries for selected events">
+                  <i class="fas fa-wand-magic-sparkles"></i>
+                </button>
+              </span>
+              <i class="fas fa-gear text-muted" id="selection-actions-gear"></i>
+            </th>
           </tr>
         </thead>
         <tbody id="events-tbody">
