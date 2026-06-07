@@ -356,8 +356,14 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     var container = row.querySelector('.tag-cell-inner');
     if (!container && ctiTags.length) container = ensureCtiBadgeContainer(row);
     if (!container) { applyAll(); return; }
-    container.querySelectorAll('.tag-row-badge[data-tag^="cti-evaluation:"]').forEach(function(el) { el.remove(); });
-    ctiTags.forEach(function(tag) { container.appendChild(buildCtiBadge(tag)); });
+    var tagLine = container.querySelector('.tag-line');
+    if (!tagLine) {
+      tagLine = document.createElement('div');
+      tagLine.className = 'tag-line';
+      container.insertBefore(tagLine, container.firstChild);
+    }
+    tagLine.querySelectorAll('.tag-row-badge[data-tag^="cti-evaluation:"]').forEach(function(el) { el.remove(); });
+    ctiTags.forEach(function(tag) { tagLine.appendChild(buildCtiBadge(tag)); });
     applyAll();
   }
   window.zsazsaRefreshCollectionEventRow = refreshEventRowTags;
@@ -1475,72 +1481,131 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   });
 })();
 
-/* ── CTI Evaluation modal ── */
+/* ── CTI Evaluation inline panel ── */
 (function() {
-  var modal = document.getElementById('cti-eval-modal');
-  if (!modal) return;
-  var eventNameEl = document.getElementById('cti-eval-event-name');
-  var submitBtn = document.getElementById('cti-eval-submit-btn');
-  var feedbackEl = document.getElementById('cti-eval-feedback');
-  var okEl = document.getElementById('cti-eval-ok');
-  var errEl = document.getElementById('cti-eval-err');
+  var PREDS = [
+    ['overall-score',       'Overall Score',       'Composite quality rating across all dimensions'],
+    ['accuracy',            'Accuracy',            'Factual correctness, absence of errors'],
+    ['clarity',             'Clarity',             'Readability and ease of understanding'],
+    ['specificity',         'Specificity',         'Technical detail and actionable depth'],
+    ['relevance',           'Relevance',           'Alignment with your threat landscape'],
+    ['timeliness',          'Timeliness',          'Currency and actionability'],
+    ['usefulness',          'Usefulness',          'Practical operational value'],
+    ['confidence',          'Confidence',          'Analytical confidence in the assessment'],
+    ['source-reliability',  'Source Reliability',  'Trustworthiness of the originating source'],
+    ['evidence-strength',   'Evidence Strength',   'Quality of evidence supporting claims'],
+    ['format-validity',     'Format Validity',     'Structural correctness of the MISP data'],
+    ['conversion-fidelity', 'Conversion Fidelity', 'Accuracy of data transformation from source'],
+  ];
+  var VALUES = ['very-low', 'low', 'moderate', 'high', 'very-high'];
+  var VALUE_LABELS = {'very-low':'Very Low','low':'Low','moderate':'Moderate','high':'High','very-high':'Very High'};
   var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-  var currentUuid = null; var currentSourceId = null;
-  var bsModal = new bootstrap.Modal(modal);
+  var openPanel = null;
+
+  function closePanel() {
+    if (!openPanel) return;
+    openPanel.panelRow.remove();
+    openPanel.btn.classList.remove('active');
+    openPanel = null;
+  }
+
+  function buildPanelRow(title) {
+    var predsHtml = PREDS.map(function(p) {
+      var opts = '<option value="">Not set</option>';
+      VALUES.forEach(function(v) { opts += '<option value="' + v + '">' + VALUE_LABELS[v] + '</option>'; });
+      return '<div class="cti-pred-item">'
+        + '<div class="cti-pred-label"><span class="fw-semibold small">' + p[1] + '</span>'
+        + '<span class="text-muted cti-pred-desc">' + p[2] + '</span></div>'
+        + '<select class="form-select form-select-sm cti-eval-select" data-predicate="' + p[0] + '">' + opts + '</select>'
+        + '</div>';
+    }).join('');
+
+    var tr = document.createElement('tr');
+    tr.className = 'cti-eval-panel-row';
+    var td = document.createElement('td');
+    td.colSpan = 9;
+    td.innerHTML =
+      '<div class="cti-eval-panel-container">'
+        + '<div class="cti-eval-panel-header">'
+          + '<i class="fas fa-microscope text-primary" style="font-size:.85rem;"></i>'
+          + '<span class="cti-eval-panel-title">CTI Evaluation</span>'
+          + '<span class="cti-eval-panel-event-name">' + (title || '(untitled)') + '</span>'
+          + '<button type="button" class="cti-eval-panel-close" title="Close">&times;</button>'
+        + '</div>'
+        + '<p class="text-muted small mb-2 mt-1">Rate using the CTI Evaluation taxonomy. Tags are applied directly to the MISP event. Leave any predicate at <em>Not set</em> to skip it.</p>'
+        + '<div class="cti-eval-predicates">' + predsHtml + '</div>'
+        + '<div class="cti-eval-panel-feedback d-none">'
+          + '<div class="cti-eval-panel-ok alert alert-success py-2 small d-none mb-0"></div>'
+          + '<div class="cti-eval-panel-err alert alert-danger py-2 small d-none mb-0"></div>'
+        + '</div>'
+        + '<div class="mt-2">'
+          + '<button type="button" class="btn btn-sm btn-primary cti-eval-panel-submit">'
+            + '<i class="fas fa-tag me-1"></i>Apply tags to MISP'
+          + '</button>'
+        + '</div>'
+      + '</div>';
+    tr.appendChild(td);
+    return tr;
+  }
 
   document.querySelectorAll('.cti-eval-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      currentUuid = btn.dataset.uuid; currentSourceId = btn.dataset.sourceId;
-      if (eventNameEl) eventNameEl.textContent = btn.dataset.title || '(untitled)';
-      document.querySelectorAll('.cti-eval-select').forEach(function(s) { s.value = ''; });
-      if (feedbackEl) feedbackEl.classList.add('d-none');
-      if (okEl) okEl.classList.add('d-none');
-      if (errEl) errEl.classList.add('d-none');
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-tag me-1"></i>Apply tags to MISP'; }
-      bsModal.show();
+      var uuid = btn.dataset.uuid; var sourceId = btn.dataset.sourceId;
+      if (openPanel && openPanel.btn === btn) { closePanel(); return; }
+      closePanel();
+      var eventRow = btn.closest('tr');
+      if (!eventRow) return;
+      var panelRow = buildPanelRow(btn.dataset.title);
+      eventRow.insertAdjacentElement('afterend', panelRow);
+      btn.classList.add('active');
+      openPanel = {btn: btn, panelRow: panelRow, uuid: uuid, sourceId: sourceId};
+
+      panelRow.querySelector('.cti-eval-panel-close').addEventListener('click', closePanel);
+
+      var submitBtn = panelRow.querySelector('.cti-eval-panel-submit');
+      submitBtn.addEventListener('click', function() {
+        var pairs = [];
+        panelRow.querySelectorAll('.cti-eval-select').forEach(function(s) { if (s.value) pairs.push({predicate:s.dataset.predicate, value:s.value}); });
+        var feedbackEl = panelRow.querySelector('.cti-eval-panel-feedback');
+        var okEl = panelRow.querySelector('.cti-eval-panel-ok');
+        var errEl = panelRow.querySelector('.cti-eval-panel-err');
+        if (!pairs.length) {
+          feedbackEl.classList.remove('d-none');
+          errEl.textContent = 'Select at least one predicate value before applying.';
+          errEl.classList.remove('d-none'); okEl.classList.add('d-none'); return;
+        }
+        submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
+        feedbackEl.classList.add('d-none');
+        var index = 0; var errors = [];
+        function next() {
+          if (index >= pairs.length) {
+            submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-tag me-1"></i>Apply tags to MISP';
+            feedbackEl.classList.remove('d-none');
+            if (errors.length) {
+              errEl.textContent = 'Some tags failed: ' + errors.join('; ');
+              errEl.classList.remove('d-none'); okEl.classList.add('d-none');
+            } else {
+              okEl.textContent = pairs.length + ' tag' + (pairs.length !== 1 ? 's' : '') + ' applied to MISP.';
+              okEl.classList.remove('d-none'); errEl.classList.add('d-none');
+              var refreshPromise = Promise.resolve();
+              if (window.zsazsaRefreshCollectionEventRow && uuid && sourceId)
+                refreshPromise = window.zsazsaRefreshCollectionEventRow(uuid, sourceId);
+              refreshPromise.catch(function(){}).finally(closePanel);
+            }
+            return;
+          }
+          var pair = pairs[index++];
+          fetch(SCRIPT_ROOT + '/collection/' + uuid + '/cti-tag', {
+            method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
+            body:JSON.stringify({predicate:pair.predicate, value:pair.value, source:sourceId}),
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) { if (!data.ok) errors.push(pair.predicate + ': ' + (data.error||'failed')); next(); })
+          .catch(function() { errors.push(pair.predicate + ': request failed'); next(); });
+        }
+        next();
+      });
     });
   });
-
-  if (submitBtn) {
-    submitBtn.addEventListener('click', function() {
-      var pairs = [];
-      document.querySelectorAll('.cti-eval-select').forEach(function(s) { if (s.value) pairs.push({predicate:s.dataset.predicate, value:s.value}); });
-      if (!pairs.length) {
-        if (feedbackEl) feedbackEl.classList.remove('d-none');
-        if (errEl) { errEl.textContent = 'Select at least one predicate value before applying.'; errEl.classList.remove('d-none'); }
-        if (okEl) okEl.classList.add('d-none'); return;
-      }
-      submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
-      if (feedbackEl) feedbackEl.classList.add('d-none');
-      var index = 0; var errors = [];
-      function next() {
-        if (index >= pairs.length) {
-          submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-tag me-1"></i>Apply tags to MISP';
-          if (feedbackEl) feedbackEl.classList.remove('d-none');
-          if (errors.length) {
-            if (errEl) { errEl.textContent = 'Some tags failed: ' + errors.join('; '); errEl.classList.remove('d-none'); }
-            if (okEl) okEl.classList.add('d-none');
-          } else {
-            if (okEl) { okEl.textContent = pairs.length + ' tag' + (pairs.length!==1?'s':'') + ' applied to MISP.'; okEl.classList.remove('d-none'); }
-            if (errEl) errEl.classList.add('d-none');
-            var refreshPromise = Promise.resolve();
-            if (window.zsazsaRefreshCollectionEventRow && currentUuid && currentSourceId)
-              refreshPromise = window.zsazsaRefreshCollectionEventRow(currentUuid, currentSourceId);
-            refreshPromise.catch(function(){}).finally(function() { bsModal.hide(); });
-          }
-          return;
-        }
-        var pair = pairs[index++];
-        fetch(SCRIPT_ROOT + '/collection/' + currentUuid + '/cti-tag', {
-          method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
-          body:JSON.stringify({predicate:pair.predicate, value:pair.value, source:currentSourceId}),
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) { if (!data.ok) errors.push(pair.predicate + ': ' + (data.error||'failed')); next(); })
-        .catch(function() { errors.push(pair.predicate + ': request failed'); next(); });
-      }
-      next();
-    });
-  }
 })();
 </script>

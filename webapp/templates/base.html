@@ -148,7 +148,7 @@
     </ul>
 
     <div class="sidebar-footer">
-      <span class="text-muted small"><i class="fas fa-circle-info fa-fw"></i> zsazsa v0.1</span>
+      <span class="text-muted small"><i class="fas fa-circle-info fa-fw"></i> zsazsa v{{ app_version }}</span>
     </div>
   </nav>
 
@@ -214,6 +214,18 @@
     <div id="page-content">
       {% block content %}{% endblock %}
     </div>
+
+    <footer id="app-footer">
+      <span class="footer-appname">zsazsa</span>
+      <span class="footer-version">v{{ app_version }}</span>
+      <a href="https://github.com/cudeso/zsazsa/" target="_blank" rel="noopener" class="footer-github" title="GitHub repository">
+        <i class="fab fa-github"></i>
+      </a>
+      {% if brand_company %}
+      <span class="footer-sep">·</span>
+      <span class="footer-org">{{ brand_company }}</span>
+      {% endif %}
+    </footer>
 
   </div>
 </div>

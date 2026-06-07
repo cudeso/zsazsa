@@ -60,6 +60,22 @@ body {
   padding: 1.5rem 1.75rem 2rem;
 }
 
+#app-footer {
+  padding: 0.45rem 1.75rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--topbar-border);
+  background: var(--topbar-bg);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+#app-footer .footer-appname { font-weight: 600; opacity: 0.65; }
+#app-footer .footer-version { opacity: 0.55; }
+#app-footer .footer-sep     { opacity: 0.35; }
+#app-footer .footer-github  { color: var(--text-muted); text-decoration: none; font-size: 0.8rem; line-height: 1; }
+#app-footer .footer-github:hover { color: var(--text-primary); }
+
 /* ─── Sidebar ───────────────────────────────────────────────────────────── */
 #sidebar {
   width: var(--sidebar-width);

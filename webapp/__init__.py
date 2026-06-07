@@ -9,6 +9,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 from webapp import audit, org_store, collection_cache
+from webapp.version import APP_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -43,9 +44,14 @@ def create_app():
 
     app.jinja_env.globals["csrf_token"] = _csrf_token
 
+    app.jinja_env.globals["app_version"] = APP_VERSION
+
     @app.context_processor
-    def _inject_misp_url():
-        return {"misp_webapp_url": config.MISP_WEBAPP_URL}
+    def _inject_globals():
+        return {
+            "misp_webapp_url": config.MISP_WEBAPP_URL,
+            "brand_company": getattr(config, "BRAND_COMPANY", ""),
+        }
 
     @app.template_filter("slug")
     def _slug(s):
