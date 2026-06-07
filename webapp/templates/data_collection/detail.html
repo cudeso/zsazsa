@@ -16,8 +16,13 @@
       </a>
     </li>
     <li>
-      <a class="dropdown-item" href="{{ url_for('daily_briefing.compose', source=event.uuid) }}">
-        <i class="fas fa-newspaper me-2"></i>Add to daily briefing
+      <a class="dropdown-item" href="{{ url_for('daily_briefing.compose', source=(event.uuid ~ '|' ~ source_id) if source_id else event.uuid) }}">
+        <i class="fas fa-newspaper me-2"></i>Add to daily briefing (new)
+      </a>
+    </li>
+    <li>
+      <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#addToExistingBriefingModal">
+        <i class="fas fa-newspaper me-2"></i>Add to existing draft briefing
       </a>
     </li>
     <li>
@@ -259,6 +264,40 @@
   </div>
 
 </div>
+
+<div class="modal fade" id="addToExistingBriefingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-newspaper me-2"></i>Add to existing draft briefing</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% if draft_briefings %}
+        <p class="text-muted small mb-2">This event will be added as a new story to the chosen draft briefing.</p>
+        <select id="add-to-existing-briefing-select" class="form-select form-select-sm">
+          {% for b in draft_briefings %}
+          <option value="{{ b.uuid }}">{{ b.date or '(no date)' }}{% if b.title %} &mdash; {{ b.title }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <p class="text-muted mb-0">No draft briefings available. Use "Add to daily briefing (new)" instead.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        {% if draft_briefings %}
+        <form method="post" id="add-to-existing-briefing-form"
+              action="{{ url_for('daily_briefing.add_stories', id='__ID__') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="selected_events" value="{{ (event.uuid ~ '|' ~ source_id) if source_id else event.uuid }}">
+          <button type="submit" class="btn btn-sm btn-primary" id="add-to-existing-briefing-confirm">Add story</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -314,6 +353,15 @@
     var raw = el.getAttribute('data-md') || '';
     el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '<em class="text-muted">No content.</em>';
     el.removeAttribute('data-md');
+  });
+})();
+(function() {
+  var select = document.getElementById('add-to-existing-briefing-select');
+  var form = document.getElementById('add-to-existing-briefing-form');
+  if (!select || !form) return;
+  var actionTemplate = form.action;
+  form.addEventListener('submit', function() {
+    form.action = actionTemplate.replace('__ID__', select.value);
   });
 })();
 </script>

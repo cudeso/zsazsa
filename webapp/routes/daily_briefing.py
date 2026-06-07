@@ -6,6 +6,7 @@ with LLM assistance), then publishes the briefing.
 """
 
 import base64
+import json
 import logging
 import mimetypes
 import os
@@ -18,6 +19,7 @@ from flask import Blueprint, Response, flash, redirect, render_template, request
 
 from webapp import audit, collection_cache, misp_store
 from webapp.collection_cache import AI_SUMMARY_PREFIX
+from webapp.routes.source_event_utils import parse_source_tokens, source_id_from_event_ref
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("daily_briefing", __name__, url_prefix="/briefing")
@@ -35,8 +37,35 @@ def _render_briefing_form(
     mode: str,
     form_action: str,
     cancel_url: str,
+    geographic_scope=None,
+    sectors=None,
+    threat_actors=None,
+    mitre_attack_techniques=None,
+    threat_types=None,
+    technology=None,
+    vendor=None,
+    incident=None,
+    campaign=None,
 ):
     is_edit = mode == "edit"
+    story_uuids = [
+        (story.get("source_event_uuid") if isinstance(story, dict) else getattr(story, "source_event_uuid", ""))
+        for story in stories
+    ]
+    cached_sources = {
+        row["uuid"]: row.get("source_id", "")
+        for row in collection_cache.get_events_by_uuids([uuid for uuid in story_uuids if uuid])
+    }
+    for story in stories:
+        if isinstance(story, dict):
+            if not story.get("source_id"):
+                source_event_uuid = story.get("source_event_uuid", "")
+                story["source_id"] = cached_sources.get(source_event_uuid) or source_id_from_event_ref(story.get("source_url", ""))
+        else:
+            if not getattr(story, "source_id", ""):
+                source_event_uuid = getattr(story, "source_event_uuid", "")
+                setattr(story, "source_id", cached_sources.get(source_event_uuid) or source_id_from_event_ref(getattr(story, "source_url", "")))
+    gathered = misp_store.briefing_story_scope_values(stories)
     return render_template(
         "daily_briefing/form.html",
         stories=stories,
@@ -54,6 +83,21 @@ def _render_briefing_form(
         cancel_url=cancel_url,
         cancel_label=("Cancel" if is_edit else "Back to triage"),
         story_title_exclusions=(getattr(config, "DAILY_BRIEFING_TITLE_EXCLUSIONS", []) or []),
+        threat_actor_types=(getattr(config, "THREAT_ACTOR_TYPES", []) or []),
+        story_scope_summary=misp_store.briefing_scope_summary(stories),
+        briefing_geographic_scope=_dedup_lower(list(geographic_scope or []) + gathered["geographic_scope"]),
+        briefing_sectors=_dedup_lower(list(sectors or []) + gathered["sectors"]),
+        briefing_threat_actors=_dedup_lower(list(threat_actors or []) + gathered["threat_actors"]),
+        briefing_mitre_attack_techniques=_dedup_lower(list(mitre_attack_techniques or []) + gathered["mitre_attack_techniques"]),
+        briefing_threat_types=threat_types or [],
+        briefing_technology=technology or [],
+        briefing_vendor=vendor or [],
+        briefing_incident=incident or [],
+        briefing_campaign=campaign or [],
+        galaxy_countries=misp_store.galaxy_geography(),
+        galaxy_sectors=misp_store.galaxy_sectors(),
+        galaxy_threat_actors=misp_store.galaxy_threat_actors(),
+        galaxy_mitre_attack=misp_store.galaxy_mitre_attack_patterns(),
     )
 
 
@@ -66,6 +110,75 @@ def _extract_ai_summary(event) -> str:
     return ""
 
 
+def _seed_story_from_event(ev_uuid, source_hint=""):
+    """Build a story stub dict from a MISP event, for pre-loading into a briefing draft.
+
+    Resolves the event from whichever MISP instance it actually lives on (the
+    scraper, an external MISP_SERVERS instance, or the webapp MISP), trying the
+    given source hint first. Scraper events carry an article URL that
+    extract_source_url() picks out of their link attributes; events from any
+    other source have no such article link (their URL-typed attributes are
+    indicators, not "the source"), so the story links to the MISP event page
+    itself instead.
+    """
+    ev, misp_client, source_id = misp_store.resolve_source_event(ev_uuid, source_hint)
+    if ev is None:
+        return None
+    source_url = misp_store.extract_source_url(ev) if source_id == "scraper" else ""
+    if not source_url:
+        base_url = (getattr(misp_client, "root_url", "") or "").rstrip("/")
+        if base_url:
+            source_url = f"{base_url}/events/view/{ev.uuid}"
+    story = {
+        "title": ev.info or "",
+        "content": "",
+        "source_url": source_url,
+        "source_event_uuid": ev.uuid,
+        "source_id": source_id,
+        "ai_summary": _extract_ai_summary(ev),
+    }
+    story.update(misp_store.extract_story_context(ev))
+    return story
+
+
+def _split_scope_field(form, key):
+    """Parse a comma-separated hidden scope field into a clean list of values."""
+    raw = form.get(key, "")
+    return [v.strip() for v in raw.split(",") if v.strip()]
+
+
+def _dedup_lower(values):
+    """Deduplicate a list of strings case-insensitively, preserving first-occurrence casing."""
+    seen = set()
+    result = []
+    for v in values:
+        key = (v or "").strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            result.append(v.strip())
+    return result
+
+
+def _parse_briefing_scope_from_form(form):
+    """Extract briefing-level scope element fields from a POST form.
+
+    Mirrors the PIR form's scope parsing: galaxy-backed multiselect fields
+    (geographic_scope, sectors, threat_actors) are deduplicated case-insensitively,
+    the rest are taken as-is from the submitted checkbox/tag-input values.
+    """
+    return {
+        "geographic_scope": _dedup_lower(form.getlist("geographic_scope")),
+        "sectors": _dedup_lower(form.getlist("sectors")),
+        "threat_actors": _dedup_lower(form.getlist("threat_actors")),
+        "mitre_attack_techniques": form.getlist("mitre_attack_techniques"),
+        "threat_types": form.getlist("threat_types"),
+        "technology": form.getlist("technology"),
+        "vendor": form.getlist("vendor"),
+        "incident": form.getlist("incident"),
+        "campaign": form.getlist("campaign"),
+    }
+
+
 def _parse_stories_from_form(form):
     """Extract story dicts from a POST form with indexed story fields."""
     stories = []
@@ -74,12 +187,25 @@ def _parse_stories_from_form(form):
         title = form.get(f"story_{i}_title", "").strip()
         if not title and not form.get(f"story_{i}_source_event_uuid", "").strip():
             break
+        cti_eval_raw = form.get(f"story_{i}_cti_evaluation", "").strip()
+        try:
+            cti_evaluation = json.loads(cti_eval_raw) if cti_eval_raw else {}
+        except Exception:
+            cti_evaluation = {}
         stories.append({
             "title": title,
             "content": form.get(f"story_{i}_content", "").strip(),
             "source_url": form.get(f"story_{i}_source_url", "").strip(),
             "source_event_uuid": form.get(f"story_{i}_source_event_uuid", "").strip(),
-            "correlation": form.get(f"story_{i}_correlation", "").strip(),
+            "source_id": form.get(f"story_{i}_source_id", "").strip(),
+            "geographic_scope": _split_scope_field(form, f"story_{i}_geographic_scope"),
+            "sectors": _split_scope_field(form, f"story_{i}_sectors"),
+            "threat_actors": _split_scope_field(form, f"story_{i}_threat_actors"),
+            "techniques": _split_scope_field(form, f"story_{i}_techniques"),
+            "source_reliability": form.get(f"story_{i}_source_reliability", "").strip(),
+            "information_credibility": form.get(f"story_{i}_information_credibility", "").strip(),
+            "cti_evaluation": cti_evaluation,
+            "threat_actor_types": [v.strip() for v in form.getlist(f"story_{i}_threat_actor_types") if v.strip()],
         })
         i += 1
     return stories
@@ -138,29 +264,20 @@ def compose():
     if request.method == "POST":
         # Submitted from the triage page: create a blank briefing shell with
         # selected events pre-loaded as story stubs, then redirect to edit.
-        selected_uuids = request.form.getlist("selected_events")
+        selected_uuids, source_hints, _pairs = parse_source_tokens(request.form.getlist("selected_events"))
         bdate = request.form.get("date", "").strip() or datetime.utcnow().strftime("%Y-%m-%d")
         btitle = request.form.get("title", "").strip()
         author = request.form.get("author", "").strip()
         tlp = request.form.get("tlp", "clear")
 
         stories = []
-        if selected_uuids:
-            misp = misp_store._scraper_misp()
-            for ev_uuid in selected_uuids[:8]:
-                try:
-                    ev = misp.get_event(ev_uuid, pythonify=True)
-                    if ev and not isinstance(ev, dict):
-                        stories.append({
-                            "title": ev.info or "",
-                            "content": "",
-                            "source_url": misp_store.extract_source_url(ev),
-                            "source_event_uuid": ev.uuid,
-                            "correlation": "",
-                            "ai_summary": _extract_ai_summary(ev),
-                        })
-                except Exception as exc:
-                    logger.warning("Could not fetch event %s for briefing: %s", ev_uuid, exc)
+        for ev_uuid in selected_uuids[:8]:
+            try:
+                story = _seed_story_from_event(ev_uuid, source_hints.get(ev_uuid, ""))
+                if story:
+                    stories.append(story)
+            except Exception as exc:
+                logger.warning("Could not fetch event %s for briefing: %s", ev_uuid, exc)
 
         return _render_briefing_form(
             stories=stories,
@@ -178,20 +295,15 @@ def compose():
     # GET: show empty compose form, optionally pre-seeded with one source event
     today = datetime.utcnow().strftime("%Y-%m-%d")
     stories = []
-    seed_uuid = (request.args.get("source") or "").strip()
-    if seed_uuid:
+    seed_token = (request.args.get("source") or "").strip()
+    if seed_token:
+        seed_ref, _, seed_sid = seed_token.partition("|")
+        seed_uuid = (seed_ref or "").strip()
+        source_hint = seed_sid.strip() or source_id_from_event_ref(seed_ref)
         try:
-            misp = misp_store._scraper_misp()
-            ev = misp.get_event(seed_uuid, pythonify=True)
-            if ev and not isinstance(ev, dict):
-                stories = [{
-                    "title": ev.info or "",
-                    "content": "",
-                    "source_url": misp_store.extract_source_url(ev),
-                    "source_event_uuid": ev.uuid,
-                    "correlation": "",
-                    "ai_summary": _extract_ai_summary(ev),
-                }]
+            story = _seed_story_from_event(seed_uuid, source_hint)
+            if story:
+                stories = [story]
         except Exception as exc:
             logger.warning("Could not seed briefing from event %s: %s", seed_uuid, exc)
     return _render_briefing_form(
@@ -221,6 +333,7 @@ def save():
         "notes": request.form.get("notes", "").strip(),
         "review_state": misp_store.BRIEFING_REVIEW_DRAFT,
         "stories": stories,
+        **_parse_briefing_scope_from_form(request.form),
     }
     if not stories:
         flash("Add at least one story before saving.", "warning")
@@ -266,6 +379,7 @@ def detail(id):
         recipients=recipients,
         notify_status=notify_status,
         source_meta=source_meta,
+        scope_summary=misp_store.briefing_combined_scope_summary(briefing),
         misp_webapp_url=config.MISP_WEBAPP_URL.rstrip("/"),
     )
 
@@ -299,7 +413,13 @@ def pdf(id):
         "color3": getattr(config, "BRAND_COLOR_3", "#64748b"),
         "logo_uri": _logo_data_uri(),
     }
-    html = render_template("daily_briefing/pdf.html", briefing=briefing, css_url=css_url, brand=brand)
+    html = render_template(
+        "daily_briefing/pdf.html",
+        briefing=briefing,
+        css_url=css_url,
+        brand=brand,
+        scope_summary=misp_store.briefing_combined_scope_summary(briefing),
+    )
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     filename = f"briefing-{briefing.date or 'draft'}.pdf"
     return Response(pdf_bytes, mimetype="application/pdf",
@@ -341,6 +461,7 @@ def edit(id):
             "notes": request.form.get("notes", "").strip(),
             "review_state": briefing.review_state,
             "stories": stories,
+            **_parse_briefing_scope_from_form(request.form),
         }
         try:
             misp_store.update_briefing(id, data)
@@ -361,6 +482,66 @@ def edit(id):
         mode="edit",
         form_action=url_for("daily_briefing.edit", id=briefing.uuid),
         cancel_url=url_for("daily_briefing.detail", id=briefing.uuid),
+        geographic_scope=briefing.geographic_scope,
+        sectors=briefing.sectors,
+        threat_actors=briefing.threat_actors,
+        mitre_attack_techniques=briefing.mitre_attack_techniques,
+        threat_types=briefing.threat_types,
+        technology=briefing.technology,
+        vendor=briefing.vendor,
+        incident=briefing.incident,
+        campaign=briefing.campaign,
+    )
+
+
+@bp.route("/<string:id>/add-stories", methods=["POST"])
+def add_stories(id):
+    """Seed new stories from selected data-collection events onto an existing draft briefing.
+
+    Renders the edit form pre-loaded with the existing stories plus the new
+    stubs, so the analyst can review/draft them before saving.
+    """
+    briefing = misp_store.get_briefing(id)
+    if briefing is None:
+        return "Briefing not found", 404
+    if briefing.review_state != misp_store.BRIEFING_REVIEW_DRAFT:
+        flash("Only draft briefings can receive additional stories.", "warning")
+        return redirect(url_for("daily_briefing.detail", id=id))
+
+    selected_uuids, source_hints, _pairs = parse_source_tokens(request.form.getlist("selected_events"))
+    new_stories = []
+    for ev_uuid in selected_uuids[:8]:
+        try:
+            story = _seed_story_from_event(ev_uuid, source_hints.get(ev_uuid, ""))
+            if story:
+                new_stories.append(story)
+        except Exception as exc:
+            logger.warning("Could not fetch event %s for briefing: %s", ev_uuid, exc)
+
+    if not new_stories:
+        flash("No stories could be added from the selected events.", "warning")
+        return redirect(url_for("daily_briefing.edit", id=id))
+
+    return _render_briefing_form(
+        stories=list(briefing.stories) + new_stories,
+        date=briefing.date,
+        title=briefing.title or "",
+        author=briefing.author or "",
+        tlp=briefing.tlp or "clear",
+        escalations=briefing.escalations or "",
+        notes=briefing.notes or "",
+        mode="edit",
+        form_action=url_for("daily_briefing.edit", id=briefing.uuid),
+        cancel_url=url_for("daily_briefing.detail", id=briefing.uuid),
+        geographic_scope=briefing.geographic_scope,
+        sectors=briefing.sectors,
+        threat_actors=briefing.threat_actors,
+        mitre_attack_techniques=briefing.mitre_attack_techniques,
+        threat_types=briefing.threat_types,
+        technology=briefing.technology,
+        vendor=briefing.vendor,
+        incident=briefing.incident,
+        campaign=briefing.campaign,
     )
 
 

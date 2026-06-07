@@ -265,7 +265,17 @@ def _build_list_context() -> dict:
         collection_tag_strip_prefixes=getattr(config, "COLLECTION_TAG_STRIP_PREFIXES", []) or [],
         collection_tag_hide_prefixes=getattr(config, "COLLECTION_TAG_HIDE_PREFIXES", []) or [],
         scope_galaxy=misp_store.scope_galaxy_items(),
+        draft_briefings=_draft_briefings(),
     )
+
+
+def _draft_briefings():
+    """Draft daily briefings, for the "add to existing briefing" picker."""
+    try:
+        return [b for b in misp_store.list_briefings() if b.review_state == misp_store.BRIEFING_REVIEW_DRAFT]
+    except Exception as exc:
+        logger.warning("Could not load draft briefings: %s", exc)
+        return []
 
 
 @bp.route("/")
@@ -434,6 +444,7 @@ def detail(uuid):
         misp_url=misp_url,
         source_label=source_label,
         source_id=source_id,
+        draft_briefings=_draft_briefings(),
     )
 
 

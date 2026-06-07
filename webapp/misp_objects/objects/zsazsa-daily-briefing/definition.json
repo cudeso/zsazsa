@@ -3,7 +3,7 @@
   "meta-category": "intelligence",
   "description": "Daily Threat Briefing metadata managed by the zsazsa CTI program",
   "uuid": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-  "version": 2,
+  "version": 3,
   "attributes": {
     "date": {
       "misp-attribute": "text",
@@ -51,6 +51,60 @@
       "misp-attribute": "text",
       "ui-priority": 7,
       "description": "Analyst notes and follow-up items",
+      "disable_correlation": true
+    },
+    "geographic-scope": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "Additional geographic scope items added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "sectors": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "Additional sector scope items added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "threat-actors": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "Additional threat actor scope items added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "mitre-attack-techniques": {
+      "misp-attribute": "text",
+      "ui-priority": 11,
+      "description": "Additional MITRE ATT&CK techniques added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "threat-types": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "Additional threat types added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "technology": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "Additional technology scope items added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "vendor": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Additional vendor scope items added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "incident": {
+      "misp-attribute": "text",
+      "ui-priority": 15,
+      "description": "Additional incident references added at briefing level (JSON-encoded list)",
+      "disable_correlation": true
+    },
+    "campaign": {
+      "misp-attribute": "text",
+      "ui-priority": 16,
+      "description": "Additional campaign references added at briefing level (JSON-encoded list)",
       "disable_correlation": true
     }
   }

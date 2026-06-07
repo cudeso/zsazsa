@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from pathlib import Path
 
 import openai
@@ -143,13 +144,38 @@ def generate_fia_draft(
     return _call(system, user_message, 2048, feature="generate_fia_draft", model=fc.get("model"))
 
 
-def draft_briefing_story(article_content: str, focus_points: dict = None) -> str:
+_ACTOR_TYPE_LINE_RE = re.compile(r'^\s*Threat actor type\s*:\s*(.+?)\s*$', re.IGNORECASE | re.MULTILINE)
+
+
+def draft_briefing_story(article_content: str, focus_points: dict = None, threat_actor_types: list = None) -> tuple[str, str]:
+    """Draft a five-line briefing story and a suggested threat actor type.
+
+    Returns (story_text, suggested_actor_type). The actor type is one of the
+    `name` values in `threat_actor_types`, or "" if the model could not
+    attribute one.
+    """
     fc = _feature_cfg("draft_briefing_story")
+    extra_parts = []
+    if focus_points:
+        extra_parts.append(f"Organisation focus points:\n{json.dumps(focus_points, indent=2)}")
+    if threat_actor_types:
+        extra_parts.append(f"Threat actor types to choose from:\n{json.dumps(threat_actor_types, indent=2)}")
     system = _build_system_prompt(
         _resolve_prompt(fc.get("prompt") or "daily_briefing_story.md"),
-        f"Organisation focus points:\n{json.dumps(focus_points or {}, indent=2)}" if focus_points else "",
+        "\n\n".join(extra_parts),
     )
-    return _call(system, article_content[:10000], 512, feature="draft_briefing_story", model=fc.get("model"))
+    raw = _call(system, article_content[:10000], 512, feature="draft_briefing_story", model=fc.get("model"))
+
+    suggested_actor_type = ""
+    match = _ACTOR_TYPE_LINE_RE.search(raw)
+    if match:
+        candidate = match.group(1).strip()
+        valid_names = {t.get("name", "") for t in (threat_actor_types or [])}
+        if candidate in valid_names:
+            suggested_actor_type = candidate
+        raw = _ACTOR_TYPE_LINE_RE.sub("", raw).strip()
+
+    return raw, suggested_actor_type
 
 
 def review_briefing_relevance(event_title: str, report_title: str, content: str) -> dict:

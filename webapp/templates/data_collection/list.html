@@ -29,7 +29,8 @@
     <i class="fas fa-plus me-1"></i>Create product
   </button>
   <ul class="dropdown-menu dropdown-menu-end">
-    <li><a class="dropdown-item create-product-item" href="#" data-product-action="daily-briefing"><i class="fas fa-newspaper me-2"></i>Add to daily briefing</a></li>
+    <li><a class="dropdown-item create-product-item" href="#" data-product-action="daily-briefing"><i class="fas fa-newspaper me-2"></i>Add to daily briefing (new)</a></li>
+    <li><a class="dropdown-item" href="#" id="add-to-existing-briefing-item"><i class="fas fa-newspaper me-2"></i>Add to existing draft briefing</a></li>
     <li><a class="dropdown-item create-product-item" href="#" data-product-action="flash-intel"><i class="fas fa-bolt me-2"></i>Flash intel alert</a></li>
     <li><a class="dropdown-item create-product-item" href="#" data-product-action="vea"><i class="fas fa-shield-halved me-2"></i>Vulnerability advisory</a></li>
     <li><hr class="dropdown-divider"></li>
@@ -774,6 +775,35 @@
 </div>
 
 {% include "data_collection/_list_table.html" %}
+
+<div class="modal fade" id="addToExistingBriefingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-newspaper me-2"></i>Add to existing draft briefing</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% if draft_briefings %}
+        <p class="text-muted small mb-2">The selected event(s) will be added as new stories to the chosen draft briefing.</p>
+        <select id="add-to-existing-briefing-select" class="form-select form-select-sm">
+          {% for b in draft_briefings %}
+          <option value="{{ b.uuid }}">{{ b.date or '(no date)' }}{% if b.title %} &mdash; {{ b.title }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <p class="text-muted mb-0">No draft briefings available. Use "Add to daily briefing (new)" instead.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        {% if draft_briefings %}
+        <button type="button" class="btn btn-sm btn-primary" id="add-to-existing-briefing-confirm">Add stories</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -984,6 +1014,13 @@
     (SCOPE_GALAXY[t] || []).forEach(function(item) { TAG_TO_VALUE[item.tag] = item.value; });
   });
 
+  /* Pull the value portion out of a galaxy tag, e.g. 'misp-galaxy:country="Iran"' -> 'Iran'. */
+  function tagValue(tag) {
+    var idx = tag.indexOf('=');
+    var v = idx === -1 ? tag : tag.slice(idx + 1);
+    return v.replace(/^"(.*)"$/, '$1');
+  }
+
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function closePanel() {
@@ -1002,6 +1039,26 @@
     if (!eventRow) return;
     var currentTags = new Set(JSON.parse(eventRow.dataset.tags || '[]'));
     var items = SCOPE_GALAXY[type] || [];
+
+    /* Tag prefixes recognised for this category (e.g. geo spans both
+       "misp-galaxy:country=" and "misp-galaxy:target-information="), so
+       value-based matching below doesn't cross over into other categories. */
+    var knownPrefixes = {};
+    items.forEach(function(it) {
+      var i = it.tag.indexOf('=');
+      if (i !== -1) knownPrefixes[it.tag.slice(0, i + 1)] = true;
+    });
+    function findMatchingTag(value) {
+      var lower = value.toLowerCase();
+      var found = null;
+      currentTags.forEach(function(t) {
+        if (found) return;
+        var i = t.indexOf('=');
+        var prefix = i === -1 ? t : t.slice(0, i + 1);
+        if (knownPrefixes[prefix] && tagValue(t).toLowerCase() === lower) found = t;
+      });
+      return found;
+    }
 
     var panelRow = document.createElement('tr');
     panelRow.className = 'scope-panel-row';
@@ -1066,8 +1123,20 @@
       lbl.className = 'scope-item';
       var cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.value = item.tag;
-      cb.checked = currentTags.has(item.tag);
+
+      /* Tags on the event may carry a different casing — or even a different
+         galaxy prefix (country vs target-information) — than the canonical
+         entry shown here (e.g. event tagged "iran", list shows "Iran").
+         Match by the tag's value portion, case-insensitively, so the
+         checkbox reflects reality, and act on the tag as it actually exists
+         on the event (checkbox value, chip, add/remove call) so the
+         apply/revert logic keeps matching it. */
+      var matchedTag = findMatchingTag(item.value);
+      var effectiveTag = matchedTag || item.tag;
+      var chipItem = matchedTag ? {value: item.value, tag: matchedTag} : item;
+      cb.value = effectiveTag;
+
+      cb.checked = !!matchedTag;
       var span = document.createElement('span');
       span.textContent = item.value;
       lbl.appendChild(cb);
@@ -1075,10 +1144,10 @@
       listEl.appendChild(lbl);
 
       /* Pre-tagged items: show chip with immediate-remove handler (no Apply needed) */
-      if (cb.checked) addChipEl(item, chipsEl, makeImmediateRemove(item.tag, cb));
+      if (cb.checked) addChipEl(chipItem, chipsEl, makeImmediateRemove(effectiveTag, cb));
 
       cb.addEventListener('change', function() {
-        var originallyTagged = currentTags.has(item.tag);
+        var originallyTagged = !!matchedTag;
         if (cb.checked && !originallyTagged) {
           /* Pending new addition — × undoes the selection without API call */
           pendingChanges[item.tag] = 'add';
@@ -1090,13 +1159,13 @@
           });
         } else if (!cb.checked && originallyTagged) {
           /* Queue removal — submit via Apply */
-          pendingChanges[item.tag] = 'remove';
-          removeChipEl(item.tag, chipsEl);
+          pendingChanges[effectiveTag] = 'remove';
+          removeChipEl(effectiveTag, chipsEl);
         } else {
           /* Reverted to original state */
-          delete pendingChanges[item.tag];
-          if (cb.checked) addChipEl(item, chipsEl, makeImmediateRemove(item.tag, cb));
-          else removeChipEl(item.tag, chipsEl);
+          delete pendingChanges[originallyTagged ? effectiveTag : item.tag];
+          if (cb.checked) addChipEl(chipItem, chipsEl, makeImmediateRemove(effectiveTag, cb));
+          else removeChipEl(effectiveTag, chipsEl);
         }
         updateApplyBtn();
       });

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import galaxy_multiselect, tag_input %}
 
 {% block title %}{{ browser_title }} | zsazsa CTI{% endblock %}
 {% block page_title %}{{ page_title_text }}{% endblock %}
@@ -81,9 +82,15 @@
           {% endif %}
           <button type="button" class="btn btn-xs btn-outline-info btn-draft-story"
                   data-idx="{{ idx }}"
-                  data-event-uuid="{{ story.source_event_uuid }}"
+              data-event-uuid="{{ story.source_event_uuid }}"
                   title="Draft a 5-line briefing story with AI from the original event content">
             <i class="fas fa-wand-magic-sparkles me-1"></i> Draft with AI
+          </button>
+          <button type="button" class="btn btn-xs btn-outline-secondary btn-include-attributes"
+                  data-idx="{{ idx }}"
+              data-event-uuid="{{ story.source_event_uuid }}"
+                  title="Add the source event's attributes (value | type | to_ids), and report text if present, to the story">
+            <i class="fas fa-list-ul me-1"></i> Include attributes
           </button>
           <button type="button" class="btn btn-xs btn-outline-danger btn-remove-story">
             <i class="fas fa-trash"></i>
@@ -93,7 +100,27 @@
       <div id="story-collapse-{{ idx }}" class="accordion-collapse collapse {{ 'show' if loop.first else '' }}" data-bs-parent="#stories-container">
       <div class="card-body">
         <input type="hidden" name="story_{{ idx }}_source_event_uuid" value="{{ story.source_event_uuid }}">
+        <input type="hidden" name="story_{{ idx }}_source_id" value="{{ story.source_id or '' }}">
+        <input type="hidden" name="story_{{ idx }}_geographic_scope" value="{{ (story.geographic_scope or []) | join(', ') }}">
+        <input type="hidden" name="story_{{ idx }}_sectors" value="{{ (story.sectors or []) | join(', ') }}">
+        <input type="hidden" name="story_{{ idx }}_threat_actors" value="{{ (story.threat_actors or []) | join(', ') }}">
+        <input type="hidden" name="story_{{ idx }}_techniques" value="{{ (story.techniques or []) | join(', ') }}">
+        <input type="hidden" name="story_{{ idx }}_source_reliability" value="{{ story.source_reliability or '' }}">
+        <input type="hidden" name="story_{{ idx }}_information_credibility" value="{{ story.information_credibility or '' }}">
+        <input type="hidden" name="story_{{ idx }}_cti_evaluation" value='{{ (story.cti_evaluation or {}) | tojson }}'>
         {% if story.ai_summary %}<textarea class="story-ai-summary-data" style="display:none" tabindex="-1" readonly>{{ story.ai_summary | e }}</textarea>{% endif %}
+        {% set has_reused_context = (story.geographic_scope or story.sectors or story.threat_actors or story.techniques or story.source_reliability or story.information_credibility or story.cti_evaluation) %}
+        <div class="reused-context-{{ idx }} mb-2 small {{ '' if has_reused_context else 'd-none' }}">
+          <span class="text-muted me-1">Reused from source event:</span>
+          {% for v in (story.geographic_scope or []) %}<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 me-1" title="Geographic scope">{{ v }}</span>{% endfor %}
+          {% for v in (story.sectors or []) %}<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 me-1" title="Sector">{{ v }}</span>{% endfor %}
+          {% for v in (story.threat_actors or []) %}<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 me-1" title="Threat actor">{{ v }}</span>{% endfor %}
+          {% for v in (story.techniques or []) %}<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 me-1" title="MITRE ATT&amp;CK technique">{{ v }}</span>{% endfor %}
+          {% if story.source_reliability or story.information_credibility %}
+          <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 me-1" title="Admiralty scale (source reliability / information credibility)">{{ story.source_reliability or '-' }}{{ '/' if story.source_reliability or story.information_credibility else '' }}{{ story.information_credibility or '-' }}</span>
+          {% endif %}
+          {% for k, v in (story.cti_evaluation or {}).items() %}<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1" title="CTI evaluation">{{ k }}={{ v }}</span>{% endfor %}
+        </div>
         <div class="row g-3">
           <div class="col-md-8">
             <label class="form-label">Title</label>
@@ -113,11 +140,24 @@
             <textarea name="story_{{ idx }}_content" class="form-control story-content"
                       rows="6" placeholder="Write the 5-line story here...">{{ story.content }}</textarea>
           </div>
+          {% if threat_actor_types %}
           <div class="col-12">
-            <label class="form-label">Correlation with known MISP events</label>
-            <input name="story_{{ idx }}_correlation" class="form-control"
-                   value="{{ story.correlation }}" placeholder="No / Yes: matches CCB event abc-123">
+            <label class="form-label">Threat actor type</label>
+            <div class="d-flex flex-wrap gap-2">
+              {% set selected_types = (story.threat_actor_types or []) %}
+              {% for tat in threat_actor_types %}
+              <label class="actor-type-pill{% if tat.name in selected_types %} selected{% endif %}"
+                     title="{{ tat.description }}">
+                <input type="checkbox" name="story_{{ idx }}_threat_actor_types" value="{{ tat.name }}"
+                       {% if tat.name in selected_types %}checked{% endif %}
+                       style="display:none;">
+                {{ tat.name }}
+              </label>
+              {% endfor %}
+            </div>
+            <div class="form-text">Select one or more. Hover for description.</div>
           </div>
+          {% endif %}
         </div>
         <div class="scope-chips-{{ idx }} mt-2" style="display:none">
           <span class="text-muted small me-1">Scope:</span>
@@ -133,6 +173,136 @@
     <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-add-story">
       <i class="fas fa-plus me-1"></i> Add story
     </button>
+  </div>
+
+  <div class="card content-card mb-3">
+    <div class="card-header"><i class="fas fa-layer-group me-2"></i>Scope elements</div>
+    <div class="card-body">
+
+      {% if story_scope_summary %}
+      <p class="text-muted small mb-2">Already gathered from the stories above:</p>
+      <div class="mb-3">
+        {% for label, ranked in story_scope_summary %}
+        <div class="mb-1">
+          <span class="text-muted small me-1">{{ label }}:</span>
+          {% for value, count in ranked %}
+          <span class="badge bg-light text-dark border me-1 mb-1">{{ value }}{% if count > 1 %} &times;{{ count }}{% endif %}</span>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+      <hr>
+      {% else %}
+      <p class="text-muted small mb-2"><em>No scope elements gathered from the stories yet.</em></p>
+      {% endif %}
+
+      <button type="button" class="btn btn-link text-start text-decoration-none p-0 mb-3 collapsed"
+              data-bs-toggle="collapse" data-bs-target="#briefing-extra-scope-fields"
+              aria-expanded="false" aria-controls="briefing-extra-scope-fields">
+        <i class="fas fa-chevron-right me-1 small"></i>
+        <span class="text-muted small">Add scope elements that apply to the briefing as a whole, on top of those reused from the stories. Same categories as for PIRs and GIRs.</span>
+      </button>
+
+      <div class="collapse" id="briefing-extra-scope-fields">
+      <div class="row g-3">
+
+        <div class="col-12">
+          <label class="form-label">Geographic scope items
+            <span class="text-muted fw-normal small">(from MISP Country &amp; Target Information galaxies)</span>
+          </label>
+          {{ galaxy_multiselect("geographic_scope",
+              values=briefing_geographic_scope,
+              items=galaxy_countries,
+              dom_id="briefing-geographic-scope") }}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Sector scope items
+            <span class="text-muted fw-normal small">(from MISP Sector galaxy)</span>
+          </label>
+          {{ galaxy_multiselect("sectors",
+              values=briefing_sectors,
+              items=galaxy_sectors,
+              dom_id="briefing-sectors") }}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Threat actor scope items
+            <span class="text-muted fw-normal small">(from MISP Threat Actor galaxy)</span>
+          </label>
+          {{ galaxy_multiselect("threat_actors",
+              values=briefing_threat_actors,
+              items=galaxy_threat_actors,
+              dom_id="briefing-threat-actors") }}
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">MITRE ATT&amp;CK techniques
+            <span class="text-muted fw-normal small">(from MITRE ATT&amp;CK galaxy)</span>
+          </label>
+          {{ galaxy_multiselect("mitre_attack_techniques",
+              values=briefing_mitre_attack_techniques,
+              items=galaxy_mitre_attack,
+              dom_id="briefing-mitre-attack") }}
+        </div>
+
+        <div class="col-12">
+          <div class="scope-section">
+
+            <div class="scope-group">
+              <div class="scope-group-label"><i class="fas fa-skull-crossbones me-1"></i>Threat context</div>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Threat types</label>
+                  {{ tag_input("threat_types",
+                      values=briefing_threat_types,
+                      placeholder="Ransomware, APT, Espionage…") }}
+                </div>
+              </div>
+            </div>
+
+            <div class="scope-group">
+              <div class="scope-group-label"><i class="fas fa-microchip me-1"></i>Technical assets</div>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Technology</label>
+                  {{ tag_input("technology",
+                      values=briefing_technology,
+                      placeholder="Fortinet, Windows, Apache…") }}
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Vendor</label>
+                  {{ tag_input("vendor",
+                      values=briefing_vendor,
+                      placeholder="Microsoft, Cisco, Palo Alto…") }}
+                </div>
+              </div>
+            </div>
+
+            <div class="scope-group">
+              <div class="scope-group-label"><i class="fas fa-timeline me-1"></i>Activity tracking</div>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Incident</label>
+                  {{ tag_input("incident",
+                      values=briefing_incident,
+                      placeholder="INC-2025-001…") }}
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Campaign</label>
+                  {{ tag_input("campaign",
+                      values=briefing_campaign,
+                      placeholder="Scattered Spider, UNC3944…") }}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+      </div>
+    </div>
   </div>
 
   <div class="card content-card mb-3">
@@ -170,10 +340,29 @@
 var storyCount = {{ stories | length }};
 var isEditMode = {{ 'true' if page_mode == 'edit' else 'false' }};
 var storyTitleExclusions = {{ story_title_exclusions | tojson }};
+var threatActorTypes = {{ threat_actor_types | tojson }};
+
+function _actorTypePillsHtml(idx, selected) {
+  selected = selected || [];
+  return threatActorTypes.map(function(t) {
+    var isSelected = selected.indexOf(t.name) !== -1;
+    return '<label class="actor-type-pill' + (isSelected ? ' selected' : '') + '" title="' + (t.description || '').replace(/"/g, '&quot;') + '">'
+      + '<input type="checkbox" name="story_' + idx + '_threat_actor_types" value="' + t.name + '"' + (isSelected ? ' checked' : '') + ' style="display:none;">'
+      + t.name
+      + '</label>';
+  }).join('');
+}
+
+document.addEventListener('change', function(e) {
+  if (e.target.matches('.actor-type-pill input[type="checkbox"]')) {
+    var pill = e.target.closest('.actor-type-pill');
+    if (pill) pill.classList.toggle('selected', e.target.checked);
+  }
+});
 
 document.getElementById('btn-add-story').addEventListener('click', function() {
   storyCount++;
-  addStoryCard(storyCount, '', '', '', '', '');
+  addStoryCard(storyCount, '', '', '', '');
   updateOverlapButtonState();
 });
 
@@ -193,6 +382,10 @@ document.addEventListener('click', function(e) {
     var idx = btn.dataset.idx;
     var eventUuid = btn.dataset.eventUuid;
     draftStory(idx, eventUuid);
+  }
+  if (e.target.closest('.btn-include-attributes')) {
+    var attrBtn = e.target.closest('.btn-include-attributes');
+    includeAttributes(attrBtn.dataset.idx, attrBtn.dataset.eventUuid);
   }
   if (e.target.closest('.btn-use-ai-summary')) {
     var btn = e.target.closest('.btn-use-ai-summary');
@@ -233,6 +426,8 @@ function renumberStories() {
     });
     var draftBtn = card.querySelector('.btn-draft-story');
     if (draftBtn) draftBtn.dataset.idx = idx;
+    var attrBtn = card.querySelector('.btn-include-attributes');
+    if (attrBtn) attrBtn.dataset.idx = idx;
     var collapseEl = card.querySelector('.accordion-collapse');
     if (collapseEl) {
       collapseEl.id = 'story-collapse-' + idx;
@@ -244,6 +439,8 @@ function renumberStories() {
     }
     var scopeEl = card.querySelector('[class^=scope-chips]');
     if (scopeEl) scopeEl.className = 'scope-chips-' + idx + ' mt-2';
+    var reusedEl = card.querySelector('[class^=reused-context]');
+    if (reusedEl) reusedEl.className = 'reused-context-' + idx + ' mb-2 small' + (reusedEl.classList.contains('d-none') ? ' d-none' : '');
     var statusEl = card.querySelector('[class^=ai-status]');
     if (statusEl) statusEl.className = 'ai-status-' + idx + ' text-muted small mt-1';
     var heading = card.querySelector('.story-heading-text');
@@ -382,7 +579,7 @@ function _renderOverlapResult(data) {
   _highlightOverlapStories(overlaps);
 }
 
-function addStoryCard(idx, title, content, sourceUrl, sourceUuid, correlation) {
+function addStoryCard(idx, title, content, sourceUrl, sourceUuid) {
   var html = `
     <div class="card content-card mb-3 story-card">
       <div class="card-header d-flex justify-content-between align-items-center">
@@ -398,6 +595,11 @@ function addStoryCard(idx, title, content, sourceUrl, sourceUuid, correlation) {
                   data-idx="${idx}" data-event-uuid="${sourceUuid}" title="Draft with AI">
             <i class="fas fa-wand-magic-sparkles me-1"></i> Draft with AI
           </button>
+          <button type="button" class="btn btn-xs btn-outline-secondary btn-include-attributes"
+              data-idx="${idx}" data-event-uuid="${sourceUuid}"
+                  title="Add the source event's attributes (value | type | to_ids), and report text if present, to the story">
+            <i class="fas fa-list-ul me-1"></i> Include attributes
+          </button>
           <button type="button" class="btn btn-xs btn-outline-danger btn-remove-story">
             <i class="fas fa-trash"></i>
           </button>
@@ -406,6 +608,17 @@ function addStoryCard(idx, title, content, sourceUrl, sourceUuid, correlation) {
       <div id="story-collapse-${idx}" class="accordion-collapse collapse show" data-bs-parent="#stories-container">
       <div class="card-body">
         <input type="hidden" name="story_${idx}_source_event_uuid" value="${sourceUuid}">
+        <input type="hidden" name="story_${idx}_source_id" value="">
+        <input type="hidden" name="story_${idx}_geographic_scope" value="">
+        <input type="hidden" name="story_${idx}_sectors" value="">
+        <input type="hidden" name="story_${idx}_threat_actors" value="">
+        <input type="hidden" name="story_${idx}_techniques" value="">
+        <input type="hidden" name="story_${idx}_source_reliability" value="">
+        <input type="hidden" name="story_${idx}_information_credibility" value="">
+        <input type="hidden" name="story_${idx}_cti_evaluation" value="">
+        <div class="reused-context-${idx} mb-2 small d-none">
+          <span class="text-muted me-1">Reused from source event:</span>
+        </div>
         <div class="row g-3">
           <div class="col-md-8">
             <label class="form-label">Title</label>
@@ -424,11 +637,12 @@ function addStoryCard(idx, title, content, sourceUrl, sourceUuid, correlation) {
             <textarea name="story_${idx}_content" class="form-control story-content"
                       rows="6" placeholder="Write the 5-line story here...">${content}</textarea>
           </div>
-          <div class="col-12">
-            <label class="form-label">Correlation with known MISP events</label>
-            <input name="story_${idx}_correlation" class="form-control"
-                   value="${correlation}" placeholder="No / Yes: matches CCB event abc-123">
-          </div>
+          ${threatActorTypes.length ? (
+          '<div class="col-12">'
+          + '<label class="form-label">Threat actor type</label>'
+          + '<div class="d-flex flex-wrap gap-2">' + _actorTypePillsHtml(idx, []) + '</div>'
+          + '<div class="form-text">Select one or more. Hover for description.</div>'
+          + '</div>') : ''}
         </div>
         <div class="scope-chips-${idx} mt-2" style="display:none"><span class="text-muted small me-1">Scope:</span></div>
         <div class="ai-status-${idx} text-muted small mt-1" style="display:none"></div>
@@ -479,7 +693,49 @@ function draftStory(idx, eventUuid) {
     if (textarea) textarea.value = data.story;
     updateOverlapButtonState();
     _renderScopeChips(idx, data.scope);
+    if (data.threat_actor_type) {
+      var anyChecked = document.querySelector('input[name="story_' + idx + '_threat_actor_types"]:checked');
+      if (!anyChecked) {
+        var cb = document.querySelector('input[name="story_' + idx + '_threat_actor_types"][value="' + CSS.escape(data.threat_actor_type) + '"]');
+        if (cb) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+      }
+    }
     if (statusEl) statusEl.textContent = 'AI draft applied. Review before saving.';
+  })
+  .catch(err => {
+    if (statusEl) statusEl.textContent = 'Request failed: ' + err;
+  });
+}
+
+function includeAttributes(idx, eventUuid) {
+  var sourceIdInput = document.querySelector('[name="story_' + idx + '_source_id"]');
+  var sourceId = sourceIdInput ? (sourceIdInput.value || '') : '';
+  var statusEl = document.querySelector('.ai-status-' + idx);
+  if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Fetching attributes...'; }
+
+  return fetch(SCRIPT_ROOT + '/api/event-attributes-text', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+    },
+    body: JSON.stringify({event_uuid: eventUuid, source_id: sourceId}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      if (statusEl) statusEl.textContent = data.error;
+      return;
+    }
+    var textarea = document.querySelector('[name=story_' + idx + '_content]');
+    if (textarea && data.text) {
+      textarea.value = textarea.value.trim() ? (textarea.value.replace(/\s+$/, '') + '\n\n' + data.text) : data.text;
+      updateOverlapButtonState();
+    }
+    if (statusEl) statusEl.textContent = 'Attributes added. Review before saving.';
   })
   .catch(err => {
     if (statusEl) statusEl.textContent = 'Request failed: ' + err;
@@ -592,6 +848,80 @@ document.getElementById('btn-auto-delete-excluded').addEventListener('click', fu
   autoDeleteExcludedStories();
 });
 
+function tiRender(field) {
+  var display = document.getElementById('ti-display-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!display || !store) return;
+  display.innerHTML = '';
+  store.querySelectorAll('input[type="hidden"]').forEach(function(inp, i) {
+    var pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    var txt = document.createTextNode(inp.value);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tag-pill-remove';
+    btn.textContent = '×';
+    btn.title = 'Remove';
+    btn.setAttribute('data-remove', i);
+    btn.onclick = function() { inp.remove(); tiRender(field); };
+    pill.appendChild(txt);
+    pill.appendChild(btn);
+    display.appendChild(pill);
+  });
+}
+function tiAdd(field) {
+  var text = document.getElementById('ti-text-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!text || !store) return;
+  var val = text.value.trim();
+  if (!val) return;
+  var existing = Array.from(store.querySelectorAll('input[type="hidden"]')).map(function(i){ return i.value; });
+  if (!existing.includes(val)) {
+    var h = document.createElement('input');
+    h.type = 'hidden';
+    h.name = field;
+    h.value = val;
+    store.appendChild(h);
+    tiRender(field);
+  }
+  text.value = '';
+  text.focus();
+}
+document.querySelectorAll('[data-ti-field]').forEach(function(w) {
+  var f = w.dataset.tiField;
+  tiRender(f);
+  var t = document.getElementById('ti-text-' + f);
+  if (t) t.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); tiAdd(f); }
+  });
+});
+
 updateOverlapButtonState();
 </script>
+
+<style>
+.actor-type-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: .3rem .75rem;
+  border: 1.5px solid #dee2e6;
+  border-radius: .4rem;
+  font-size: .85rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: #fff;
+  color: #6c757d;
+  user-select: none;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.actor-type-pill:hover { border-color: #adb5bd; background: #f8f9fa; color: #495057; }
+.actor-type-pill.selected {
+  border-color: #0078f1;
+  background: #ddeeff;
+  color: #00408a;
+  font-weight: 600;
+}
+[data-bs-toggle="collapse"] .fa-chevron-right { transition: transform .15s ease; }
+[data-bs-toggle="collapse"]:not(.collapsed) .fa-chevron-right { transform: rotate(90deg); }
+</style>
 {% endblock %}

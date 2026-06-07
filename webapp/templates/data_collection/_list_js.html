@@ -1028,7 +1028,8 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
         form.appendChild(dateInp);
         selected.forEach(function(s) {
           var inp = document.createElement('input');
-          inp.type = 'hidden'; inp.name = 'selected_events'; inp.value = s.uuid; form.appendChild(inp);
+          inp.type = 'hidden'; inp.name = 'selected_events';
+          inp.value = s.uuid + (s.sourceId ? ('|' + s.sourceId) : ''); form.appendChild(inp);
         });
       } else {
         var pfInp = document.createElement('input');
@@ -1042,6 +1043,43 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       document.body.appendChild(form); form.submit();
     });
   });
+
+  /* "Add to existing draft briefing" - pick a draft briefing, then append the
+     selected events to it as new stories. */
+  var addToExistingBriefingItem = document.getElementById('add-to-existing-briefing-item');
+  var addToExistingBriefingModalEl = document.getElementById('addToExistingBriefingModal');
+  var addToExistingBriefingModal = (addToExistingBriefingModalEl && typeof bootstrap !== 'undefined')
+    ? new bootstrap.Modal(addToExistingBriefingModalEl) : null;
+  if (addToExistingBriefingItem && addToExistingBriefingModal) {
+    addToExistingBriefingItem.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (!getSelectedEvents().length) { alert('Select at least one event using the checkboxes.'); return; }
+      addToExistingBriefingModal.show();
+    });
+  }
+  var addToExistingBriefingConfirm = document.getElementById('add-to-existing-briefing-confirm');
+  if (addToExistingBriefingConfirm) {
+    addToExistingBriefingConfirm.addEventListener('click', function() {
+      var select = document.getElementById('add-to-existing-briefing-select');
+      var briefingUuid = select ? select.value : '';
+      var selected = getSelectedEvents();
+      if (!briefingUuid || !selected.length) { return; }
+      var form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '{{ url_for("daily_briefing.add_stories", id="__ID__") }}'.replace('__ID__', briefingUuid);
+      var csrfInp = document.createElement('input');
+      csrfInp.type = 'hidden'; csrfInp.name = 'csrf_token'; csrfInp.value = csrfToken;
+      form.appendChild(csrfInp);
+      selected.forEach(function(s) {
+        var inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'selected_events';
+        inp.value = s.sourceId ? (s.uuid + '|' + s.sourceId) : s.uuid;
+        form.appendChild(inp);
+      });
+      document.body.appendChild(form); form.submit();
+    });
+  }
 
   var createProductBtn = document.getElementById('create-product-btn');
   function updateCreateProductBtn() {
@@ -1109,6 +1147,18 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function escAttr(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
+  function previewMetaText(data) {
+    var ev = data.event || {};
+    var parts = [];
+    if (ev.date) parts.push(ev.date);
+    if (data.source_label) parts.push(data.source_label);
+    var attrCount = (ev.attributes || []).length;
+    var objCount = (ev.objects || []).length;
+    parts.push(attrCount + ' attribute' + (attrCount === 1 ? '' : 's'));
+    parts.push(objCount + ' object' + (objCount === 1 ? '' : 's'));
+    return parts.join(' · ');
+  }
+
   function renderPreview(data) {
     if (!previewContent) return;
     var ev = data.event; var html = '';
@@ -1173,7 +1223,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       if (previewLoading) previewLoading.classList.add('d-none');
       var cached = previewCache[cacheKey];
       if (previewTitle) previewTitle.textContent = cached.event.info || '(untitled)';
-      if (previewMeta) previewMeta.textContent = cached.event.date + ' · ' + (cached.source_label || '');
+      if (previewMeta) previewMeta.textContent = previewMetaText(cached);
       if (previewDetailLink) previewDetailLink.href = cached.detail_url;
       renderPreview(cached); return;
     }
@@ -1184,7 +1234,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
         if (!data.ok) { if (previewContent) previewContent.innerHTML = '<p class="text-danger small">' + esc(data.error || 'Could not load event') + '</p>'; return; }
         previewCache[cacheKey] = data;
         if (previewTitle) previewTitle.textContent = data.event.info || '(untitled)';
-        if (previewMeta) previewMeta.textContent = (data.event.date || '') + (data.source_label ? ' · ' + data.source_label : '');
+        if (previewMeta) previewMeta.textContent = previewMetaText(data);
         if (previewDetailLink) previewDetailLink.href = data.detail_url;
         renderPreview(data);
       })

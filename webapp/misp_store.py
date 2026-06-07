@@ -23,6 +23,7 @@ import threading
 import time
 import urllib3
 import re
+from collections import Counter
 from datetime import date, datetime
 from types import SimpleNamespace
 
@@ -240,12 +241,87 @@ def _apply_scope_tags(misp, event_uuid: str, data: dict, new_info: str = None, _
                 logger.error("tag %s still failed after create: %s", name, r2["errors"])
 
 
+_STORY_TECHNIQUE_RE = re.compile(r'\bT\d{4}(?:\.\d{3})?\b')
+_CTI_EVAL_TAG_RE = re.compile(r'^cti-evaluation:([a-z-]+)="([a-z-]+)"$')
+
+
+def extract_story_context(event) -> dict:
+    """Pull reusable scope, source-rating, and CTI-evaluation tags off a source event.
+
+    Used when a story is added to a daily briefing so the original event's
+    classification (geographic/sector/threat-actor/technique scope, Admiralty
+    Scale ratings, CTI-evaluation taxonomy tags) survives onto the story
+    instead of being lost when the article is folded into the briefing.
+    """
+    geographic_scope, sectors, threat_actors, techniques = [], [], [], []
+    source_reliability, information_credibility = "", ""
+    cti_evaluation = {}
+    for t in getattr(event, "tags", []) or []:
+        name = getattr(t, "name", "") or ""
+        if name.startswith('misp-galaxy:country=') or name.startswith('misp-galaxy:target-information='):
+            v = name.split('=', 1)[1].strip('"')
+            if v and v not in geographic_scope:
+                geographic_scope.append(v)
+        elif name.startswith('misp-galaxy:sector='):
+            v = name.split('=', 1)[1].strip('"')
+            if v and v not in sectors:
+                sectors.append(v)
+        elif name.startswith('misp-galaxy:threat-actor='):
+            v = name.split('=', 1)[1].strip('"')
+            if v and v not in threat_actors:
+                threat_actors.append(v)
+        elif name.startswith('misp-galaxy:mitre-attack-pattern='):
+            m = _STORY_TECHNIQUE_RE.search(name)
+            if m and m.group(0) not in techniques:
+                techniques.append(m.group(0))
+        elif name.startswith('admiralty-scale:source-reliability='):
+            source_reliability = name.split('=', 1)[1].strip('"').upper()
+        elif name.startswith('admiralty-scale:information-credibility='):
+            information_credibility = name.split('=', 1)[1].strip('"')
+        else:
+            m = _CTI_EVAL_TAG_RE.match(name)
+            if m:
+                cti_evaluation[m.group(1)] = m.group(2)
+    return {
+        "geographic_scope": geographic_scope,
+        "sectors": sectors,
+        "threat_actors": threat_actors,
+        "techniques": techniques,
+        "source_reliability": source_reliability,
+        "information_credibility": information_credibility,
+        "cti_evaluation": cti_evaluation,
+    }
+
+
 def galaxy_countries() -> list:
     return _fetch_galaxy_clusters(GALAXY_COUNTRY)
 
 
 def galaxy_target_information() -> list:
     return _fetch_galaxy_clusters(GALAXY_TARGET_INFORMATION)
+
+
+def _dedupe_casing(values):
+    """Deduplicate strings case-insensitively, keeping the best-cased form.
+
+    The Country and Target Information galaxies sometimes carry the same
+    place under different casing (e.g. "Belgium" and "belgium"). Picking one
+    canonical entry avoids showing both as separate, selectable options.
+    A capitalised form (e.g. "Belgium") is preferred over an all-lowercase one.
+    """
+    best = {}
+    order = []
+    for v in values:
+        v = (v or "").strip()
+        if not v:
+            continue
+        key = v.lower()
+        if key not in best:
+            best[key] = v
+            order.append(key)
+        elif best[key].islower() and not v.islower():
+            best[key] = v
+    return [best[key] for key in order]
 
 
 def galaxy_geography() -> list:
@@ -255,13 +331,7 @@ def galaxy_geography() -> list:
     others via the Target Information galaxy. We expose both as a single
     combined list so a PIR scope catches either tagging style.
     """
-    seen = set()
-    merged = []
-    for v in galaxy_countries() + galaxy_target_information():
-        if v and v not in seen:
-            seen.add(v)
-            merged.append(v)
-    return sorted(merged)
+    return sorted(_dedupe_casing(galaxy_countries() + galaxy_target_information()))
 
 
 def galaxy_sectors() -> list:
@@ -282,11 +352,14 @@ def scope_galaxy_items() -> dict:
     {"value": str, "tag": str} dicts. Items without a resolvable tag are omitted.
     """
     def _pairs(values, *maps, fallback_prefix=None):
+        # Look up case-insensitively: galaxy_geography() may return a value in a
+        # different casing than the source galaxy used (see _dedupe_casing).
+        ci_maps = [{k.lower(): v for k, v in m.items()} for m in maps]
         out = []
         for v in values:
             tag = None
-            for m in maps:
-                tag = m.get(v)
+            for m in ci_maps:
+                tag = m.get(v.lower())
                 if tag:
                     break
             if not tag and fallback_prefix:
@@ -1835,6 +1908,137 @@ def _normalise_source_uuids_and_hints(source_uuids_raw, source_event_uuid_raw, s
     return source_uuids, _clean_source_hints(source_hints_raw, source_uuids)
 
 
+def _all_source_clients():
+    """Build an ordered (source_id, misp_client, label) list: scraper, MISP_SERVERS, webapp."""
+    from pymisp import PyMISP as _PyMISP
+    clients = [("scraper", _scraper_misp(), "MISP scraper")]
+    for s in getattr(config, "MISP_SERVERS", []) or []:
+        sid = s.get("id") or s.get("label") or ""
+        url = s.get("url")
+        api_key = s.get("api_key")
+        if url and api_key:
+            try:
+                clients.append((sid, _PyMISP(url, api_key, s.get("verify_tls", True), False),
+                                s.get("label") or url))
+            except Exception:
+                pass
+    if (config.MISP_WEBAPP_URL != config.MISP_URL
+            and config.MISP_WEBAPP_KEY != config.MISP_KEY):
+        try:
+            clients.append(("webapp", _misp(), "MISP webapp"))
+        except Exception:
+            pass
+    return clients
+
+
+def _order_clients_by_hint(clients, hinted_sid="", strict_source=False):
+    """Reorder a client list so the hinted source is tried first (or only, if strict).
+
+    Manual collection sources (ids starting with "manual-") live on the webapp
+    MISP and are not part of the base client list, so an unmatched hint falls
+    back to _misp().
+    """
+    if not hinted_sid:
+        return clients
+    hinted = [(sid, cl, lbl) for sid, cl, lbl in clients if sid == hinted_sid]
+    if not hinted:
+        try:
+            hinted = [(hinted_sid, _misp(), hinted_sid)]
+        except Exception:
+            hinted = []
+    if strict_source:
+        return hinted
+    return hinted + [(sid, cl, lbl) for sid, cl, lbl in clients if sid != hinted_sid]
+
+
+def _try_fetch_event(misp_client, uuid):
+    """Try get_event, fall back to search if it returns a 404-style error.
+
+    Some MISP instances allow bulk search but reject direct UUID lookups due
+    to distribution restrictions, so search(uuid=...) is a useful fallback.
+    """
+    try:
+        fetched = misp_client.get_event(uuid, pythonify=True)
+        if fetched and not isinstance(fetched, dict):
+            return fetched
+    except Exception:
+        pass
+    try:
+        results = misp_client.search(uuid=uuid, pythonify=True, metadata=False)
+        if results and not isinstance(results, dict) and len(results) > 0:
+            return results[0]
+    except Exception:
+        pass
+    return None
+
+
+def resolve_source_event(ev_uuid, source_hint=""):
+    """Fetch a MISP event by UUID, trying the hinted source's client first.
+
+    Unlike fetch_source_events (which flattens events into plain dicts for the
+    product-wizard accordions), this returns the live MISPEvent object together
+    with the client it came from, so callers can use helpers such as
+    extract_source_url / extract_story_context that expect MISPEvent
+    attribute/tag objects.
+
+    Returns (event, misp_client, source_id), or (None, None, "") when the
+    event cannot be retrieved from any configured MISP instance.
+    """
+    uuid = _extract_uuid(str(ev_uuid))
+    if not uuid:
+        return None, None, ""
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    ordered = _order_clients_by_hint(_all_source_clients(), source_hint)
+    for sid, misp_client, _label in ordered:
+        ev = _try_fetch_event(misp_client, uuid)
+        if ev is not None:
+            return ev, misp_client, sid
+    return None, None, ""
+
+
+def format_event_attributes_text(event) -> str:
+    """Render an event's attributes and any report content as markdown text.
+
+    The attributes are emitted as a markdown table so they stay structured in
+    the briefing story body, while report content is appended below it.
+    """
+    rows = []
+    for a in getattr(event, "attributes", []) or []:
+        rows.append((a.value, a.type, bool(getattr(a, "to_ids", False)), ""))
+    for obj in getattr(event, "objects", []) or []:
+        obj_name = getattr(obj, "name", "") or "object"
+        for a in getattr(obj, "attributes", []) or []:
+            rows.append((a.value, a.type, bool(getattr(a, "to_ids", False)), obj_name))
+
+    def _cell(value) -> str:
+        return str(value).replace("|", "\\|").replace("\n", " ").strip()
+
+    table_lines = []
+    if rows:
+        table_lines.append("| Value | Type | To IDS | Object |")
+        table_lines.append("| --- | --- | --- | --- |")
+        for value, type_, to_ids, obj_name in rows:
+            table_lines.append(
+                f"| {_cell(value)} | {_cell(type_)} | {'Yes' if to_ids else 'No'} | {_cell(obj_name)} |"
+            )
+
+    report_texts = []
+    for r in getattr(event, "event_reports", []) or []:
+        if getattr(r, "deleted", False):
+            continue
+        content = (getattr(r, "content", "") or "").strip()
+        if content:
+            report_texts.append(content)
+
+    parts = []
+    if table_lines:
+        parts.append("\n".join(table_lines))
+    if report_texts:
+        parts.append("\n\n".join(report_texts))
+    return "\n\n".join(parts)
+
+
 def fetch_source_events(source_uuids, source_hints=None, strict_source=False):
     """Fetch event data for display in product wizard source event accordions.
 
@@ -1860,46 +2064,8 @@ def fetch_source_events(source_uuids, source_hints=None, strict_source=False):
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    # Build ordered client list: scraper, then external MISP servers, then webapp
-    from pymisp import PyMISP as _PyMISP
-    all_clients = []
-    all_clients.append(("scraper", _scraper_misp(), "MISP scraper"))
-    for s in getattr(config, "MISP_SERVERS", []) or []:
-        sid = s.get("id") or s.get("label") or ""
-        url = s.get("url")
-        api_key = s.get("api_key")
-        if url and api_key:
-            try:
-                all_clients.append((sid, _PyMISP(url, api_key, s.get("verify_tls", True), False),
-                                    s.get("label") or url))
-            except Exception:
-                pass
-    if (config.MISP_WEBAPP_URL != config.MISP_URL
-            and config.MISP_WEBAPP_KEY != config.MISP_KEY):
-        try:
-            all_clients.append(("webapp", _misp(), "MISP webapp"))
-        except Exception:
-            pass
-
     hints = source_hints or {}
-
-    def _try_fetch(misp_client, uuid):
-        """Try get_event, fall back to search if it returns a 404-style error."""
-        try:
-            fetched = misp_client.get_event(uuid, pythonify=True)
-            if fetched and not isinstance(fetched, dict):
-                return fetched
-        except Exception:
-            pass
-        # Fallback: restSearch by UUID - works on instances where get_event fails
-        # due to distribution restrictions but search scope allows the event.
-        try:
-            results = misp_client.search(uuid=uuid, pythonify=True, metadata=False)
-            if results and not isinstance(results, dict) and len(results) > 0:
-                return results[0]
-        except Exception:
-            pass
-        return None
+    all_clients = _all_source_clients()
 
     result = []
     for uuid in source_uuids:
@@ -1907,27 +2073,10 @@ def fetch_source_events(source_uuids, source_hints=None, strict_source=False):
         ev_source_id = ""
         ev_source_label = ""
         hinted_sid = hints.get(uuid, "")
-
-        # Build a client order that puts the hinted source first.
-        # Manual collection sources (ids starting with "manual-") are stored on the
-        # webapp MISP and do not appear in all_clients, so fall back to _misp() when
-        # the hinted id does not match any known client.
-        if hinted_sid:
-            hinted_only = [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid == hinted_sid]
-            if not hinted_only:
-                try:
-                    hinted_only = [(hinted_sid, _misp(), hinted_sid)]
-                except Exception:
-                    pass
-            if strict_source:
-                ordered = hinted_only
-            else:
-                ordered = hinted_only + [(sid, cl, lbl) for sid, cl, lbl in all_clients if sid != hinted_sid]
-        else:
-            ordered = all_clients
+        ordered = _order_clients_by_hint(all_clients, hinted_sid, strict_source)
 
         for sid, misp_client, label in ordered:
-            fetched = _try_fetch(misp_client, uuid)
+            fetched = _try_fetch_event(misp_client, uuid)
             if fetched is not None:
                 ev, ev_misp, ev_source_id, ev_source_label = fetched, misp_client, sid, label
                 break
@@ -2540,12 +2689,18 @@ def render_fia_markdown(fia, fia_id=None):
 
 
 def _delete_fia_reports(misp, event):
-    """Remove rendered FIA reports (name starts with 'FIA-') from the event."""
+    """Remove rendered FIA reports (name starts with 'FIA-') from the event.
+
+    Hard-delete: a soft delete leaves the report attached with deleted=True,
+    where it would linger and accumulate on every re-render.
+    """
     for r in getattr(event, "event_reports", []) or []:
+        if getattr(r, "deleted", False):
+            continue
         name = getattr(r, "name", "") or ""
         if name.startswith("FIA-"):
             try:
-                misp.delete_event_report(r.id)
+                misp.delete_event_report(r.id, hard=True)
             except Exception as exc:
                 logger.warning("delete event report %s failed: %s", r.id, exc)
 
@@ -3103,11 +3258,15 @@ def render_vea_markdown(vea, vea_id=None, preview_url: str = ""):
 
 
 def _delete_vea_reports(misp, event):
+    """Hard-delete: a soft delete leaves the report attached with deleted=True,
+    where it would linger and accumulate on every re-render."""
     for r in getattr(event, "event_reports", []) or []:
+        if getattr(r, "deleted", False):
+            continue
         name = getattr(r, "name", "") or ""
         if name.startswith("VEA-"):
             try:
-                misp.delete_event_report(r.id)
+                misp.delete_event_report(r.id, hard=True)
             except Exception as exc:
                 logger.warning("delete VEA report %s failed: %s", r.id, exc)
 
@@ -3321,6 +3480,15 @@ def _briefing_obj(data):
     _oa(obj, "story-count", str(count))
     _oa(obj, "escalations", data.get("escalations"))
     _oa(obj, "notes", data.get("notes"))
+    _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
+    _oa_json(obj, "sectors", data.get("sectors", []))
+    _oa_json(obj, "threat-actors", data.get("threat_actors", []))
+    _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
+    _oa_json(obj, "threat-types", data.get("threat_types", []))
+    _oa_json(obj, "technology", data.get("technology", []))
+    _oa_json(obj, "vendor", data.get("vendor", []))
+    _oa_json(obj, "incident", data.get("incident", []))
+    _oa_json(obj, "campaign", data.get("campaign", []))
     return obj
 
 
@@ -3334,7 +3502,8 @@ def _briefing_ns(event):
     stories = []
     for er in sorted(
         [r for r in (getattr(event, "event_reports", []) or [])
-         if (getattr(r, "name", "") or "").startswith(_STORY_REPORT_PREFIX)],
+         if (getattr(r, "name", "") or "").startswith(_STORY_REPORT_PREFIX)
+         and not getattr(r, "deleted", False)],
         key=lambda r: r.name,
     ):
         try:
@@ -3356,10 +3525,132 @@ def _briefing_ns(event):
         story_count=int(g("story-count") or "0"),
         escalations=g("escalations"),
         notes=g("notes"),
+        geographic_scope=_json_list(_obj_attr(obj, "geographic-scope")),
+        sectors=_json_list(_obj_attr(obj, "sectors")),
+        threat_actors=_json_list(_obj_attr(obj, "threat-actors")),
+        mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
+        threat_types=_json_list(_obj_attr(obj, "threat-types")),
+        technology=_json_list(_obj_attr(obj, "technology")),
+        vendor=_json_list(_obj_attr(obj, "vendor")),
+        incident=_json_list(_obj_attr(obj, "incident")),
+        campaign=_json_list(_obj_attr(obj, "campaign")),
         stories=stories,
         published=bool(getattr(event, "published", False)),
         created_at=_parse_dt(event.date.isoformat() if event.date else None),
     )
+
+
+_SCOPE_SUMMARY_FIELDS = [
+    ("geographic_scope", "Geographic"),
+    ("sectors", "Sector"),
+    ("threat_actors", "Threat actor"),
+    ("techniques", "Technique"),
+    ("threat_actor_types", "Threat actor type"),
+]
+
+
+def briefing_scope_summary(stories):
+    """Aggregate scope elements and threat actor types across briefing stories.
+
+    Returns an ordered list of (label, [(value, count), ...]) tuples, counts
+    sorted highest-first. Kept as a separate, structured function so the same
+    counts can later feed graphs/statistics without re-parsing the stories.
+    """
+    summary = []
+    for field, label in _SCOPE_SUMMARY_FIELDS:
+        counter = Counter()
+        for s in stories:
+            value = s.get(field) if isinstance(s, dict) else getattr(s, field, None)
+            items = value if isinstance(value, list) else ([value] if value else [])
+            for item in items:
+                if item:
+                    counter[item] += 1
+        if counter:
+            ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+            summary.append((label, ranked))
+    return summary
+
+
+_STORY_TO_BRIEFING_SCOPE_FIELDS = [
+    ("geographic_scope", "geographic_scope"),
+    ("sectors", "sectors"),
+    ("threat_actors", "threat_actors"),
+    ("techniques", "mitre_attack_techniques"),
+]
+
+
+def briefing_story_scope_values(stories):
+    """Collect, per briefing-level scope category, the values already present on the stories.
+
+    Maps story-level field names onto the matching briefing-level field names
+    (story "techniques" become briefing "mitre_attack_techniques") so the edit
+    form can pre-select the corresponding galaxy items, deduplicated
+    case-insensitively while keeping first-occurrence casing.
+    """
+    result = {}
+    for story_field, briefing_field in _STORY_TO_BRIEFING_SCOPE_FIELDS:
+        seen_lower = set()
+        values = []
+        for s in stories:
+            value = s.get(story_field) if isinstance(s, dict) else getattr(s, story_field, None)
+            items = value if isinstance(value, list) else ([value] if value else [])
+            for item in items:
+                key = (item or "").strip().lower()
+                if key and key not in seen_lower:
+                    seen_lower.add(key)
+                    values.append(item.strip())
+        result[briefing_field] = values
+    return result
+
+
+_COMBINED_SCOPE_FIELDS = [
+    ("geographic_scope", "geographic_scope", "Geographic scope"),
+    ("sectors", "sectors", "Sectors"),
+    ("threat_actors", "threat_actors", "Threat actors"),
+    ("techniques", "mitre_attack_techniques", "MITRE ATT&CK techniques"),
+    ("threat_actor_types", None, "Threat actor types"),
+    (None, "threat_types", "Threat types"),
+    (None, "technology", "Technology"),
+    (None, "vendor", "Vendor"),
+    (None, "incident", "Incident"),
+    (None, "campaign", "Campaign"),
+]
+
+
+def briefing_combined_scope_summary(briefing):
+    """Merge per-story scope occurrences with briefing-level scope additions into one summary.
+
+    Returns an ordered list of (label, [(value, count), ...]) tuples, counts
+    sorted highest-first, deduplicated case-insensitively across both sources
+    so the same item (e.g. story-derived "china" and briefing-level "China")
+    appears only once. Briefing-level casing wins on conflicts since those
+    values are picked from the canonical galaxy lists.
+    """
+    summary = []
+    for story_field, briefing_field, label in _COMBINED_SCOPE_FIELDS:
+        counter = Counter()
+        canonical = {}
+        if story_field:
+            for s in briefing.stories:
+                value = s.get(story_field) if isinstance(s, dict) else getattr(s, story_field, None)
+                items = value if isinstance(value, list) else ([value] if value else [])
+                for item in items:
+                    if item:
+                        key = item.lower()
+                        counter[key] += 1
+                        canonical.setdefault(key, item)
+        if briefing_field:
+            for item in (getattr(briefing, briefing_field, None) or []):
+                if not item:
+                    continue
+                key = item.lower()
+                if key not in counter:
+                    counter[key] = 1
+                canonical[key] = item
+        if counter:
+            ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+            summary.append((label, [(canonical[key], count) for key, count in ranked]))
+    return summary
 
 
 def render_briefing_markdown(briefing, preview_url: str = ""):
@@ -3380,7 +3671,6 @@ def render_briefing_markdown(briefing, preview_url: str = ""):
         content = getattr(s, "content", "") or ""
         source_url = getattr(s, "source_url", "") or ""
         source_event_uuid = getattr(s, "source_event_uuid", "") or ""
-        correlation = getattr(s, "correlation", "") or "No"
         lines.extend([
             f"### {i}. {title}",
             "",
@@ -3388,11 +3678,50 @@ def render_briefing_markdown(briefing, preview_url: str = ""):
             "",
             f"**Source:** {source_url or '-'}",
             f"**MISP event:** {source_event_uuid or '-'}",
-            f"**Correlation:** {correlation}",
+        ])
+        geo = getattr(s, "geographic_scope", None) or []
+        sectors = getattr(s, "sectors", None) or []
+        actors = getattr(s, "threat_actors", None) or []
+        techniques = getattr(s, "techniques", None) or []
+        if geo:
+            lines.append(f"**Geographic scope:** {', '.join(geo)}")
+        if sectors:
+            lines.append(f"**Sector:** {', '.join(sectors)}")
+        if actors:
+            lines.append(f"**Threat actor:** {', '.join(actors)}")
+        if techniques:
+            lines.append(f"**Techniques:** {', '.join(techniques)}")
+        actor_types = getattr(s, "threat_actor_types", None) or []
+        if actor_types:
+            lines.append(f"**Threat actor type:** {', '.join(actor_types)}")
+        reliability = getattr(s, "source_reliability", "") or ""
+        credibility = getattr(s, "information_credibility", "") or ""
+        if reliability or credibility:
+            lines.append(
+                f"**Admiralty scale:** source reliability {reliability or '-'}, "
+                f"information credibility {credibility or '-'}"
+            )
+        cti_eval = getattr(s, "cti_evaluation", None) or {}
+        if cti_eval:
+            cti_str = ", ".join(f"{k}={v}" for k, v in cti_eval.items())
+            lines.append(f"**CTI evaluation:** {cti_str}")
+        lines.extend([
             "",
             "---",
             "",
         ])
+    summary = briefing_combined_scope_summary(briefing)
+    if summary:
+        lines.extend(["## Scope summary", ""])
+        for label, ranked in summary:
+            lines.append(f"**{label}:**")
+            for value, count in ranked:
+                if count > 1:
+                    lines.append(f"- {value} ({count} occurrences)")
+                else:
+                    lines.append(f"- {value}")
+            lines.append("")
+        lines.extend(["---", ""])
     esc = briefing.escalations or "None today."
     lines.extend([
         "## Escalations",
@@ -3412,11 +3741,20 @@ def render_briefing_markdown(briefing, preview_url: str = ""):
 
 
 def _delete_briefing_reports(misp, event):
+    """Permanently remove old story/summary reports before writing fresh ones.
+
+    A plain delete_event_report() only soft-deletes: the report stays in
+    event.event_reports (with deleted=True) and would be counted again
+    alongside the freshly written one on the next edit, doubling the
+    apparent story count. Hard-delete so the slate is actually clean.
+    """
     for r in getattr(event, "event_reports", []) or []:
+        if getattr(r, "deleted", False):
+            continue
         name = getattr(r, "name", "") or ""
         if name.startswith(_STORY_REPORT_PREFIX) or name.startswith("briefing-"):
             try:
-                misp.delete_event_report(r.id)
+                misp.delete_event_report(r.id, hard=True)
             except Exception as exc:
                 logger.warning("delete briefing report %s failed: %s", r.id, exc)
 
@@ -3430,7 +3768,15 @@ def _write_briefing_story_report(misp, event_uuid, index, story):
         "content": story.get("content", ""),
         "source_url": story.get("source_url", ""),
         "source_event_uuid": story.get("source_event_uuid", ""),
-        "correlation": story.get("correlation", ""),
+        "source_id": story.get("source_id", ""),
+        "geographic_scope": story.get("geographic_scope", []),
+        "sectors": story.get("sectors", []),
+        "threat_actors": story.get("threat_actors", []),
+        "techniques": story.get("techniques", []),
+        "source_reliability": story.get("source_reliability", ""),
+        "information_credibility": story.get("information_credibility", ""),
+        "cti_evaluation": story.get("cti_evaluation", {}),
+        "threat_actor_types": story.get("threat_actor_types", []),
     })
     er.distribution = 0
     _check(misp.add_event_report(event_uuid, er), f"add briefing story {index}")
@@ -3550,6 +3896,15 @@ def publish_briefing(uuid):
         "review_state": BRIEFING_REVIEW_PUBLISHED,
         "story_count": briefing.story_count,
         "escalations": briefing.escalations, "notes": briefing.notes,
+        "geographic_scope": briefing.geographic_scope,
+        "sectors": briefing.sectors,
+        "threat_actors": briefing.threat_actors,
+        "mitre_attack_techniques": briefing.mitre_attack_techniques,
+        "threat_types": briefing.threat_types,
+        "technology": briefing.technology,
+        "vendor": briefing.vendor,
+        "incident": briefing.incident,
+        "campaign": briefing.campaign,
     }
     _check(misp.add_object(_event_ref(event), _briefing_obj(data)), "publish briefing object")
     for tag in list(getattr(event, "tags", []) or []):

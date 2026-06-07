@@ -60,10 +60,28 @@
   </div>
   <div class="story-body">
     <p style="white-space:pre-wrap;">{{ story.content or '' }}</p>
-    {% if story.source_url or story.correlation %}
+    {% if story.source_url or story.threat_actor_types %}
     <div class="story-meta">
       {% if story.source_url %}<span><strong>Source:</strong> {{ story.source_url }}</span>{% endif %}
-      <span><strong>Correlation:</strong> {{ story.correlation or 'No' }}</span>
+      {% if story.threat_actor_types %}<span><strong>Threat actor type:</strong> {{ story.threat_actor_types | join(', ') }}</span>{% endif %}
+    </div>
+    {% endif %}
+    {% set geo = story.geographic_scope or [] %}
+    {% set sectors = story.sectors or [] %}
+    {% set actors = story.threat_actors or [] %}
+    {% set techniques = story.techniques or [] %}
+    {% set cti_eval = story.cti_evaluation or {} %}
+    {% if geo or sectors or actors or techniques or story.source_reliability or story.information_credibility or cti_eval %}
+    <div class="scope-line">
+      <strong>Scope:</strong>
+      {% for v in geo %}<span class="scope-tag">{{ v }}</span>{% endfor %}
+      {% for v in sectors %}<span class="scope-tag">{{ v }}</span>{% endfor %}
+      {% for v in actors %}<span class="scope-tag">{{ v }}</span>{% endfor %}
+      {% for v in techniques %}<span class="scope-tag">{{ v }}</span>{% endfor %}
+      {% if story.source_reliability or story.information_credibility %}
+      <span class="scope-tag">Admiralty {{ story.source_reliability or '-' }}/{{ story.information_credibility or '-' }}</span>
+      {% endif %}
+      {% for k, v in cti_eval.items() %}<span class="scope-tag">{{ k }}={{ v }}</span>{% endfor %}
     </div>
     {% endif %}
   </div>
@@ -71,6 +89,21 @@
 {% else %}
 <p class="no-content">No stories added.</p>
 {% endfor %}
+
+{# ── Scope summary ────────────────────────────────────────────── #}
+{% if scope_summary %}
+<div class="section-heading">Scope summary</div>
+<div class="section-box">
+  {% for label, ranked in scope_summary %}
+  <div class="scope-summary-group">
+    <span class="scope-summary-label">{{ label }}:</span><br>
+    {% for value, count in ranked %}
+    <span class="scope-tag {{ 'scope-tag-repeat' if count > 1 else '' }}">{{ value }}{% if count > 1 %} &times;{{ count }}{% endif %}</span>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {# ── Escalations ──────────────────────────────────────────────── #}
 {% if briefing.escalations %}

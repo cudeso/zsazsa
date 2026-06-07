@@ -116,11 +116,41 @@ def draft_story():
             "threat_actors": list(getattr(config, "FOCUS_POINTS_THREAT_ACTORS", []) or []),
         }
 
-        story = llm.draft_briefing_story(content or context_hint, focus_points)
-        return jsonify({"story": story, "scope": scope, "error": None})
+        threat_actor_types = list(getattr(config, "THREAT_ACTOR_TYPES", []) or [])
+        story, suggested_actor_type = llm.draft_briefing_story(content or context_hint, focus_points, threat_actor_types)
+        return jsonify({"story": story, "scope": scope, "threat_actor_type": suggested_actor_type, "error": None})
     except Exception as exc:
         logger.warning("draft_story LLM call failed: %s", exc)
-        return jsonify({"story": "", "scope": scope, "error": "Failed to generate story."}), 502
+        return jsonify({"story": "", "scope": scope, "threat_actor_type": "", "error": "Failed to generate story."}), 502
+
+
+@bp.route("/event-attributes-text", methods=["POST"])
+@rate_limited("api_event_attributes_text", limit=30, window_s=60)
+def event_attributes_text():
+    """Render a source event's attributes (and report, if any) as story text.
+
+    Useful for events that carry no scraper-style article report - the analyst
+    can pull the indicators straight into the briefing story instead.
+
+    POST JSON: {"event_uuid": "...", "source_id": "optional source hint"}
+    Returns: {"text": "...", "error": null}
+    """
+    body, err = _json_object()
+    if err:
+        return jsonify({"text": "", "error": "Invalid JSON payload."}), 400
+    event_uuid = (body.get("event_uuid") or "").strip()
+    source_id = (body.get("source_id") or "").strip()
+    if not event_uuid:
+        return jsonify({"text": "", "error": "event_uuid is required"}), 400
+
+    event, _misp_client, _source_id = misp_store.resolve_source_event(event_uuid, source_id)
+    if event is None:
+        return jsonify({"text": "", "error": "Event not found."}), 404
+
+    text = misp_store.format_event_attributes_text(event)
+    if not text:
+        return jsonify({"text": "", "error": "This event has no attributes or report content."})
+    return jsonify({"text": text, "error": None})
 
 
 @bp.route("/briefing-overlap-check", methods=["POST"])
