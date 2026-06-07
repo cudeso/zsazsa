@@ -1466,12 +1466,14 @@
   function serializeState() {
     var s = window.zsazsaCollectionState;
     if (!s) return null;
+    var activeDateBtn = document.querySelector('.date-filter-btn.active');
+    var dateFilter = (activeDateBtn && activeDateBtn.dataset.dateFilter) || s.dateFilter || 'none';
     return {
       q: s.q, sortCol: s.sortCol, sortDir: s.sortDir,
       include: Array.from(s.include), exclude: Array.from(s.exclude),
       activeSources: Array.from(s.activeSources),
       includeOrgs: Array.from(s.includeOrgs), excludeOrgs: Array.from(s.excludeOrgs),
-      flagFilter: s.flagFilter, dateFilter: s.dateFilter,
+      flagFilter: s.flagFilter, dateFilter: dateFilter,
       aiFilter: s.aiFilter, reportsFilter: s.reportsFilter,
       reqMatchFilter: s.reqMatchFilter, vulnFilter: s.vulnFilter,
       anyProductFilter: s.anyProductFilter, ctiPredicate: s.ctiPredicate,
