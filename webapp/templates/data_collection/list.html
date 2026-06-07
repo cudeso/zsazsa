@@ -140,6 +140,44 @@
   border-style: dashed;
 }
 
+/* Active preset indicator */
+.preset-active-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .28rem .55rem;
+  border: 1px solid #d5dbe3;
+  border-radius: .4rem;
+  background: #f1f3f5;
+  color: #334155;
+  font-size: .72rem;
+  line-height: 1;
+  max-width: 320px;
+}
+.preset-active-indicator .preset-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.preset-active-indicator.modified {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+.preset-clear-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: .62;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+}
+.preset-clear-btn:hover {
+  opacity: .95;
+}
+
 /* Scope tagger buttons */
 .scope-btn-group {
   display: inline-flex;
@@ -492,6 +530,15 @@
     </button>
     <div class="dropdown-menu p-2" id="preset-dropdown-content" style="min-width:300px;"></div>
   </div>
+  <span id="preset-active-indicator" class="preset-active-indicator d-none" title="Current loaded filter preset status">
+    <i class="fas fa-bookmark"></i>
+    <span>Preset:</span>
+    <strong class="preset-name"></strong>
+    <span class="preset-state text-muted"></span>
+    <button type="button" class="preset-clear-btn" id="preset-clear-btn" title="Detach this preset" aria-label="Detach preset">
+      <i class="fas fa-xmark"></i>
+    </button>
+  </span>
 
   <span class="text-muted" style="font-size:.7rem;user-select:none;">·</span>
 
@@ -1384,6 +1431,8 @@
 /* ── Filter presets (localStorage) ───────────────────────────────── */
 (function() {
   var STORAGE_KEY = 'zsazsa_collection_presets';
+  var ACTIVE_PRESET_KEY = 'zsazsa_collection_active_preset';
+  var activePreset = null;
 
   function loadPresets() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
@@ -1392,6 +1441,19 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch(e) {}
   }
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function normaliseState(s) {
+    if (!s) return null;
+    var out = Object.assign({}, s);
+    ['include', 'exclude', 'activeSources', 'includeOrgs', 'excludeOrgs'].forEach(function(k) {
+      out[k] = Array.isArray(out[k]) ? out[k].slice().sort() : [];
+    });
+    return out;
+  }
+
+  function isSameState(a, b) {
+    return JSON.stringify(normaliseState(a)) === JSON.stringify(normaliseState(b));
+  }
 
   function serializeState() {
     var s = window.zsazsaCollectionState;
@@ -1407,6 +1469,29 @@
       anyProductFilter: s.anyProductFilter, ctiPredicate: s.ctiPredicate,
       ctiOperator: s.ctiOperator, ctiValue: s.ctiValue, hideRejected: s.hideRejected,
     };
+  }
+
+  function renderActivePresetIndicator() {
+    var el = document.getElementById('preset-active-indicator');
+    if (!el) return;
+    if (!activePreset || !activePreset.name) {
+      el.classList.add('d-none');
+      return;
+    }
+    var unchanged = isSameState(serializeState(), activePreset.state);
+    el.classList.remove('d-none');
+    el.classList.toggle('modified', !unchanged);
+    var nameEl = el.querySelector('.preset-name');
+    var stateEl = el.querySelector('.preset-state');
+    if (nameEl) nameEl.textContent = activePreset.name;
+    if (stateEl) stateEl.textContent = unchanged ? '' : '(modified)';
+  }
+
+  function persistActivePreset() {
+    try {
+      if (activePreset) sessionStorage.setItem(ACTIVE_PRESET_KEY, JSON.stringify(activePreset));
+      else sessionStorage.removeItem(ACTIVE_PRESET_KEY);
+    } catch(e) {}
   }
 
   function renderDropdown() {
@@ -1437,6 +1522,9 @@
         var preset = loadPresets()[idx];
         if (preset && window.zsazsaRestoreFilterState) {
           window.zsazsaRestoreFilterState(preset.state);
+          activePreset = {name: preset.name, state: normaliseState(preset.state)};
+          persistActivePreset();
+          renderActivePresetIndicator();
           /* Close the dropdown */
           var ddEl = document.getElementById('load-preset-btn');
           if (ddEl && window.bootstrap) bootstrap.Dropdown.getOrCreateInstance(ddEl).hide();
@@ -1449,8 +1537,14 @@
         e.stopPropagation();
         var idx = parseInt(btn.dataset.idx, 10);
         var list = loadPresets();
+        var removed = list[idx];
         list.splice(idx, 1);
         savePresets(list);
+        if (removed && activePreset && activePreset.name === removed.name && isSameState(activePreset.state, removed.state)) {
+          activePreset = null;
+          persistActivePreset();
+          renderActivePresetIndicator();
+        }
         renderDropdown();
       });
     });
@@ -1476,6 +1570,36 @@
   if (loadBtn) {
     loadBtn.addEventListener('show.bs.dropdown', renderDropdown);
   }
+
+  var presetClearBtn = document.getElementById('preset-clear-btn');
+  if (presetClearBtn) {
+    presetClearBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      activePreset = null;
+      persistActivePreset();
+      renderActivePresetIndicator();
+    });
+  }
+
+  try {
+    activePreset = JSON.parse(sessionStorage.getItem(ACTIVE_PRESET_KEY) || 'null');
+  } catch(e) {
+    activePreset = null;
+  }
+
+  if (typeof window.zsazsaCollectionApply === 'function' && !window.zsazsaCollectionApply.__presetIndicatorWrapped) {
+    var originalApply = window.zsazsaCollectionApply;
+    var wrappedApply = function() {
+      var out = originalApply.apply(this, arguments);
+      renderActivePresetIndicator();
+      return out;
+    };
+    wrappedApply.__presetIndicatorWrapped = true;
+    window.zsazsaCollectionApply = wrappedApply;
+  }
+
+  renderActivePresetIndicator();
 })();
 </script>
 {% endblock %}
