@@ -277,6 +277,17 @@
 .scope-item:hover { background: #e9ecef; }
 .scope-item input { cursor: pointer; margin: 0; }
 .scope-item.hidden { display: none; }
+.scope-custom-add {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin-bottom: .45rem;
+}
+.scope-custom-add input {
+  flex: 1;
+  min-width: 220px;
+  font-size: .78rem;
+}
 
 /* CTI Evaluation inline panel */
 .cti-eval-panel-row > td { padding: 0 !important; border-top: 0 !important; }
@@ -1213,6 +1224,12 @@
           '</button>' +
         '</div>' +
         '<div class="scope-selected-chips"></div>' +
+        (type === 'threat_actors'
+          ? '<div class="scope-custom-add">' +
+              '<input type="text" class="form-control form-control-sm scope-custom-input" placeholder="Add threat actor name not in galaxy list…" autocomplete="off">' +
+              '<button type="button" class="btn btn-xs btn-outline-primary scope-custom-add-btn"><i class="fas fa-plus me-1"></i>Add</button>' +
+            '</div>'
+          : '') +
         '<div class="scope-item-list"></div>' +
       '</div>';
 
@@ -1224,6 +1241,8 @@
     var listEl  = td.querySelector('.scope-item-list');
     var searchEl = td.querySelector('.scope-panel-search');
     var applyBtn = td.querySelector('.scope-apply-btn');
+    var customInput = td.querySelector('.scope-custom-input');
+    var customAddBtn = td.querySelector('.scope-custom-add-btn');
 
     function updateApplyBtn() {
       var hasPending = Object.keys(pendingChanges).length > 0;
@@ -1252,8 +1271,7 @@
       };
     }
 
-    /* Build checkboxes */
-    items.forEach(function(item) {
+    function renderScopeItem(item) {
       var lbl = document.createElement('label');
       lbl.className = 'scope-item';
       var cb = document.createElement('input');
@@ -1304,7 +1322,68 @@
         }
         updateApplyBtn();
       });
-    });
+      return cb;
+    }
+
+    /* Build checkboxes */
+    items.forEach(renderScopeItem);
+
+    function normaliseThreatActorName(raw) {
+      var cleaned = String(raw || '').trim().replace(/"+/g, "'");
+      return cleaned;
+    }
+
+    function customThreatActorTag(name) {
+      return 'misp-galaxy:threat-actor="' + name + '"';
+    }
+
+    function hasListedValue(name) {
+      var lower = name.toLowerCase();
+      return items.some(function(it) { return (it.value || '').toLowerCase() === lower; });
+    }
+
+    if (type === 'threat_actors' && customInput && customAddBtn) {
+      function addCustomThreatActor() {
+        var name = normaliseThreatActorName(customInput.value);
+        if (!name) return;
+
+        var matchedTag = findMatchingTag(name);
+        var tag = matchedTag || customThreatActorTag(name);
+        var item = {value: name, tag: tag};
+
+        if (!hasListedValue(name)) {
+          items.push(item);
+          var cb = renderScopeItem(item);
+          if (!matchedTag) {
+            cb.checked = true;
+            cb.dispatchEvent(new Event('change'));
+          }
+        } else {
+          listEl.querySelectorAll('.scope-item').forEach(function(lbl) {
+            var txt = (lbl.textContent || '').trim().toLowerCase();
+            if (txt !== name.toLowerCase()) return;
+            var cb = lbl.querySelector('input[type="checkbox"]');
+            if (cb && !cb.checked) {
+              cb.checked = true;
+              cb.dispatchEvent(new Event('change'));
+            }
+          });
+        }
+
+        customInput.value = '';
+        customInput.focus();
+      }
+
+      customAddBtn.addEventListener('click', function() {
+        addCustomThreatActor();
+      });
+      customInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addCustomThreatActor();
+        }
+      });
+    }
 
     /* Search filter */
     searchEl.addEventListener('input', function() {

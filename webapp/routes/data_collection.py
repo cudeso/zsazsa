@@ -653,7 +653,7 @@ def preview(uuid):
         "event": event_data,
         "reports": report_views,
         "misp_url": f"{misp_url_base}/events/view/{uuid}",
-        "detail_url": f"/collection/{uuid}?source={source_id}",
+        "detail_url": f"{misp_url_base}/events/view/{uuid}",
         "source_label": src_label,
     })
 
