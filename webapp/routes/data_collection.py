@@ -988,14 +988,16 @@ def bulk_reject_excluded():
             continue
         uuid = ev.get("uuid")
         try:
-            r = misp.tag(uuid, _WORKFLOW_REJECTED_TAG, local=True)
-            if isinstance(r, dict) and "errors" in r:
+            event = misp.get_event(uuid, pythonify=True)
+            if event is None or isinstance(event, dict):
+                logger.warning("bulk_reject_excluded: cannot load event %s", uuid)
                 errors += 1
-                logger.warning("bulk_reject_excluded: MISP error for %s: %s", uuid, r["errors"])
-            else:
-                rejected += 1
-                audit.record("tag", "misp-event", entity_id=uuid, details=_WORKFLOW_REJECTED_TAG)
-                _refresh_cached_event(uuid, src_id, misp, context="bulk_reject_excluded")
+                continue
+            from analyser import tagger
+            tagger.set_workflow_state(misp, event, "rejected")
+            rejected += 1
+            audit.record("tag", "misp-event", entity_id=uuid, details=_WORKFLOW_REJECTED_TAG)
+            _refresh_cached_event(uuid, src_id, misp, context="bulk_reject_excluded")
         except Exception as exc:
             logger.warning("bulk_reject_excluded: failed to tag %s: %s", uuid, exc)
             errors += 1
