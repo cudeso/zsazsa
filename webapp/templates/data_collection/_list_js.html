@@ -261,7 +261,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     var body = document.getElementById('used-in-modal-body');
     body.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>';
     new bootstrap.Modal(document.getElementById('used-in-modal')).show();
-    fetch('/api/collection/' + uuid + '/used-in')
+    fetch(SCRIPT_ROOT + '/api/collection/' + uuid + '/used-in')
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (!data.ok || !data.products || data.products.length === 0) {
@@ -347,7 +347,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   async function refreshEventRowTags(uuid, sourceId) {
     var row = rows.find(function(r) { return r.dataset.uuid === uuid && r.dataset.sourceId === sourceId; });
     if (!row) return;
-    var resp = await fetch('/collection/' + encodeURIComponent(uuid) + '/preview?source=' + encodeURIComponent(sourceId));
+    var resp = await fetch(SCRIPT_ROOT + '/collection/' + encodeURIComponent(uuid) + '/preview?source=' + encodeURIComponent(sourceId));
     var data = await resp.json();
     if (!data.ok || !data.event) return;
     var tagNames = (data.event.tags || []).map(function(t) { return t.name; }).filter(Boolean);
@@ -982,7 +982,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
 
       /* Threat landscape queue: tag via AJAX, no wizard navigation */
       if (action === 'threat-landscape-report') {
-        fetch('/collection/queue-for-tlr', {
+        fetch(SCRIPT_ROOT + '/collection/queue-for-tlr', {
           method: 'POST',
           headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({events: selected}),
@@ -1053,7 +1053,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       var uuid = btn.dataset.uuid; var sourceId = btn.dataset.sourceId;
       var originalHtml = btn.innerHTML;
       btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-      fetch('/collection/' + uuid + '/summarise', {
+      fetch(SCRIPT_ROOT + '/collection/' + uuid + '/summarise', {
         method:'POST',
         headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
         body:JSON.stringify({source:sourceId}),
@@ -1171,7 +1171,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       if (previewDetailLink) previewDetailLink.href = cached.detail_url;
       renderPreview(cached); return;
     }
-    fetch('/collection/' + uuid + '/preview?source=' + encodeURIComponent(sourceId))
+    fetch(SCRIPT_ROOT + '/collection/' + uuid + '/preview?source=' + encodeURIComponent(sourceId))
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (previewLoading) previewLoading.classList.add('d-none');
@@ -1206,7 +1206,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     btn.addEventListener('click', function() {
       var uuid = btn.dataset.uuid; var sourceId = btn.dataset.sourceId;
       btn.disabled = true;
-      fetch('/collection/' + uuid + '/flag', {
+      fetch(SCRIPT_ROOT + '/collection/' + uuid + '/flag', {
         method:'POST',
         headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
         body:JSON.stringify({source:sourceId}),
@@ -1302,7 +1302,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       var originalHtml = btn.innerHTML;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-      fetch('/collection/' + uuid + '/reject', {
+      fetch(SCRIPT_ROOT + '/collection/' + uuid + '/reject', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({source: sourceId}),
@@ -1455,7 +1455,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     var uuid = uuidInput.value.trim();
     if (!uuid) { uuidInput.focus(); return; }
     btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pulling…'; resetResult();
-    fetch('/collection/pull', {
+    fetch(SCRIPT_ROOT + '/collection/pull', {
       method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
       body:JSON.stringify({uuid:uuid, source_id:sourceSelect.value}),
     })
@@ -1531,7 +1531,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
           return;
         }
         var pair = pairs[index++];
-        fetch('/collection/' + currentUuid + '/cti-tag', {
+        fetch(SCRIPT_ROOT + '/collection/' + currentUuid + '/cti-tag', {
           method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
           body:JSON.stringify({predicate:pair.predicate, value:pair.value, source:currentSourceId}),
         })

@@ -900,7 +900,7 @@
       buildAiBtn.innerHTML = originalHtml;
     }
 
-    fetch('/api/build-fia', {
+    fetch(SCRIPT_ROOT + '/api/build-fia', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
       body: JSON.stringify({source_uuids: sourceUuids, report_mode: mode}),

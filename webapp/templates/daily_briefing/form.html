@@ -461,7 +461,7 @@ function draftStory(idx, eventUuid) {
   var statusEl = document.querySelector('.ai-status-' + idx);
   if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Drafting with AI...'; }
 
-  return fetch('/api/draft-story', {
+  return fetch(SCRIPT_ROOT + '/api/draft-story', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -558,7 +558,7 @@ document.getElementById('btn-check-overlap').addEventListener('click', function(
     statusEl.textContent = 'Checking overlap across stories...';
   }
 
-  fetch('/api/briefing-overlap-check', {
+  fetch(SCRIPT_ROOT + '/api/briefing-overlap-check', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

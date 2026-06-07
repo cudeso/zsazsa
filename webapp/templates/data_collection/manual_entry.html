@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', function() {
     status.className = 'form-text';
     status.style.display = '';
     btn.disabled = true;
-    fetch('/api/fetch-url', {
+    fetch(SCRIPT_ROOT + '/api/fetch-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ url: url })
@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function() {
     status.className = 'form-text';
     status.style.display = '';
     btn.disabled = true;
-    fetch('/api/summarise-content', {
+    fetch(SCRIPT_ROOT + '/api/summarise-content', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ content: content, title: title })

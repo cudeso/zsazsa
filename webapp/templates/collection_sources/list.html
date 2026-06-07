@@ -453,7 +453,7 @@
         if (!confirm('Delete this server from configuration?')) return;
         deleteBtn.disabled = true;
         try {
-          const resp = await fetch('/config/sources/delete-server', {
+          const resp = await fetch(SCRIPT_ROOT + '/config/sources/delete-server', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
             body: JSON.stringify({server_id: originalId}),
@@ -498,7 +498,7 @@
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
         try {
-          const resp = await fetch('/config/sources/save-server', {
+          const resp = await fetch(SCRIPT_ROOT + '/config/sources/save-server', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
             body: JSON.stringify(payload),
@@ -627,7 +627,7 @@
         orgLabels.innerHTML = uuids.map(u => `<span class="text-muted font-monospace">${u}:</span> <span class="fst-italic text-secondary">looking up…</span>`).join('<br>');
         for (const uuid of uuids) {
           try {
-            const resp = await fetch('/api/lookup-org', {
+            const resp = await fetch(SCRIPT_ROOT + '/api/lookup-org', {
               method: 'POST',
               headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
               body: JSON.stringify({uuid, misp_url: mispUrl, misp_key: mispKey}),
@@ -661,7 +661,7 @@
         }
         testBtn.disabled = true;
         testBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing…';
-        fetch('/config/test_misp_connection', {
+        fetch(SCRIPT_ROOT + '/config/test_misp_connection', {
           method: 'POST',
           headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({url: urlVal, api_key: keyVal, verify_tls: verifyVal}),
@@ -758,7 +758,7 @@
         estimateBtn.disabled = true;
         estimateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Estimating…';
         if (estimateResult) { estimateResult.textContent = ''; }
-        fetch('/api/pull-estimate', {
+        fetch(SCRIPT_ROOT + '/api/pull-estimate', {
           method: 'POST',
           headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({
@@ -842,7 +842,7 @@
       scraperEstimateBtn.disabled = true;
       scraperEstimateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Estimating…';
       if (scraperEstimateResult) scraperEstimateResult.textContent = '';
-      fetch('/api/pull-estimate', {
+      fetch(SCRIPT_ROOT + '/api/pull-estimate', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({
@@ -912,7 +912,7 @@
       }
       scraperTestBtn.disabled = true;
       scraperTestBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing…';
-      fetch('/config/test_misp_connection', {
+      fetch(SCRIPT_ROOT + '/config/test_misp_connection', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({url: urlVal, api_key: keyVal, verify_tls: verifyVal}),

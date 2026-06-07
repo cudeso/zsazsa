@@ -938,7 +938,7 @@
         prompts.push({filename: ta.dataset.filename, content: ta.value});
       });
       savePromptsBtn.disabled = true;
-      fetch('/config/prompts', {
+      fetch(SCRIPT_ROOT + '/config/prompts', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({prompts: prompts}),
@@ -984,7 +984,7 @@
         };
       });
       saveAiBtn.disabled = true;
-      fetch('/config/save-ai-features', {
+      fetch(SCRIPT_ROOT + '/config/save-ai-features', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({default_model: defaultModel, features}),
@@ -1014,7 +1014,7 @@
       const content = contentInput.value || '';
       if (!name) { showPromptAlert('Enter a filename.', 'warning'); return; }
       addPromptBtn.disabled = true;
-      fetch('/config/prompts', {
+      fetch(SCRIPT_ROOT + '/config/prompts', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({prompts: [{filename: name + '.md', content: content}]}),
@@ -1065,7 +1065,7 @@
       deleteBtn.addEventListener('click', async () => {
         const originalId = row.dataset.originalId;
         if (!confirm('Delete this notification channel?')) return;
-        const resp = await fetch('/config/delete-notification-channel', {
+        const resp = await fetch(SCRIPT_ROOT + '/config/delete-notification-channel', {
           method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({channel_id: originalId}),
         });
@@ -1086,7 +1086,7 @@
         pingBtn.disabled = true;
         pingResult.textContent = 'Sending…';
         pingResult.className = 'ping-channel-result small text-muted';
-        const resp = await fetch('/config/ping-notification-channel', {
+        const resp = await fetch(SCRIPT_ROOT + '/config/ping-notification-channel', {
           method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({channel_id: channelId}),
         });
@@ -1111,7 +1111,7 @@
         const enabled = row.querySelector('.ch-enabled').checked;
         const verifyTls = row.querySelector('.ch-verify-tls').checked;
         if (!name) { saveResult.textContent = 'Name required'; saveResult.className = 'save-channel-result small text-danger'; return; }
-        const resp = await fetch('/config/save-notification-channel', {
+        const resp = await fetch(SCRIPT_ROOT + '/config/save-notification-channel', {
           method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({original_id: originalId, name, url, enabled, verify_tls: verifyTls, type: 'mattermost'}),
         });
@@ -1148,7 +1148,7 @@
       const verifyTlsEl = document.getElementById('new-ch-verify-tls');
       const verifyTls = verifyTlsEl ? verifyTlsEl.checked : true;
       if (!name) { resultEl.textContent = 'Name required'; resultEl.className = 'small text-danger'; return; }
-      const resp = await fetch('/config/save-notification-channel', {
+      const resp = await fetch(SCRIPT_ROOT + '/config/save-notification-channel', {
         method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
         body: JSON.stringify({name, url, enabled, verify_tls: verifyTls, type: 'mattermost'}),
       });
@@ -1227,7 +1227,7 @@
       uploadBtn.disabled = true;
       uploadResult.textContent = 'Uploading…';
       uploadResult.className = 'small text-muted';
-      const resp = await fetch('/config/upload-logo', {method: 'POST', headers: {'X-CSRF-Token': csrfToken}, body: fd});
+      const resp = await fetch(SCRIPT_ROOT + '/config/upload-logo', {method: 'POST', headers: {'X-CSRF-Token': csrfToken}, body: fd});
       const data = await resp.json();
       uploadBtn.disabled = false;
       if (data.ok) {

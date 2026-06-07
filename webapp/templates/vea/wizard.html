@@ -813,7 +813,7 @@ function _renderCvssBadge(cvssVal) {
     status.textContent = '';
     status.style.display = 'none';
 
-    fetch('/api/cve-lookup', {
+    fetch(SCRIPT_ROOT + '/api/cve-lookup', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
       body: JSON.stringify({cve_ids: cveIds}),
@@ -912,7 +912,7 @@ document.getElementById('btn-draft-vea').addEventListener('click', function() {
   status.textContent = 'Drafting with AI…';
   status.style.display = '';
 
-  fetch('/api/draft-vea', {
+  fetch(SCRIPT_ROOT + '/api/draft-vea', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

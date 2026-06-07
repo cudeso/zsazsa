@@ -422,7 +422,7 @@ document.querySelectorAll('.analyser-info-icon').forEach(function(el) {
 
   function pollJob(jobId) {
     if (!jobId) return;
-    fetch('/pipeline/run/' + encodeURIComponent(jobId))
+    fetch(SCRIPT_ROOT + '/pipeline/run/' + encodeURIComponent(jobId))
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (!data.ok || !data.job) {
@@ -476,7 +476,7 @@ document.querySelectorAll('.analyser-info-icon').forEach(function(el) {
       if (!action) return;
       setBusy(true);
       setStatus('info', 'Running analyser action: ' + action + '...');
-      fetch('/pipeline/run', {
+      fetch(SCRIPT_ROOT + '/pipeline/run', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

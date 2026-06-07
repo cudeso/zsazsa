@@ -984,7 +984,7 @@
        should remove without needing Apply. Captures the openPanel closure. */
     function makeImmediateRemove(tag, cb) {
       return function(chip) {
-        fetch('/collection/' + encodeURIComponent(uuid) + '/scope-tag', {
+        fetch(SCRIPT_ROOT + '/collection/' + encodeURIComponent(uuid) + '/scope-tag', {
           method: 'POST',
           headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({source: sourceId, tag: tag, action: 'remove'}),
@@ -1059,7 +1059,7 @@
       applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
 
       var promises = tags.map(function(tag) {
-        return fetch('/collection/' + encodeURIComponent(uuid) + '/scope-tag', {
+        return fetch(SCRIPT_ROOT + '/collection/' + encodeURIComponent(uuid) + '/scope-tag', {
           method: 'POST',
           headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
           body: JSON.stringify({source: sourceId, tag: tag, action: pendingChanges[tag]}),

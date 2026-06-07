@@ -5,6 +5,7 @@ import logging
 from flask import Flask, abort, request, session, jsonify, render_template
 from pymisp.exceptions import PyMISPError
 from requests.exceptions import RequestException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 from webapp import audit, org_store, collection_cache
@@ -144,5 +145,10 @@ def create_app():
             title="Service unavailable",
             message="An upstream service is currently unreachable. Please retry shortly.",
         ), 503
+
+    # Trust X-Forwarded-For/Proto/Host/Prefix from one upstream proxy (Apache).
+    # When run directly without a proxy, none of these headers arrive and
+    # request.script_root remains '', so direct access is unaffected.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     return app

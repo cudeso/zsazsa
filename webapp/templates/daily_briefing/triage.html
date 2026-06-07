@@ -185,7 +185,7 @@ function openPreview(uuid, info) {
 
   showPanel();
 
-  fetch('/api/event-preview', {
+  fetch(SCRIPT_ROOT + '/api/event-preview', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

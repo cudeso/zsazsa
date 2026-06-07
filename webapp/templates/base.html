@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}zsazsa CTI{% endblock %}</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>const SCRIPT_ROOT = {{ request.script_root | tojson }};</script>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -576,7 +577,7 @@
     if (!badge || !icon) return;
 
     function update() {
-      fetch('/api/misp-status')
+      fetch(SCRIPT_ROOT + '/api/misp-status')
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data.ok) {

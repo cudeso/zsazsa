@@ -157,6 +157,60 @@ PORT = 5000
 
 These values can also be changed from the Settings page in the web app (System tab). After saving, restart the application for the port change to take effect (the HOSTNAME value is stored for reference; the listener address is always `0.0.0.0`).
 
+## Production deployment behind Apache
+
+zsazsa is designed to run alongside MISP and can be served under a subpath of the MISP Apache virtual host, for example `https://misp.example.com/zsazsa`. The application adapts to any subpath automatically, so `/cti`, `/cti-program`, or any other value works without changing the application.
+
+### 1. Keep the app running with systemd
+
+Copy the service template and adjust paths and user:
+
+```bash
+sudo cp docs/zsazsa.service.template /etc/systemd/system/zsazsa.service
+# edit the file, then:
+sudo systemctl daemon-reload
+sudo systemctl enable --now zsazsa.service
+```
+
+For production, bind the listener to localhost so it is only reachable through Apache. In `run_webapp.py`, change:
+
+```python
+app.run(host="0.0.0.0", ...)
+```
+
+to:
+
+```python
+app.run(host="127.0.0.1", ...)
+```
+
+Leave it as `0.0.0.0` for development if you need direct access from other machines on the network.
+
+### 2. Enable required Apache modules
+
+```bash
+sudo a2enmod proxy proxy_http headers
+sudo systemctl reload apache2
+```
+
+### 3. Add the proxy to the MISP virtual host
+
+Inside the existing `<VirtualHost *:443>` block in your MISP Apache configuration, add:
+
+```apache
+# zsazsa CTI application
+ProxyPreserveHost On
+RequestHeader set X-Forwarded-Prefix "/zsazsa"
+RequestHeader set X-Forwarded-Proto "https"
+
+ProxyPass        /zsazsa  http://127.0.0.1:5000/
+ProxyPassReverse /zsazsa  http://127.0.0.1:5000/
+```
+
+The value in `RequestHeader set X-Forwarded-Prefix` must match the path used in `ProxyPass` and `ProxyPassReverse`. To use a different subpath, change all three occurrences. No application restart is needed for subpath changes, only an Apache reload (`systemctl reload apache2`).
+
+The application reads `X-Forwarded-Prefix` at runtime to construct links and AJAX call paths, and reads `X-Forwarded-Proto` to build correct `https://` URLs in Mattermost notifications and product preview links. When run directly without a proxy, both headers are absent and the application behaves exactly as before.
+
 
 # Screenshots and features
 
