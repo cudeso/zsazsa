@@ -7,7 +7,6 @@ import openai
 import config
 
 logger = logging.getLogger(__name__)
-_client = None
 
 
 def _api_key() -> str:
@@ -22,10 +21,7 @@ def _default_model() -> str:
 
 
 def _get_client() -> openai.OpenAI:
-    global _client
-    if _client is None:
-        _client = openai.OpenAI(api_key=_api_key())
-    return _client
+    return openai.OpenAI(api_key=_api_key())
 
 
 def _build_system_prompt(prompt_file: str, extra: str = "") -> str:

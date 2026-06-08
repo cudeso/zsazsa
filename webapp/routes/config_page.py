@@ -373,6 +373,7 @@ def index():
             "MISP_URL": getattr(_config, "MISP_URL", ""),
             "MISP_KEY": getattr(_config, "MISP_KEY", ""),
             "MISP_VERIFYCERT": getattr(_config, "MISP_VERIFYCERT", True),
+            "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
             "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []) or [],
             "MISP_WEBAPP_URL": request.form.get("MISP_WEBAPP_URL", ""),
             "MISP_WEBAPP_KEY": request.form.get("MISP_WEBAPP_KEY", ""),
