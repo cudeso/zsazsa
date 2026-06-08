@@ -137,28 +137,30 @@ h1.doc-title {
   border-radius: 0 3pt 3pt 0;
 }
 
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2pt 0;
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6pt 16pt;
 }
 
-.meta-key {
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2pt;
+}
+
+.meta-label {
   font-size: 7.5pt;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--c3, #64748b);
-  width: 90pt;
-  padding: 1.5pt 0;
 }
 
-.meta-val {
-  font-size: 8.5pt;
+.meta-value {
+  font-size: 9pt;
+  font-weight: 600;
   color: #1e293b;
-  flex: 1;
-  padding: 1.5pt 12pt 1.5pt 0;
-  min-width: 80pt;
 }
 
 .tlp-pill {
@@ -220,6 +222,72 @@ h1.doc-title {
   margin: 0 0 6pt;
   font-size: 9.5pt;
   line-height: 1.55;
+}
+
+.story-body code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 8.5pt;
+  background: #f1f5f9;
+  color: #0f2d52;
+  padding: 0.5pt 3pt;
+  border-radius: 2pt;
+}
+
+.story-body h1,
+.story-body h2,
+.story-body h3,
+.story-body h4 {
+  font-size: 10pt;
+  font-weight: 700;
+  color: var(--c1, #0f2d52);
+  margin: 8pt 0 4pt;
+}
+
+.story-body h1:first-child,
+.story-body h2:first-child,
+.story-body h3:first-child,
+.story-body h4:first-child {
+  margin-top: 0;
+}
+
+.story-body ul,
+.story-body ol {
+  margin: 0 0 6pt;
+  padding-left: 16pt;
+  font-size: 9.5pt;
+  line-height: 1.55;
+}
+
+.story-body li {
+  margin: 0 0 2pt;
+}
+
+.story-body a {
+  color: var(--c2, #0078f1);
+  text-decoration: underline;
+}
+
+.story-body table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0 0 6pt;
+  font-size: 8.5pt;
+}
+
+.story-body th,
+.story-body td {
+  border: 0.5pt solid #e2e8f0;
+  padding: 3pt 6pt;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.story-body th {
+  background: #f8fafc;
+  font-weight: 700;
+  color: var(--c1, #0f2d52);
 }
 
 .story-meta {

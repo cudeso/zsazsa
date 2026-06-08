@@ -12,11 +12,15 @@
 {% block content %}
 <form method="post" action="{{ url_for('daily_briefing.compose') }}" id="triage-form">
   <div class="row g-3 mb-3">
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Briefing date</label>
       <input type="date" name="date" class="form-control" value="{{ today }}">
     </div>
     <div class="col-md-3">
+      <label class="form-label">Title <span class="text-muted small">(optional)</span></label>
+      <input name="title" class="form-control" placeholder="e.g. Weekly Threat Digest #12">
+    </div>
+    <div class="col-md-2">
       <label class="form-label">Author</label>
       <input name="author" class="form-control" placeholder="Analyst name">
     </div>

@@ -541,7 +541,6 @@
   </button>
   <div class="dropdown">
     <button class="action-pill" id="load-preset-btn" data-bs-toggle="dropdown"
-            style="border-right:0;border-radius:.4rem 0 0 .4rem;"
             title="Load a saved filter preset">
       <i class="fas fa-folder-open" style="font-size:.75rem;"></i> Load preset
     </button>
@@ -1185,6 +1184,18 @@
     if (!eventRow) return;
     var currentTags = new Set(JSON.parse(eventRow.dataset.tags || '[]'));
     var items = SCOPE_GALAXY[type] || [];
+
+    /* Threat-actor tags already on the event that aren't part of the canonical
+       galaxy list (e.g. manually added free-text names) need their own entry
+       so they render as a checkbox/chip and can be removed from the panel. */
+    if (type === 'threat_actors') {
+      currentTags.forEach(function(t) {
+        if (!t.startsWith('misp-galaxy:threat-actor=')) return;
+        var v = tagValue(t);
+        var known = items.some(function(it) { return (it.value || '').toLowerCase() === v.toLowerCase(); });
+        if (!known) items.push({value: v, tag: t});
+      });
+    }
 
     /* Tag prefixes recognised for this category (e.g. geo spans both
        "misp-galaxy:country=" and "misp-galaxy:target-information="), so

@@ -6,5 +6,6 @@ flask-sqlalchemy>=3.1
 urllib3>=2.0
 curl_cffi>=0.7
 markdownify>=0.12
+markdown-it-py>=3.0
 weasyprint>=62
 beautifulsoup4>=4.12

@@ -16,6 +16,7 @@ from pathlib import Path
 import config
 import weasyprint
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
+from markdown_it import MarkdownIt
 
 from webapp import audit, collection_cache, misp_store
 from webapp.collection_cache import AI_SUMMARY_PREFIX
@@ -387,6 +388,15 @@ def detail(id):
 _UPLOADS_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
 
 
+# weasyprint has no JS engine to run marked.js like the HTML views do, so
+# story content is rendered to HTML server-side before going into the PDF.
+_story_markdown_renderer = MarkdownIt("commonmark").enable("table")
+
+
+def _story_markdown_to_html(text: str) -> str:
+    return _story_markdown_renderer.render(text or "")
+
+
 def _logo_data_uri():
     logo = getattr(config, "BRAND_LOGO", "")
     if not logo:
@@ -413,14 +423,16 @@ def pdf(id):
         "color3": getattr(config, "BRAND_COLOR_3", "#64748b"),
         "logo_uri": _logo_data_uri(),
     }
-    html = render_template(
+    for story in briefing.stories:
+        story.html = _story_markdown_to_html(getattr(story, "content", ""))
+    document_html = render_template(
         "daily_briefing/pdf.html",
         briefing=briefing,
         css_url=css_url,
         brand=brand,
         scope_summary=misp_store.briefing_combined_scope_summary(briefing),
     )
-    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    pdf_bytes = weasyprint.HTML(string=document_html).write_pdf()
     filename = f"briefing-{briefing.date or 'draft'}.pdf"
     return Response(pdf_bytes, mimetype="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})

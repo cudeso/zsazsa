@@ -1482,8 +1482,12 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
             updateRowRejectedState(row, true);
             var rejectBtn = row.querySelector('.reject-event-btn');
             if (rejectBtn) rejectBtn.remove();
+            var cb = row.querySelector('.event-row-cb');
+            if (cb) cb.checked = false;
           });
+          if (selectAllCb) selectAllCb.checked = false;
           applyAll();
+          updateSelectionToolbar();
         }
       );
     });

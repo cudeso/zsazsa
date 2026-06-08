@@ -41,12 +41,23 @@
 
 {# ── Meta summary ─────────────────────────────────────────────── #}
 <div class="meta-block">
-  <div class="meta-row">
-    <span class="meta-key">Date</span><span class="meta-val">{{ briefing.date or '-' }}</span>
-    <span class="meta-key">Author</span><span class="meta-val">{{ briefing.author or '-' }}</span>
-    <span class="meta-key">Stories</span><span class="meta-val">{{ briefing.stories | length }}</span>
-    <span class="meta-key">Classification</span>
-    <span class="meta-val"><span class="tlp-pill tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</span></span>
+  <div class="meta-grid">
+    <div class="meta-item">
+      <span class="meta-label">Date</span>
+      <span class="meta-value">{{ briefing.date or '-' }}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Author</span>
+      <span class="meta-value">{{ briefing.author or '-' }}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Stories</span>
+      <span class="meta-value">{{ briefing.stories | length }}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Classification</span>
+      <span class="meta-value"><span class="tlp-pill tlp-{{ briefing.tlp }}">TLP:{{ briefing.tlp | upper }}</span></span>
+    </div>
   </div>
 </div>
 
@@ -59,7 +70,7 @@
     <span class="story-title">{{ story.title or '(untitled)' }}</span>
   </div>
   <div class="story-body">
-    <p style="white-space:pre-wrap;">{{ story.content or '' }}</p>
+    {% if story.content %}{{ story.html | safe }}{% else %}<p>(no content)</p>{% endif %}
     {% if story.source_url or story.threat_actor_types %}
     <div class="story-meta">
       {% if story.source_url %}<span><strong>Source:</strong> {{ story.source_url }}</span>{% endif %}
