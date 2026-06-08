@@ -214,6 +214,18 @@ def _split_tags(raw: str) -> list[str]:
     return [t.strip() for t in (raw or "").replace(",", " ").split() if t.strip()]
 
 
+def _search_payload_error(payload) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("errors"):
+        return str(payload.get("errors"))
+    if payload.get("error"):
+        return str(payload.get("error"))
+    if payload.get("message") and payload.get("name") == "Exception":
+        return str(payload.get("message"))
+    return None
+
+
 def _source_slug(name: str) -> str:
     return name.lower().replace(" ", "-").replace("/", "-")
 
@@ -273,7 +285,10 @@ def refresh_source(src: dict):
                 tags=[config.SCRAPER_MARKER_TAG],
                 limit=scraper_limit, page=1, metadata=False, pythonify=True,
             )
-            if events and not isinstance(events, dict):
+            payload_err = _search_payload_error(events)
+            if payload_err:
+                error = payload_err
+            elif events and not isinstance(events, dict):
                 for e in events:
                     rows.append(_extract_row(e, source_id))
         except Exception as exc:
@@ -289,7 +304,10 @@ def refresh_source(src: dict):
                     tags=['zsazsa:source-type="manual"'],
                     limit=src.get("limit") or 500, page=1, metadata=False, pythonify=True,
                 )
-                if events and not isinstance(events, dict):
+                payload_err = _search_payload_error(events)
+                if payload_err:
+                    error = payload_err
+                elif events and not isinstance(events, dict):
                     source_tag = src.get("source_tag", "")
                     for e in events:
                         if source_tag:
@@ -322,7 +340,10 @@ def refresh_source(src: dict):
                     cutoff = (_dt.date.today() - _dt.timedelta(days=int(src["since_days"]))).isoformat()
                     kwargs["date_from"] = cutoff
                 events = misp.search(**kwargs)
-                if events and not isinstance(events, dict):
+                payload_err = _search_payload_error(events)
+                if payload_err:
+                    error = payload_err
+                elif events and not isinstance(events, dict):
                     org_filter_type = src.get("org_filter_type", "")
                     org_filter = {o.lower() for o in (src.get("org_filter") or [])}
                     if org_filter_type and org_filter:
@@ -405,9 +426,23 @@ def start_worker(interval: int = None):
     logger.info("collection cache worker started (interval=%ds)", interval)
 
 
-def trigger_refresh():
-    """Wake the worker early to start a fresh fetch immediately."""
+def trigger_refresh() -> bool:
+    """Wake the worker early to start a fresh fetch immediately.
+
+    Returns True when the refresh signal was queued, False when the worker
+    could not be started.
+    """
+    global _worker_thread
+    if not (_worker_thread and _worker_thread.is_alive()):
+        try:
+            start_worker()
+        except Exception as exc:
+            logger.warning("collection cache: could not start worker on refresh trigger: %s", exc)
+            return False
+    if not (_worker_thread and _worker_thread.is_alive()):
+        return False
     _refresh_event.set()
+    return True
 
 
 def insert_event(row: dict) -> None:

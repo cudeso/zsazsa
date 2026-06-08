@@ -295,7 +295,9 @@ def index():
 
 @bp.route("/refresh", methods=["POST"])
 def refresh():
-    collection_cache.trigger_refresh()
+    queued = collection_cache.trigger_refresh()
+    if not queued:
+        return jsonify({"ok": False, "error": "Cache worker is not running"}), 503
     return jsonify({"ok": True, "message": "Refresh triggered"})
 
 

@@ -219,7 +219,12 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
       if (csrf) headers['X-CSRF-Token'] = csrf.content;
       fetch('{{ url_for("data_collection.refresh") }}', {method:'POST', headers:headers})
-        .then(function() {
+        .then(function(resp) {
+          if (!resp.ok) throw new Error('refresh-request-failed');
+          return resp.json();
+        })
+        .then(function(payload) {
+          if (!payload || !payload.ok) throw new Error('refresh-not-queued');
           refreshBtn.innerHTML = '<i class="fas fa-check me-1"></i> Refresh started';
           if (refreshCountdown && refreshCountdown._resetTimer) refreshCountdown._resetTimer();
           setTimeout(function() { window.location.reload(); }, 4000);
@@ -227,6 +232,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
         .catch(function() {
           refreshBtn.disabled = false;
           refreshBtn.innerHTML = '<i class="fas fa-arrows-rotate me-1"></i> Refresh cache';
+          alert('Could not trigger cache refresh. Please retry.');
         });
     });
   }
@@ -895,8 +901,11 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   if (savedActiveSources) {
     try {
       var savedSet = new Set(JSON.parse(savedActiveSources));
-      state.activeSources = savedSet;
-      document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) { cb.checked = savedSet.has(cb.value); });
+      var validSavedSet = new Set(allSourceIds.filter(function(id) { return savedSet.has(id); }));
+      state.activeSources = validSavedSet.size ? validSavedSet : new Set(allSourceIds);
+      document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) {
+        cb.checked = state.activeSources.has(cb.value);
+      });
       syncAllSourceVisuals();
     } catch(e) {}
   }
