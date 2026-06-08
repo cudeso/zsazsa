@@ -1300,25 +1300,32 @@
       if (cb.checked) addChipEl(chipItem, chipsEl, makeImmediateRemove(effectiveTag, cb));
 
       cb.addEventListener('change', function() {
-        var originallyTagged = !!matchedTag;
-        if (cb.checked && !originallyTagged) {
-          /* Pending new addition — × undoes the selection without API call */
-          pendingChanges[item.tag] = 'add';
-          addChipEl(item, chipsEl, function(chip) {
-            cb.checked = false;
-            chip.remove();
-            delete pendingChanges[item.tag];
-            updateApplyBtn();
-          });
-        } else if (!cb.checked && originallyTagged) {
-          /* Queue removal — submit via Apply */
-          pendingChanges[effectiveTag] = 'remove';
-          removeChipEl(effectiveTag, chipsEl);
+        var isTaggedNow = currentTags.has(effectiveTag);
+        if (cb.checked) {
+          if (!isTaggedNow) {
+            /* Pending new addition — × undoes the selection without API call */
+            pendingChanges[effectiveTag] = 'add';
+            addChipEl({value: item.value, tag: effectiveTag}, chipsEl, function(chip) {
+              cb.checked = false;
+              chip.remove();
+              delete pendingChanges[effectiveTag];
+              updateApplyBtn();
+            });
+          } else {
+            delete pendingChanges[effectiveTag];
+            if (!chipsEl.querySelector('[data-chip-tag="' + effectiveTag.replace(/"/g,'\\"') + '"]')) {
+              addChipEl(chipItem, chipsEl, makeImmediateRemove(effectiveTag, cb));
+            }
+          }
         } else {
-          /* Reverted to original state */
-          delete pendingChanges[originallyTagged ? effectiveTag : item.tag];
-          if (cb.checked) addChipEl(chipItem, chipsEl, makeImmediateRemove(effectiveTag, cb));
-          else removeChipEl(effectiveTag, chipsEl);
+          if (isTaggedNow) {
+            /* Queue removal — submit via Apply */
+            pendingChanges[effectiveTag] = 'remove';
+            removeChipEl(effectiveTag, chipsEl);
+          } else {
+            delete pendingChanges[effectiveTag];
+            removeChipEl(effectiveTag, chipsEl);
+          }
         }
         updateApplyBtn();
       });

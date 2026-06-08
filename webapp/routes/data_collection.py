@@ -104,6 +104,16 @@ def _find_source(source_id: str) -> dict | None:
     return None
 
 
+def _misp_response_errors(resp) -> str | None:
+    if isinstance(resp, dict) and resp.get("errors"):
+        return str(resp["errors"])
+    if isinstance(resp, list):
+        for item in resp:
+            if isinstance(item, dict) and item.get("errors"):
+                return str(item["errors"])
+    return None
+
+
 def _extract_event_detail(event) -> dict:
     """Pull rich display fields from a fully-loaded MISPEvent object."""
     org_name = orgc_name = ""
@@ -857,15 +867,18 @@ def scope_tag(uuid):
     try:
         if action == "remove":
             r = misp.untag(uuid, tag_name)
-            if isinstance(r, dict) and "errors" in r:
-                return jsonify({"ok": False, "error": str(r["errors"])}), 400
+            err_text = _misp_response_errors(r)
+            if err_text:
+                return jsonify({"ok": False, "error": err_text}), 400
         else:
             r = misp.tag(uuid, tag_name)
-            if isinstance(r, dict) and "errors" in r:
+            err_text = _misp_response_errors(r)
+            if err_text:
                 misp_store._ensure_tag(misp, tag_name)
                 r = misp.tag(uuid, tag_name)
-                if isinstance(r, dict) and "errors" in r:
-                    return jsonify({"ok": False, "error": str(r["errors"])}), 400
+                err_text = _misp_response_errors(r)
+                if err_text:
+                    return jsonify({"ok": False, "error": err_text}), 400
     except Exception as exc:
         logger.warning("scope_tag failed for %s: %s", uuid, exc)
         return jsonify({"ok": False, "error": "Could not apply tag"}), 502
