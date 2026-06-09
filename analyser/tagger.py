@@ -3,6 +3,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 _WORKFLOW_PREFIX = "workflow:state="
+_FEED_TAG_PREFIX = "scraper:data-collection-source:"
+
+
+def get_source_feed(event) -> str:
+    for tag in getattr(event, "tags", []) or []:
+        name = getattr(tag, "name", "") or ""
+        if name.startswith(_FEED_TAG_PREFIX):
+            return name[len(_FEED_TAG_PREFIX):]
+    return "unknown"
 
 
 def set_workflow_state(misp, event, state: str) -> None:
@@ -13,4 +22,4 @@ def set_workflow_state(misp, event, state: str) -> None:
 
 
 def add_tag(misp, entity, tag_name: str) -> None:
-    misp.tag(entity, tag_name)
+    misp.tag(entity, tag_name, local=True)

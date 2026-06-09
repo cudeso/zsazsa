@@ -325,6 +325,16 @@
 
       <div id="prompt-save-alert" class="alert d-none mb-3" role="alert"></div>
 
+      <div class="alert alert-warning small mb-3" role="alert">
+        <i class="fas fa-triangle-exclamation me-1"></i>
+        Two prompts have output format dependencies that the application parses back into structured data.
+        Changing these headings will cause silent failures.
+        <ul class="mb-0 mt-1">
+          <li><code>summarise_misp_report</code>: must output <code>**Targeted sector:**</code>, <code>**Geographic scope:**</code>, and <code>**MITRE ATT&CK techniques:**</code>. The analyser uses these to apply MISP galaxy tags to source events.</li>
+          <li><code>flash_intel_generate</code>: must follow the full section and field structure shown in the template. The "Generate AI draft" feature parses the output line by line to populate FIA form fields.</li>
+        </ul>
+      </div>
+
       <div class="accordion mb-3" id="prompt-accordion">
         {% for p in cfg.prompts %}
         <div class="accordion-item">
@@ -417,7 +427,16 @@
               {% for fid, feat in cfg.ai_features.items() %}
               <tr data-feature-id="{{ fid }}">
                 <td class="py-2 ps-3">
-                  <div class="fw-semibold small">{{ feat.label }}</div>
+                  <div class="fw-semibold small">
+                    {{ feat.label }}
+                    {% if fid == 'summarise_report' %}
+                    <i class="fas fa-circle-info text-warning ms-1" data-bs-toggle="tooltip" data-bs-placement="right"
+                       title="Format dependency: the prompt output must include **Targeted sector:**, **Geographic scope:**, and **MITRE ATT&CK techniques:** headings. The analyser parses these to apply MISP galaxy tags. Changing them will silently break tagging."></i>
+                    {% elif fid in ('generate_fia_draft', 'generate_flash_intel') %}
+                    <i class="fas fa-circle-info text-warning ms-1" data-bs-toggle="tooltip" data-bs-placement="right"
+                       title="Format dependency: the prompt output must follow the full section and field structure in the template. The application parses it line by line to populate FIA form fields. Changing the structure will silently break field extraction."></i>
+                    {% endif %}
+                  </div>
                   <div class="text-muted" style="font-size:.78rem;">{{ feat.description }}</div>
                 </td>
                 <td>
@@ -1321,6 +1340,8 @@
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', syncJson);
 })();
+
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 
 </script>
 {% endblock %}

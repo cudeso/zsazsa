@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import config
 from analyser import llm, tagger
+from core.db import log_event
 from pymisp import MISPEventReport
 from webapp import collection_cache, matching as req_matching, misp_store
 from webapp.collection_cache import AI_SUMMARY_PREFIX
@@ -21,6 +22,41 @@ logger = logging.getLogger(__name__)
 _HTTP_ERROR_PREFIX = "misp-scraper:HTTP="
 _CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
 _BRIEFING_REJECTION_PREFIX = "zsazsa:daily-briefing-rejection"
+
+_SECTOR_LINE_RE = re.compile(r'\*\*Targeted sector:\*\*\s*(.+)', re.IGNORECASE)
+_GEO_LINE_RE = re.compile(r'\*\*Geographic scope:\*\*\s*(.+)', re.IGNORECASE)
+_ATTACK_LINE_RE = re.compile(r'\*\*MITRE ATT&CK techniques:\*\*\s*(.+)', re.IGNORECASE)
+_ATTACK_ID_RE = re.compile(r'\bT\d{4}(?:\.\d{3})?\b')
+
+
+def _parse_misp_context(text: str) -> dict:
+    result = {"sectors": [], "geographies": [], "attack_techniques": []}
+    m = _SECTOR_LINE_RE.search(text)
+    if m:
+        val = m.group(1).strip()
+        if "none identified" not in val.lower():
+            result["sectors"] = [s.strip() for s in val.split(",") if s.strip()]
+    m = _GEO_LINE_RE.search(text)
+    if m:
+        val = m.group(1).strip()
+        if "none identified" not in val.lower():
+            result["geographies"] = [s.strip() for s in val.split(",") if s.strip()]
+    m = _ATTACK_LINE_RE.search(text)
+    if m:
+        val = m.group(1).strip()
+        if "none identified" not in val.lower():
+            result["attack_techniques"] = _ATTACK_ID_RE.findall(val)
+    return result
+
+
+def _log(event, outcome, detail=None):
+    log_event(
+        event_uuid=event.uuid,
+        event_info=getattr(event, "info", ""),
+        source_feed=tagger.get_source_feed(event),
+        outcome=outcome,
+        detail=detail,
+    )
 
 
 def _daily_briefing_title_exclusions() -> list[str]:
@@ -137,7 +173,68 @@ def _add_briefing_rejection_note(misp, event, reason: str, report_title: str = "
         logger.warning("Could not add daily briefing rejection note for %s: %s", event.uuid, exc)
 
 
-def _ensure_ai_summary(misp, event, reports) -> tuple[str, bool]:
+def _build_galaxy_lookup() -> dict:
+    attack_map = misp_store._galaxy_tag_map(misp_store.GALAXY_MITRE_ATTACK)
+    attack_by_id = {}
+    for value, tag_name in attack_map.items():
+        m = _ATTACK_ID_RE.search(value)
+        if m:
+            attack_by_id[m.group(0)] = tag_name
+    sector_map = misp_store._galaxy_tag_map(misp_store.GALAXY_SECTOR)
+    country_map = misp_store._galaxy_tag_map(misp_store.GALAXY_COUNTRY)
+    ti_map = misp_store._galaxy_tag_map(misp_store.GALAXY_TARGET_INFORMATION)
+    country_by_name = {k.lower(): v for k, v in country_map.items()}
+    country_by_name.update({k.lower(): v for k, v in ti_map.items()})
+    logger.info(
+        "Galaxy lookup built: %d ATT&CK techniques, %d sectors, %d countries",
+        len(attack_by_id), len(sector_map), len(country_by_name),
+    )
+    return {
+        "attack_by_id": attack_by_id,
+        "sector_by_name": {k.lower(): v for k, v in sector_map.items()},
+        "country_by_name": country_by_name,
+    }
+
+
+def _apply_misp_context_tags(misp, event, context: dict, lookup: dict) -> int:
+    applied = 0
+    for tech_id in context.get("attack_techniques", []):
+        tag_name = lookup.get("attack_by_id", {}).get(tech_id)
+        if tag_name:
+            try:
+                r = misp.tag(event.uuid, tag_name)
+                if isinstance(r, dict) and "errors" in r:
+                    logger.warning("Could not apply ATT&CK tag %s to %s: %s", tech_id, event.uuid, r["errors"])
+                else:
+                    applied += 1
+            except Exception as exc:
+                logger.warning("Could not apply ATT&CK tag %s to %s: %s", tech_id, event.uuid, exc)
+    for sector in context.get("sectors", []):
+        tag_name = lookup.get("sector_by_name", {}).get(sector.lower())
+        if tag_name:
+            try:
+                r = misp.tag(event.uuid, tag_name)
+                if isinstance(r, dict) and "errors" in r:
+                    logger.warning("Could not apply sector tag %s to %s: %s", sector, event.uuid, r["errors"])
+                else:
+                    applied += 1
+            except Exception as exc:
+                logger.warning("Could not apply sector tag %s to %s: %s", sector, event.uuid, exc)
+    for geo in context.get("geographies", []):
+        tag_name = lookup.get("country_by_name", {}).get(geo.lower())
+        if tag_name:
+            try:
+                r = misp.tag(event.uuid, tag_name)
+                if isinstance(r, dict) and "errors" in r:
+                    logger.warning("Could not apply country tag %s to %s: %s", geo, event.uuid, r["errors"])
+                else:
+                    applied += 1
+            except Exception as exc:
+                logger.warning("Could not apply country tag %s to %s: %s", geo, event.uuid, exc)
+    return applied
+
+
+def _ensure_ai_summary(misp, event, reports, galaxy_lookup: dict) -> tuple[str, bool]:
     existing = _extract_ai_summary(reports)
     if existing:
         return existing, False
@@ -160,6 +257,13 @@ def _ensure_ai_summary(misp, event, reports) -> tuple[str, bool]:
         collection_cache.mark_ai_summary(event.uuid, "scraper")
     except Exception:
         pass
+
+    if galaxy_lookup:
+        context = _parse_misp_context(summary)
+        applied = _apply_misp_context_tags(misp, event, context, galaxy_lookup)
+        if applied:
+            logger.info("Applied %d galaxy tag(s) to %s from MISP context", applied, event.uuid)
+
     return summary, True
 
 
@@ -203,6 +307,7 @@ def _common_candidate_events(progress=None) -> tuple:
     summaries = {}
     reports_cache: dict[str, list] = {}
     summary_created = 0
+    galaxy_lookup = _build_galaxy_lookup()
 
     _emit(progress, "filter-events", "in_progress", "Filtering hard negatives (HTTP errors / empty reports)...")
 
@@ -211,15 +316,17 @@ def _common_candidate_events(progress=None) -> tuple:
         reports_cache[event.uuid] = reports
         first_report = _first_non_empty_report_content(reports)
 
-        if _event_http_error(event) or not first_report:
+        is_http_error = _event_http_error(event)
+        if is_http_error or not first_report:
             hard_rejected += 1
             try:
                 tagger.set_workflow_state(misp, event, "rejected")
             except Exception as exc:
                 logger.warning("Could not mark %s as rejected: %s", event.uuid, exc)
+            _log(event, "http_error" if is_http_error else "no_content")
             continue
 
-        summary, created = _ensure_ai_summary(misp, event, reports)
+        summary, created = _ensure_ai_summary(misp, event, reports, galaxy_lookup)
         if created:
             summary_created += 1
         summaries[event.uuid] = summary
@@ -248,6 +355,7 @@ def run_daily_briefing_action(progress=None) -> dict:
             reports = reports_cache.get(event.uuid, [])
             if _event_or_report_title_excluded(event, reports, exclusions):
                 excluded_by_title += 1
+                _log(event, "not_relevant", "excluded by title filter")
                 continue
             kept.append(event)
         events = kept
@@ -269,16 +377,13 @@ def run_daily_briefing_action(progress=None) -> dict:
         )
         if not decision.get("include", True):
             rejected_by_relevance += 1
+            reason = (decision.get("reason") or "").strip()
             try:
                 tagger.set_workflow_state(misp, event, "rejected")
             except Exception as exc:
                 logger.warning("Could not mark %s as rejected after relevance review: %s", event.uuid, exc)
-            _add_briefing_rejection_note(
-                misp,
-                event,
-                reason=(decision.get("reason") or "").strip(),
-                report_title=report_title,
-            )
+            _add_briefing_rejection_note(misp, event, reason=reason, report_title=report_title)
+            _log(event, "not_relevant", reason or "rejected by briefing relevance check")
             continue
         kept.append(event)
     events = kept
@@ -286,17 +391,41 @@ def run_daily_briefing_action(progress=None) -> dict:
 
     _emit(progress, "build-briefing", "in_progress", "Building daily briefing stories from eligible events...")
     stories = []
+    feed_by_uuid = {}
+    threat_actor_types_cfg = getattr(config, "THREAT_ACTOR_TYPES", []) or []
+    focus_points = {
+        "geographies": list(getattr(config, "FOCUS_POINTS_GEOGRAPHIES", []) or []),
+        "sectors": list(getattr(config, "FOCUS_POINTS_SECTORS", []) or []),
+        "technologies": list(getattr(config, "FOCUS_POINTS_TECHNOLOGIES", []) or []),
+        "threat_types": list(getattr(config, "FOCUS_POINTS_THREAT_TYPES", []) or []),
+        "threat_actors": list(getattr(config, "FOCUS_POINTS_THREAT_ACTORS", []) or []),
+    }
     for event in events:
-        story_text = (summaries.get(event.uuid) or "").strip()
-        if not story_text:
-            story_text = _first_non_empty_report_content(reports_cache.get(event.uuid, []))
+        summary = (summaries.get(event.uuid) or "").strip()
+        article = _first_non_empty_report_content(reports_cache.get(event.uuid, []))
+        source_text = summary or article
+
+        story_text = source_text
+        actor_type = ""
+        if source_text:
+            try:
+                story_text, actor_type = llm.draft_briefing_story(
+                    source_text, focus_points=focus_points, threat_actor_types=threat_actor_types_cfg,
+                )
+                story_text = story_text or source_text
+            except Exception as exc:
+                logger.warning("draft_briefing_story failed for %s: %s", event.uuid, exc)
+                story_text = source_text
+
         stories.append({
             "title": event.info or "",
             "content": story_text,
             "source_url": misp_store.extract_source_url(event),
             "source_event_uuid": event.uuid,
             "correlation": "",
+            "threat_actor_types": [actor_type] if actor_type else [],
         })
+        feed_by_uuid[event.uuid] = tagger.get_source_feed(event)
     _emit(progress, "build-briefing", "completed", f"Prepared {len(stories)} story candidate(s).")
 
     overlap_pairs = 0
@@ -347,9 +476,10 @@ def run_daily_briefing_action(progress=None) -> dict:
             "overlap_dropped": dropped,
         }
 
+    now = datetime.now(timezone.utc)
     data = {
-        "date": datetime.now(timezone.utc).date().isoformat(),
-        "title": "",
+        "date": now.date().isoformat(),
+        "title": f"Daily threat briefing for {now.day} {now.strftime('%B %Y')}",
         "author": "analyser",
         "tlp": "clear",
         "escalations": "",
@@ -360,6 +490,16 @@ def run_daily_briefing_action(progress=None) -> dict:
     _emit(progress, "create-drafts", "in_progress", "Creating daily briefing draft...")
     briefing_uuid = misp_store.create_briefing(data)
     _emit(progress, "create-drafts", "completed", f"Daily briefing draft created ({briefing_uuid}).")
+
+    for s in stories:
+        uuid = s["source_event_uuid"]
+        log_event(
+            event_uuid=uuid,
+            event_info=s.get("title", ""),
+            source_feed=feed_by_uuid.get(uuid, "unknown"),
+            outcome="product_created",
+            detail="daily-briefing",
+        )
 
     return {
         "ok": True,
@@ -405,6 +545,7 @@ def run_flash_intel_action(progress=None) -> dict:
     for event in events:
         matches = match_map.get(event.uuid, [])
         if not matches:
+            _log(event, "not_relevant", "no PIR/GIR match")
             continue
         top = matches[0]
         linked_pir_uuid = top.get("uuid", "") if top.get("type") == "pir" else ""
@@ -444,6 +585,7 @@ def run_flash_intel_action(progress=None) -> dict:
         }
         misp_store.create_fia(data)
         created += 1
+        _log(event, "product_created", f"flash-intel; matched: {top.get('id', 'n/a')}")
     _emit(progress, "create-drafts", "completed", f"Created {created} flash intel draft(s).")
 
     return {
@@ -473,6 +615,7 @@ def run_vea_action(progress=None) -> dict:
     for event in events:
         cves = cve_map.get(event.uuid, [])
         if not cves:
+            _log(event, "not_relevant", "no CVE found")
             continue
 
         data = {
@@ -512,6 +655,7 @@ def run_vea_action(progress=None) -> dict:
         }
         misp_store.create_vea(data)
         created += 1
+        _log(event, "product_created", f"vea; CVEs: {', '.join(cves)}")
     _emit(progress, "create-drafts", "completed", f"Created {created} vulnerability advisory draft(s).")
 
     return {

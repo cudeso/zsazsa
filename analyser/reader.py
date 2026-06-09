@@ -12,8 +12,12 @@ def _load_state() -> dict:
     path = Path(config.STATE_FILE)
     if not path.exists():
         return {}
-    with open(path) as f:
-        return json.load(f)
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        logger.warning("State file unreadable, starting fresh")
+        return {}
 
 
 def _save_state(state: dict) -> None:
@@ -35,7 +39,8 @@ def save_last_run(timestamp: int) -> None:
 
 def get_new_scraper_events(misp) -> list:
     last_run = load_last_run()
-    since = last_run if last_run else int(time.time()) - (config.POLL_WINDOW_HOURS * 3600)
+    lookback = int(time.time()) - (config.POLL_WINDOW_HOURS * 3600)
+    since = max(last_run, lookback) if last_run else lookback
 
     # MISP REST treats multi-tag filters as OR. Search by the marker only,
     # then keep events that also carry workflow:state="incomplete".

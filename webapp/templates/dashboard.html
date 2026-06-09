@@ -104,6 +104,9 @@
       <button class="btn btn-sm btn-outline-secondary" id="pipeline-progress-open" type="button" data-bs-toggle="modal" data-bs-target="#pipelineProgressModal" disabled>
         <i class="fas fa-list-check me-1"></i>Progress
       </button>
+      <a href="{{ url_for('pipeline.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-clock-rotate-left me-1"></i>History
+      </a>
       {% if pipeline.last_run %}
         {% if pipeline.stale %}
           <span class="badge text-bg-warning" title="Stale: the automation pipeline has not run in over 90 minutes. Check that the analyser process is running."><i class="fas fa-triangle-exclamation me-1"></i>Stale</span>

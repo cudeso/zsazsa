@@ -1,5 +1,7 @@
-import sqlite3
+import json
 import logging
+import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import config
@@ -9,6 +11,15 @@ logger = logging.getLogger(__name__)
 
 def _connect():
     return sqlite3.connect(config.DB_FILE)
+
+
+def _ensure_columns(conn, table: str, columns: list[tuple[str, str]]) -> None:
+    """Add any schema columns missing from an existing table (forward migration only)."""
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for col_name, col_def in columns:
+        if col_name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+            logger.info("DB migrated: added column %s.%s", table, col_name)
 
 
 def init_db() -> None:
@@ -36,6 +47,32 @@ def init_db() -> None:
                 total_tokens     INTEGER NOT NULL DEFAULT 0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pipeline_run_log (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+                finished_at  TEXT,
+                action       TEXT NOT NULL,
+                triggered_by TEXT NOT NULL DEFAULT 'dashboard',
+                status       TEXT NOT NULL DEFAULT 'running',
+                result_json  TEXT
+            )
+        """)
+        # Forward migration: add any columns introduced after initial deployment.
+        _ensure_columns(conn, "event_log", [
+            ("event_uuid", "TEXT NOT NULL DEFAULT ''"),
+            ("event_info", "TEXT"),
+            ("source_feed", "TEXT"),
+            ("outcome", "TEXT"),
+            ("detail", "TEXT"),
+        ])
+        _ensure_columns(conn, "llm_usage", [
+            ("feature", "TEXT NOT NULL DEFAULT ''"),
+            ("model", "TEXT NOT NULL DEFAULT ''"),
+            ("input_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("output_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("total_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ])
 
 
 def log_llm_usage(feature: str, model: str, input_tokens: int, output_tokens: int, total_tokens: int) -> None:
@@ -58,3 +95,61 @@ def log_event(event_uuid: str, event_info: str, source_feed: str, outcome: str, 
             )
     except sqlite3.Error as e:
         logger.error("DB write failed for %s: %s", event_uuid, e)
+
+
+def log_pipeline_run_start(action: str, triggered_by: str = "dashboard") -> int:
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO pipeline_run_log (action, triggered_by) VALUES (?, ?)",
+                (action, triggered_by),
+            )
+            return cur.lastrowid
+    except sqlite3.Error as e:
+        logger.error("DB write failed for pipeline_run_log: %s", e)
+        return 0
+
+
+def log_pipeline_run_end(run_id: int, status: str, result: dict | None = None) -> None:
+    if not run_id:
+        return
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE pipeline_run_log"
+                " SET finished_at = strftime('%Y-%m-%dT%H:%M:%S', 'now'), status = ?, result_json = ?"
+                " WHERE id = ?",
+                (status, json.dumps(result) if result else None, run_id),
+            )
+    except sqlite3.Error as e:
+        logger.error("DB write failed for pipeline_run_log end: %s", e)
+
+
+def get_recent_pipeline_runs(limit: int = 20) -> list[dict]:
+    try:
+        with _connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, started_at, finished_at, action, triggered_by, status, result_json"
+                " FROM pipeline_run_log ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        result = []
+        for row in rows:
+            r = dict(row)
+            r["result"] = json.loads(r.pop("result_json")) if r.get("result_json") else None
+            if r.get("started_at") and r.get("finished_at"):
+                try:
+                    start = datetime.fromisoformat(r["started_at"])
+                    end = datetime.fromisoformat(r["finished_at"])
+                    secs = int((end - start).total_seconds())
+                    r["duration"] = f"{secs // 60}m {secs % 60}s" if secs >= 60 else f"{secs}s"
+                except Exception:
+                    r["duration"] = None
+            else:
+                r["duration"] = None
+            result.append(r)
+        return result
+    except sqlite3.Error as e:
+        logger.error("DB read failed for pipeline_run_log: %s", e)
+        return []

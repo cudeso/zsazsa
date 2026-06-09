@@ -1,6 +1,8 @@
+import logging
+import logging.handlers
 import os
 import secrets
-import logging
+from pathlib import Path
 
 from flask import Flask, abort, request, session, jsonify, render_template
 from pymisp.exceptions import PyMISPError
@@ -15,6 +17,23 @@ from webapp.version import APP_VERSION
 logger = logging.getLogger(__name__)
 
 
+def _setup_file_logging():
+    log_file = getattr(config, "LOG_FILE", "data/analyser.log")
+    log_level = getattr(logging, getattr(config, "LOG_LEVEL", "INFO"), logging.INFO)
+    Path(log_file).parent.mkdir(exist_ok=True)
+    root = logging.getLogger()
+    if not any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
+        fmt = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+        handler = logging.handlers.RotatingFileHandler(
+            log_file, maxBytes=5 * 1024 * 1024, backupCount=3
+        )
+        handler.setFormatter(fmt)
+        root.setLevel(log_level)
+        root.addHandler(handler)
+    # Werkzeug logs every HTTP request at INFO; keep those out of the analyser log.
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+
 def create_app():
     app = Flask(__name__)
 
@@ -24,6 +43,7 @@ def create_app():
     app.config["SECRET_KEY"] = secret_key
     app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+    _setup_file_logging()
     audit.init()
     org_store.init_db()
     from core.db import init_db as _init_core_db
@@ -82,6 +102,7 @@ def create_app():
     from webapp.routes.threat_landscape import bp as threat_landscape_bp
     from webapp.routes.api import bp as api_bp
     from webapp.routes.collection_sources import bp as collection_sources_bp
+    from webapp.routes.pipeline import bp as pipeline_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(stakeholders_bp, url_prefix="/stakeholders")
@@ -100,6 +121,7 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(community_bp)
     app.register_blueprint(collection_sources_bp)
+    app.register_blueprint(pipeline_bp)
 
     def _wants_json() -> bool:
         if request.path.startswith("/api/"):

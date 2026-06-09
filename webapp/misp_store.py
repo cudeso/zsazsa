@@ -3536,7 +3536,7 @@ def _briefing_ns(event):
         campaign=_json_list(_obj_attr(obj, "campaign")),
         stories=stories,
         published=bool(getattr(event, "published", False)),
-        created_at=_parse_dt(event.date.isoformat() if event.date else None),
+        created_at=event.timestamp if getattr(event, "timestamp", None) else _parse_dt(event.date.isoformat() if event.date else None),
     )
 
 

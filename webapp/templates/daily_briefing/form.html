@@ -31,6 +31,11 @@
             <option value="amber" {{ 'selected' if briefing_tlp == 'amber' }}>amber</option>
           </select>
         </div>
+        {% if briefing_created_at %}
+        <div class="col-12">
+          <p class="text-muted mb-0 small"><i class="fas fa-clock me-1"></i>Saved: {{ briefing_created_at.strftime('%d %B %Y, %H:%M') }} UTC</p>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>

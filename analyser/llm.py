@@ -88,9 +88,18 @@ def generate_flash_intel(
     event_date: str,
 ) -> str:
     fc = _feature_cfg("generate_flash_intel")
+    extra_parts = [f"Focus points configured:\n{json.dumps(focus_points, indent=2)}"]
+    threat_actor_types = [
+        t.get("name", "") for t in (getattr(config, "THREAT_ACTOR_TYPES", []) or []) if t.get("name")
+    ]
+    if threat_actor_types:
+        extra_parts.append(
+            "Available threat actor types (use exact names when completing 'Threat actor types'):\n"
+            + "\n".join(f"- {n}" for n in threat_actor_types)
+        )
     system = _build_system_prompt(
         _resolve_prompt(fc.get("prompt") or "flash_intel_generate.md"),
-        f"Focus points configured:\n{json.dumps(focus_points, indent=2)}",
+        "\n\n".join(extra_parts),
     )
     user_message = (
         f"Matched focus points: {json.dumps(matched_points)}\n"
@@ -106,15 +115,17 @@ def generate_fia_draft(
     event_info: str = "",
     event_date: str = "",
     source_reliability: str = "",
+    focus_points: dict | None = None,
 ) -> str:
     """Generate a Flash Intel Alert draft from article content."""
-    focus_points = {
-        "geographies": list(getattr(config, "FOCUS_POINTS_GEOGRAPHIES", []) or []),
-        "sectors": list(getattr(config, "FOCUS_POINTS_SECTORS", []) or []),
-        "technologies": list(getattr(config, "FOCUS_POINTS_TECHNOLOGIES", []) or []),
-        "threat_types": list(getattr(config, "FOCUS_POINTS_THREAT_TYPES", []) or []),
-        "threat_actors": list(getattr(config, "FOCUS_POINTS_THREAT_ACTORS", []) or []),
-    }
+    if focus_points is None:
+        focus_points = {
+            "geographies": list(getattr(config, "FOCUS_POINTS_GEOGRAPHIES", []) or []),
+            "sectors": list(getattr(config, "FOCUS_POINTS_SECTORS", []) or []),
+            "technologies": list(getattr(config, "FOCUS_POINTS_TECHNOLOGIES", []) or []),
+            "threat_types": list(getattr(config, "FOCUS_POINTS_THREAT_TYPES", []) or []),
+            "threat_actors": list(getattr(config, "FOCUS_POINTS_THREAT_ACTORS", []) or []),
+        }
     fc = _feature_cfg("generate_fia_draft")
     extra_parts = []
     if focus_points:

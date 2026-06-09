@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}Pipeline | zsazsa CTI{% endblock %}
+{% block page_title %}Pipeline{% endblock %}
+
+{% block content %}
+
+<div class="row g-4">
+
+  <div class="col-lg-8">
+
+    {% if pipeline %}
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-satellite-dish me-2"></i>Pipeline throughput</span>
+        <form method="post" action="{{ url_for('pipeline.purge_orphaned') }}" class="m-0"
+              onsubmit="return confirm('Drop analyser log entries whose source MISP event no longer exists?');">
+          <button type="submit" class="btn btn-xs btn-outline-secondary" title="Reconcile log with current MISP state">
+            <i class="fas fa-broom me-1"></i> Purge orphaned
+          </button>
+        </form>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Figures below cover the analyser's local history. Counts may include events that have
+          since been rotated out of the scraper MISP. Use <em>Purge orphaned</em> to drop entries
+          whose source events no longer exist.
+        </p>
+        <div class="row g-3 mb-3">
+          <div class="col-4 text-center">
+            <div style="font-size:1.6rem;font-weight:700;color:var(--text-primary);">{{ pipeline.total }}</div>
+            <div class="text-muted small">Total events logged</div>
+          </div>
+          <div class="col-4 text-center">
+            <div style="font-size:1.6rem;font-weight:700;color:var(--text-primary);">{{ pipeline.last_7d }}</div>
+            <div class="text-muted small">Last 7 days</div>
+          </div>
+          <div class="col-4 text-center">
+            <div style="font-size:1.6rem;font-weight:700;color:var(--text-primary);">{{ pipeline.last_30d }}</div>
+            <div class="text-muted small">Last 30 days</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+
+      <div class="col-md-6">
+        <div class="card content-card h-100">
+          <div class="card-header"><i class="fas fa-rss me-2"></i>By collection source</div>
+          <div class="card-body p-0">
+            {% if pipeline.by_source %}
+            {% set max_n = pipeline.by_source[0].n %}
+            <ul class="list-unstyled mb-0">
+              {% for row in pipeline.by_source %}
+              <li class="px-3 py-2 border-bottom">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="fw-semibold" style="font-size:.875rem;">{{ row.source_feed or 'Unknown' }}</span>
+                  <span class="text-muted small">{{ row.n }}</span>
+                </div>
+                <div class="progress" style="height:4px;border-radius:2px;">
+                  <div class="progress-bar" style="width:{{ (row.n / max_n * 100) | int }}%;background:var(--accent-blue);"></div>
+                </div>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state py-4"><p class="text-muted small mb-0">No data.</p></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card content-card h-100">
+          <div class="card-header"><i class="fas fa-circle-check me-2"></i>By outcome</div>
+          <div class="card-body p-0">
+            {% if pipeline.by_outcome %}
+            <ul class="list-unstyled mb-0">
+              {% for row in pipeline.by_outcome %}
+              {% set color = '#22a06b' if row.outcome in ('matched', 'processed', 'success', 'product_created') else '#d93025' if 'error' in (row.outcome or '') else '#e07c1e' %}
+              <li class="px-3 py-2 border-bottom d-flex align-items-center justify-content-between">
+                <span class="d-flex align-items-center gap-2">
+                  <span style="width:8px;height:8px;border-radius:50%;background:{{ color }};display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:.875rem;">{{ row.outcome or 'Unknown' }}</span>
+                </span>
+                <span class="badge rounded-pill" style="background:color-mix(in srgb,{{ color }} 12%,transparent);color:{{ color }};font-size:.72rem;">{{ row.n }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state py-4"><p class="text-muted small mb-0">No data.</p></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-play-circle me-2"></i>Analyser run history</div>
+      <div class="card-body p-0">
+        {% if recent_runs %}
+        <div style="overflow-x:auto;">
+          <table class="table zsazsa-table mb-0">
+            <thead>
+              <tr>
+                <th>Started</th>
+                <th>Action</th>
+                <th>Triggered by</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for run in recent_runs %}
+              {% set is_ok = run.status == 'completed' %}
+              {% set is_fail = run.status == 'failed' %}
+              <tr>
+                <td class="text-muted small" style="white-space:nowrap;">{{ run.started_at[:16] if run.started_at else '-' }}</td>
+                <td>
+                  {% if run.action == 'daily-briefing' %}Daily briefing
+                  {% elif run.action == 'flash-intel' %}Flash intel
+                  {% elif run.action == 'vea' %}Vulnerability advisory
+                  {% elif run.action == 'analyser' %}CLI analyser
+                  {% else %}{{ run.action }}{% endif %}
+                </td>
+                <td><span class="source-tag">{{ run.triggered_by or '-' }}</span></td>
+                <td>
+                  <span class="badge" style="font-size:.7rem;background:{% if is_ok %}#eaf6f1{% elif is_fail %}#fdecea{% else %}#fef5e3{% endif %};color:{% if is_ok %}#1a8a5a{% elif is_fail %}#a93226{% else %}#d68910{% endif %};">
+                    {{ run.status }}
+                  </span>
+                </td>
+                <td class="text-muted small">
+                  {% if run.duration %}{{ run.duration }}
+                  {% elif run.status == 'running' %}running…
+                  {% else %}-{% endif %}
+                </td>
+                <td class="text-muted small">
+                  {% if run.result %}
+                    {% if run.result.message %}{{ run.result.message }}
+                    {% elif run.result.total_events is defined %}
+                      {{ run.result.total_events }} events: {{ run.result.product_created }} products, {{ run.result.not_relevant }} not relevant, {{ run.result.error }} errors
+                    {% endif %}
+                  {% else %}-{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state py-4"><p class="text-muted mb-0">No analyser runs recorded yet.</p></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card">
+      <div class="card-header"><i class="fas fa-clock-rotate-left me-2"></i>Recent pipeline activity</div>
+      <div class="card-body p-0">
+        {% if pipeline.recent %}
+        <div style="overflow-x:auto;">
+          <table class="table zsazsa-table mb-0">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Source</th>
+                <th>Event</th>
+                <th>Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in pipeline.recent %}
+              <tr>
+                <td class="text-muted small" style="white-space:nowrap;">{{ row.processed_at[:16] if row.processed_at else '-' }}</td>
+                <td><span class="source-tag">{{ row.source_feed or '-' }}</span></td>
+                <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.event_info or '' }}">
+                  <span class="text-muted small" style="font-family:monospace;font-size:.75rem;">{{ row.event_uuid[:8] if row.event_uuid else '' }}…</span>
+                  {% if row.event_info %}<span class="ms-2" style="font-size:.85rem;">{{ row.event_info | truncate(60) }}</span>{% endif %}
+                </td>
+                <td>
+                  {% if row.outcome %}
+                  {% set ok = row.outcome in ('matched', 'processed', 'success', 'product_created') %}
+                  {% set err = 'error' in row.outcome %}
+                  <span class="badge" style="font-size:.7rem;background:{% if ok %}#eaf6f1{% elif err %}#fdecea{% else %}#fef5e3{% endif %};color:{% if ok %}#1a8a5a{% elif err %}#a93226{% else %}#d68910{% endif %};">
+                    {{ row.outcome }}
+                  </span>
+                  {% if row.detail %}<span class="text-muted small ms-1" title="{{ row.detail }}"><i class="fas fa-circle-info fa-xs"></i></span>{% endif %}
+                  {% else %}-{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state py-4"><p class="text-muted mb-0">No pipeline activity recorded yet.</p></div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% else %}
+    <div class="card content-card">
+      <div class="card-body">
+        <div class="empty-state py-4">
+          <i class="fas fa-database text-muted d-block mb-2 fa-2x"></i>
+          <p class="text-muted mb-0">Analyser database not found. Run the pipeline at least once to see statistics here.</p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-plug me-2"></i>MISP connectivity</div>
+      <div class="card-body p-0">
+        <ul class="list-unstyled mb-0">
+          {% for label, conn in [('Scraper / analyser', scraper_misp), ('Webapp store', webapp_misp)] %}
+          <li class="px-3 py-2 {% if not loop.last %}border-bottom{% endif %}">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <span class="fw-semibold" style="font-size:.875rem;">{{ label }}</span>
+              {% if conn.ok %}
+              <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;">
+                <i class="fas fa-circle-check me-1"></i>Connected
+              </span>
+              {% else %}
+              <span class="badge" style="background:#fdecea;color:#a93226;font-size:.7rem;">
+                <i class="fas fa-circle-xmark me-1"></i>Unreachable
+              </span>
+              {% endif %}
+            </div>
+            <div class="text-muted" style="font-size:.78rem;font-family:monospace;word-break:break-all;">
+              {{ conn.url }}
+            </div>
+            {% if conn.ok %}
+            <div class="text-muted small mt-1">v{{ conn.version }}</div>
+            {% else %}
+            <div class="text-danger small mt-1">{{ conn.error }}</div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    {% if source_health %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-rss me-2"></i>Collection source health</div>
+      <div class="card-body p-0">
+        <ul class="list-unstyled mb-0">
+          {% for src in source_health %}
+          <li class="px-3 py-2 {% if not loop.last %}border-bottom{% endif %}">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <span class="fw-semibold" style="font-size:.875rem;">{{ src.label }}</span>
+              {% if src.manual %}
+              <span class="badge" style="background:#f0f4ff;color:#0078f1;font-size:.7rem;">
+                <i class="fas fa-hand me-1"></i>Manual
+              </span>
+              {% elif src.ok %}
+              <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;">
+                <i class="fas fa-circle-check me-1"></i>Online
+              </span>
+              {% else %}
+              <span class="badge" style="background:#fdecea;color:#a93226;font-size:.7rem;">
+                <i class="fas fa-circle-xmark me-1"></i>Unreachable
+              </span>
+              {% endif %}
+            </div>
+            {% if src.manual %}
+            <div style="font-size:.78rem;color:var(--text-muted);">Human-curated source, no automated connectivity check.</div>
+            {% elif src.ok %}
+            <div class="d-flex gap-3" style="font-size:.78rem;color:var(--text-muted);">
+              {% if src.last_event_date %}
+              <span><i class="fas fa-calendar-day me-1"></i>Last event: {{ src.last_event_date }}</span>
+              {% endif %}
+              {% if src.event_count is not none %}
+              <span><i class="fas fa-layer-group me-1"></i>{{ src.event_count }} events</span>
+              {% endif %}
+            </div>
+            {% else %}
+            <div class="text-danger" style="font-size:.78rem;">{{ src.error }}</div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if indicator_stats %}
+    <div class="card content-card">
+      <div class="card-header"><i class="fas fa-fingerprint me-2"></i>Indicator health</div>
+      <div class="card-body">
+        {% if indicator_stats.ok %}
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">IoC-type attributes</span>
+          <span class="fw-semibold">{{ indicator_stats.total_ioc }}</span>
+        </div>
+        <div class="d-flex justify-content-between mb-3">
+          <span class="text-muted small">All attributes</span>
+          <span class="fw-semibold">{{ indicator_stats.all_total }}</span>
+        </div>
+        {% if indicator_stats.by_type %}
+        <div style="font-size:.78rem;">
+          {% for itype, n in indicator_stats.by_type.items() %}
+          <div class="d-flex justify-content-between border-bottom py-1">
+            <span class="text-muted font-monospace">{{ itype }}</span>
+            <span class="fw-semibold">{{ n }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-muted small mb-0">Could not retrieve attribute statistics from MISP.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
+{% endblock %}

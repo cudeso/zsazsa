@@ -10,8 +10,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import config
 from analyser.products.flash_intel import process as process_flash_intel
 from analyser.reader import get_new_scraper_events, save_last_run
-from core.db import init_db, log_event
-from core.misp_client import get_misp
+from core.db import init_db, log_event, log_pipeline_run_start, log_pipeline_run_end
+from core.misp_client import get_misp, get_misp_webapp
 
 
 def setup_logging() -> None:
@@ -48,20 +48,23 @@ def main() -> None:
     logger.info("Analyser started")
 
     init_db()
+    run_id = log_pipeline_run_start("analyser", triggered_by="cli")
 
     try:
         misp = get_misp()
+        misp_webapp = get_misp_webapp()
         focus_points = load_focus_points()
         events = get_new_scraper_events(misp)
     except Exception as e:
         logger.error("Startup failed: %s", e)
+        log_pipeline_run_end(run_id, "failed")
         raise
 
     counts = {"product_created": 0, "not_relevant": 0, "http_error": 0, "no_content": 0, "error": 0}
 
     for event in events:
         try:
-            result = process_flash_intel(misp, event, focus_points)
+            result = process_flash_intel(misp, misp_webapp, event, focus_points)
             outcome = result["outcome"]
             counts[outcome] = counts.get(outcome, 0) + 1
 
@@ -87,14 +90,24 @@ def main() -> None:
                 detail=f"{type(e).__name__}: {e}",
             )
 
+    # Advance the timestamp unconditionally so events are not reprocessed on
+    # the next run, even if some failed. Errored events are visible in the DB log.
     save_last_run(run_start)
+    log_pipeline_run_end(run_id, "completed", {
+        "total_events": len(events),
+        "product_created": counts.get("product_created", 0),
+        "not_relevant": counts.get("not_relevant", 0),
+        "http_error": counts.get("http_error", 0),
+        "no_content": counts.get("no_content", 0),
+        "error": counts.get("error", 0),
+    })
     logger.info(
         "Analyser complete: %d events - %d products, %d not relevant, %d HTTP errors, %d no content, %d errors",
         len(events),
-        counts["product_created"],
-        counts["not_relevant"],
-        counts["http_error"],
-        counts["no_content"],
+        counts.get("product_created", 0),
+        counts.get("not_relevant", 0),
+        counts.get("http_error", 0),
+        counts.get("no_content", 0),
         counts.get("error", 0),
     )
 

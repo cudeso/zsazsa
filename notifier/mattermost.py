@@ -42,7 +42,7 @@ def _active_webhooks(channel_ids: list | None = None) -> list[dict]:
     return []
 
 
-def _post(targets: list[dict], payload: dict, label: str) -> None:
+def _post(targets: list[dict], payload: dict, label: str) -> bool:
     sent_any = False
     for target in targets:
         url = target.get("url")

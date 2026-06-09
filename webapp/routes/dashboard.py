@@ -11,7 +11,8 @@ from flask import Blueprint, jsonify, render_template
 
 import config
 from analyser.reader import save_last_run
-from webapp import analyser_pipeline
+from core.db import log_pipeline_run_start, log_pipeline_run_end
+from webapp import analyser_pipeline, audit
 from webapp import misp_store
 from webapp.utils import json_body as _json_object
 
@@ -90,10 +91,10 @@ def _append_job_log(job_id: str, message: str) -> None:
         if not job:
             return
         job.setdefault("log", []).append({"timestamp": time.time(), "message": message})
-        # Keep recent log lines only.
         if len(job["log"]) > 50:
             job["log"] = job["log"][-50:]
         job["updated_at"] = time.time()
+    logger.info("[pipeline:%s] %s", job_id[:8], message)
 
 
 def _update_job_step(job_id: str, step: str, state: str, message: str = "") -> None:
@@ -111,6 +112,8 @@ def _update_job_step(job_id: str, step: str, state: str, message: str = "") -> N
             if len(job["log"]) > 50:
                 job["log"] = job["log"][-50:]
         job["updated_at"] = time.time()
+    if message:
+        logger.info("[pipeline:%s] %s: %s", job_id[:8], step, message)
 
 
 def _run_pipeline_job(job_id: str) -> None:
@@ -129,6 +132,8 @@ def _run_pipeline_job(job_id: str) -> None:
         _update_job(job_id, status="failed", error="Unknown pipeline action.", message="Unknown pipeline action.")
         return
 
+    run_id = log_pipeline_run_start(action, triggered_by="dashboard")
+    audit.record("run-start", "pipeline", entity_label=action, details="triggered by dashboard")
     _update_job(job_id, status="running", message="Running...")
     _append_job_log(job_id, f"Started action '{action}'.")
 
@@ -139,6 +144,8 @@ def _run_pipeline_job(job_id: str) -> None:
         result = handler(progress=_progress)
         # Keep dashboard pipeline freshness in sync with manual runs.
         save_last_run(int(time.time()))
+        log_pipeline_run_end(run_id, "completed", result)
+        audit.record("run-complete", "pipeline", entity_label=action, details=(result or {}).get("message") or "")
         with _PIPELINE_JOBS_LOCK:
             job = _PIPELINE_JOBS.get(job_id)
             if job:
@@ -154,6 +161,8 @@ def _run_pipeline_job(job_id: str) -> None:
         )
         _append_job_log(job_id, "Action completed.")
     except Exception as exc:
+        log_pipeline_run_end(run_id, "failed")
+        audit.record("run-failed", "pipeline", entity_label=action, details=str(exc))
         _update_job(job_id, status="failed", error=str(exc), message=f"Failed: {exc}")
         _append_job_log(job_id, f"Action failed: {exc}")
         logger.exception("Pipeline job %s failed", job_id)

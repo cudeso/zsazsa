@@ -47,6 +47,7 @@ def _render_briefing_form(
     vendor=None,
     incident=None,
     campaign=None,
+    created_at=None,
 ):
     is_edit = mode == "edit"
     story_uuids = [
@@ -99,6 +100,7 @@ def _render_briefing_form(
         galaxy_sectors=misp_store.galaxy_sectors(),
         galaxy_threat_actors=misp_store.galaxy_threat_actors(),
         galaxy_mitre_attack=misp_store.galaxy_mitre_attack_patterns(),
+        briefing_created_at=created_at,
     )
 
 
@@ -503,6 +505,7 @@ def edit(id):
         vendor=briefing.vendor,
         incident=briefing.incident,
         campaign=briefing.campaign,
+        created_at=briefing.created_at,
     )
 
 
@@ -554,6 +557,7 @@ def add_stories(id):
         vendor=briefing.vendor,
         incident=briefing.incident,
         campaign=briefing.campaign,
+        created_at=briefing.created_at,
     )
 
 

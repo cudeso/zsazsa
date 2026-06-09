@@ -134,6 +134,9 @@
       </div>
       <div class="card-body small">
         <p class="mb-1"><strong>Date:</strong> {{ briefing.date or '-' }}</p>
+        {% if briefing.created_at %}
+        <p class="mb-1"><strong>Saved:</strong> {{ briefing.created_at.strftime('%d %B %Y, %H:%M') }} UTC</p>
+        {% endif %}
         {% if briefing.title %}<p class="mb-1"><strong>Title:</strong> {{ briefing.title }}</p>{% endif %}
         <p class="mb-1"><strong>Author:</strong> {{ briefing.author or '-' }}</p>
         <p class="mb-1"><strong>TLP:</strong> <span class="tlp-badge tlp-{{ briefing.tlp | slug }}">TLP:{{ briefing.tlp | upper }}</span></p>

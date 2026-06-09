@@ -127,6 +127,11 @@
         </a>
       </li>
       <li>
+        <a href="{{ url_for('pipeline.index') }}" class="{{ 'active' if request.blueprint == 'pipeline' }}">
+          <i class="fas fa-satellite-dish fa-fw"></i> Pipeline
+        </a>
+      </li>
+      <li>
         <a href="{{ url_for('logs.index') }}" class="{{ 'active' if request.endpoint == 'logs.index' }}">
           <i class="fas fa-scroll fa-fw"></i> Logs
         </a>
