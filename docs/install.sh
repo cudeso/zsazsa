@@ -106,8 +106,17 @@ MISP_WEBAPP_VERIFYCERT = False
 OPENAI_API_KEY = 'sk-your-openai-key-here'
 OPENAI_MODEL = 'gpt-4.1-mini'
 
-# Mattermost (leave empty to disable notifications)
-MATTERMOST_WEBHOOK_URL = ''
+# Notification channels
+NOTIFICATION_CHANNELS = [
+    {
+        'id': 'mattermost-main',
+        'name': 'Mattermost',
+        'type': 'mattermost',
+        'url': '',
+        'enabled': False,
+        'verify_tls': True,
+    },
+]
 
 # Additional MISP servers queried by the data-collection page.
 MISP_SERVERS = []
@@ -138,23 +147,65 @@ PRODUCT_TYPES = [
     'Hunt support',
 ]
 
-# MISP context tags - entity type markers
+# Threat actor types (ENISA taxonomy)
+THREAT_ACTOR_TYPES = [
+    {'name': 'State-Nexus Actors', 'description': 'Also known as Advanced Persistent Threats (APTs) or nation-states, these groups possess massive resources and state-level backing. They primarily engage in cyberespionage, intellectual property theft, and long-term surveillance targeting governments, critical infrastructure, and large organizations.'},
+    {'name': 'Cybercrime & Hacker-for-Hire Actors', 'description': 'These adversaries are motivated by financial gain. They operate as organized syndicates, often utilizing Ransomware-as-a-Service (RaaS) models, extortion, and phishing to steal data and demand payouts.'},
+    {'name': 'Private Sector Offensive Actors (PSOA)', 'description': 'These are commercial enterprises or contractors that legally or semi-legally develop and sell cyber-surveillance tools, exploits, and hacking services (e.g., commercial spyware).'},
+    {'name': 'Hacktivists', 'description': 'These actors are driven by political, social, or ideological goals rather than financial profit. They frequently conduct low-impact, high-visibility disruption campaigns, such as Distributed Denial of Service (DDoS) attacks and website defacements, often targeting public administration and financial sectors.'},
+]
+
+# MISP context tags - entity type markers (stakeholders, requirements, RFIs)
 TAG_STAKEHOLDER = 'zsazsa:type="stakeholder"'
 TAG_PIR         = 'zsazsa:type="pir"'
 TAG_GIR         = 'zsazsa:type="gir"'
 TAG_RFI         = 'zsazsa:type="rfi"'
 
-# MISP context tags - product classification
+# MISP context tags - product classification (serve as both type and product marker)
 TAG_FLASH_INTEL = 'zsazsa:ctiproduct="flash-intel"'
 TAG_VEA         = 'zsazsa:ctiproduct="vea"'
 TAG_BRIEFING    = 'zsazsa:ctiproduct="daily-briefing"'
+TAG_TLR         = 'zsazsa:ctiproduct="threat-landscape-report"'
+TAG_COLLECTION_FOLLOWUP = 'zsazsa:collection="follow-up"'
+
+# Data collection tag display settings
+COLLECTION_TAG_STRIP_PREFIXES = [
+    'misp-galaxy:mitre-attack-pattern=',
+    'misp-galaxy:threat-actor=',
+    'misp-galaxy:sector=',
+    'misp-galaxy:country=',
+    'misp-galaxy:target-information=',
+    'misp-galaxy:malpedia=',
+    'misp-galaxy:mitre-malware=',
+    'misp-galaxy:tool=',
+    'misp-galaxy:microsoft-activity-group=',
+    'misp-galaxy:rat=',
+    'curation:source=',
+    'zsazsa:collection=',
+    'zsazsa:source=',
+    'zsazsa:source-type=',
+]
+COLLECTION_TAG_HIDE_PREFIXES = [
+    'retention',
+]
+
+# Recommended actions shown in flash intel and VEA wizards
+RECOMMENDED_ACTIONS_IMMEDIATE = ['Block identified malicious indicators at perimeter', 'Isolate affected systems if active compromise is suspected', 'Alert SOC and initiate triage', 'Review EDR/SIEM for related alerts', 'Preserve logs and artefacts for forensic analysis']
+RECOMMENDED_ACTIONS_NEAR_TERM = ['Apply vendor patches or available mitigations', 'Update detection rules and signatures', 'Conduct targeted threat hunt', 'Brief affected teams and stakeholders', 'Review and update incident response playbooks']
+
+# Organisation-wide focus points used for AI-assisted briefing and relevance logic.
+FOCUS_POINTS_GEOGRAPHIES = []
+FOCUS_POINTS_SECTORS = []
+FOCUS_POINTS_TECHNOLOGIES = []
+FOCUS_POINTS_THREAT_TYPES = []
+FOCUS_POINTS_THREAT_ACTORS = []
 
 # Analyser
 POLL_WINDOW_HOURS = 24
 SCRAPER_MARKER_TAG = 'zsazsa:source="misp-scraper"'
+MISP_SCRAPER_LIMIT = 500
 
 # Paths
-FOCUS_POINTS_FILE = 'focus_points.json'
 STATE_FILE = 'data/state.json'
 DB_FILE = 'data/analyser.db'
 
