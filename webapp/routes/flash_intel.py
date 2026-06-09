@@ -5,14 +5,15 @@ drafts from the analyser pipeline land in the same review queue.
 """
 
 import logging
+import os
 from types import SimpleNamespace
 
 import config as _cfg
-import os
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for, Response
 
 from webapp import audit, misp_store
+from webapp.utils import md_to_html
 from webapp.routes.source_event_utils import (
     lookup_source_event_meta,
     normalise_source_event_rows,
@@ -304,6 +305,9 @@ def approve(id):
     fia = misp_store.get_fia(id)
     if fia is None:
         return "FIA not found", 404
+    if not (fia.audience or "").strip():
+        flash("A target audience is required before publishing. Edit the alert and select an audience first.", "warning")
+        return redirect(url_for("flash_intel.detail", id=id))
     try:
         sent_ok = _publish_and_notify(id)
         audit.record("publish", "fia", entity_id=id, entity_label=fia.fia_id)
@@ -423,6 +427,8 @@ def pdf(id):
         css_url=css_url,
         source_events=source_events,
         unresolved_source_uuids=unresolved_source_uuids,
+        summary_html=md_to_html(fia.summary or ""),
+        action_required_html=md_to_html(fia.action_required or ""),
     )
     try:
         import weasyprint

@@ -227,6 +227,10 @@ The value in `RequestHeader set X-Forwarded-Prefix` must match the path used in 
 The application reads `X-Forwarded-Prefix` at runtime to construct links and AJAX call paths, and reads `X-Forwarded-Proto` to build correct `https://` URLs in Mattermost notifications and product preview links. When run directly without a proxy, both headers are absent and the application behaves exactly as before.
 
 
+# Blog posts and further reading
+
+[Create a daily threat briefing with zsazsa and MISP](https://www.misp-project.org/2026/06/08/zsazsa-create-a-daily-threat-briefing.html/) on the MISP project website walks through the full workflow for producing a daily threat briefing, from source event triage to publishing.
+
 # Screenshots and features
 
 ## MISP

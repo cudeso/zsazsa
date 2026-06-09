@@ -9,6 +9,11 @@
 </a>
 {% endblock %}
 
+{% macro bullets(items) %}
+  {% if items %}<ul class="mb-0 ps-3">{% for i in items %}<li style="font-size:.82rem;">{{ i }}</li>{% endfor %}</ul>
+  {% else %}<span class="text-muted" style="font-size:.82rem;">none recorded</span>{% endif %}
+{% endmacro %}
+
 {% block content %}
 <div class="card content-card mb-3">
   <div class="card-body py-2">
@@ -49,7 +54,8 @@
       </thead>
       <tbody>
         {% for v in veas %}
-        <tr>
+        {# ── Main row ── #}
+        <tr id="vea-row-{{ v.uuid }}">
           <td>
             <a href="{{ url_for('vea.detail', id=v.uuid) }}" class="text-decoration-none">
               <span class="req-id-badge">{{ v.vea_id }}</span>
@@ -83,39 +89,124 @@
             {% else %}<span class="badge bg-secondary">{{ v.review_state }}</span>{% endif %}
           </td>
           <td class="text-end" style="white-space:nowrap;">
-            <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
-            <div class="btn-group btn-group-sm" role="group" aria-label="VEA navigation actions">
-              <a href="{{ url_for('vea.detail', id=v.uuid) }}" class="btn btn-outline-primary">Open</a>
+            <div class="d-inline-flex align-items-center gap-1 justify-content-end" style="white-space:nowrap;">
+              <div class="btn-group btn-group-sm" role="group" aria-label="VEA quick actions">
+                <button type="button" class="btn btn-outline-secondary preview-toggle-btn"
+                        data-target="vea-preview-{{ v.uuid }}" title="Preview">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <a href="{{ url_for('vea.pdf', id=v.uuid) }}" class="btn btn-outline-secondary" title="Download PDF">
+                  <i class="fas fa-file-pdf"></i>
+                </a>
+              </div>
+              <div class="btn-group btn-group-sm" role="group" aria-label="VEA navigation actions">
+                <a href="{{ url_for('vea.detail', id=v.uuid) }}" class="btn btn-outline-primary">Open</a>
+                {% if v.review_state == 'approved' %}
+                <button type="button" class="btn btn-outline-secondary" disabled title="Approved advisories cannot be edited">Edit</button>
+                {% else %}
+                <a href="{{ url_for('vea.wizard_edit', id=v.uuid) }}" class="btn btn-outline-secondary">Edit</a>
+                {% endif %}
+              </div>
               {% if v.review_state == 'approved' %}
-              <button type="button" class="btn btn-outline-secondary" disabled title="Approved advisories cannot be edited">Edit</button>
+              <form method="post" action="{{ url_for('vea.resend', id=v.uuid) }}" class="d-inline m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-primary" title="Resend to stakeholders">
+                  <i class="fas fa-paper-plane me-1"></i>Resend
+                </button>
+              </form>
+              {% endif %}
+              {% if v.review_state != 'approved' %}
+              <form method="post" action="{{ url_for('vea.delete', id=v.uuid) }}"
+                    class="d-inline m-0"
+                    onsubmit="return confirm('Delete {{ v.vea_id }}?\n\nThis also removes the MISP event and cannot be undone.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete advisory">
+                  <i class="fas fa-trash-can"></i>
+                </button>
+              </form>
               {% else %}
-              <a href="{{ url_for('vea.wizard_edit', id=v.uuid) }}" class="btn btn-outline-secondary">Edit</a>
+              <span title="Approved advisories cannot be deleted" style="cursor:not-allowed;">
+                <button type="button" class="btn btn-sm btn-outline-danger" disabled style="pointer-events:none;">
+                  <i class="fas fa-trash-can"></i>
+                </button>
+              </span>
               {% endif %}
             </div>
-            {% if v.review_state == 'approved' %}
-            <form method="post" action="{{ url_for('vea.resend', id=v.uuid) }}" class="d-inline m-0">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-outline-primary" title="Resend to stakeholders">
-                <i class="fas fa-paper-plane me-1"></i>Resend
-              </button>
-            </form>
-            {% endif %}
-            {% if v.review_state != 'approved' %}
-            <form method="post" action="{{ url_for('vea.delete', id=v.uuid) }}"
-                  class="d-inline m-0"
-                  onsubmit="return confirm('Delete {{ v.vea_id }}?\n\nThis also removes the MISP event and cannot be undone.');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete advisory">
-                <i class="fas fa-trash-can"></i>
-              </button>
-            </form>
-            {% else %}
-            <span title="Approved advisories cannot be deleted" style="cursor:not-allowed;">
-              <button type="button" class="btn btn-sm btn-outline-danger" disabled style="pointer-events:none;">
-                <i class="fas fa-trash-can"></i>
-              </button>
-            </span>
-            {% endif %}
+          </td>
+        </tr>
+
+        {# ── Expandable preview row ── #}
+        <tr id="vea-preview-{{ v.uuid }}" style="display:none;">
+          <td colspan="7" class="p-0">
+            <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:1rem 1.25rem;">
+
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <span class="req-id-badge">{{ v.vea_id }}</span>
+                {% if v.cve_id %}<code class="small">{{ v.cve_id }}</code>{% endif %}
+                <span class="tlp-badge tlp-{{ v.tlp | slug }}">TLP:{{ v.tlp | upper }}</span>
+                {% if v.audience %}<span class="text-muted small">{{ v.audience }}</span>{% endif %}
+                {% if v.cvss %}<span class="badge bg-secondary">{{ v.cvss }}</span>{% endif %}
+                {% if v.cisa_kev == 'Yes' %}<span class="badge bg-danger">CISA KEV</span>{% endif %}
+              </div>
+
+              <div class="row g-3">
+                <div class="col-lg-8">
+
+                  {% if v.summary %}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Summary</div>
+                    <div class="report-md-body" data-md="{{ v.summary | e }}" style="font-size:.88rem;"></div>
+                  </div>
+                  {% endif %}
+
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Affected technology</div>
+                    <ul class="mb-0 ps-3">
+                      {% if v.affected_product %}<li style="font-size:.82rem;"><strong>Product:</strong> {{ v.affected_product }}</li>{% endif %}
+                      {% if v.affected_versions %}<li style="font-size:.82rem;"><strong>Versions:</strong> {{ v.affected_versions }}</li>{% endif %}
+                      {% if v.fixed_version %}<li style="font-size:.82rem;"><strong>Fixed in:</strong> {{ v.fixed_version }}</li>{% endif %}
+                      {% if v.exposure %}<li style="font-size:.82rem;"><strong>Exposure:</strong> {{ v.exposure }}</li>{% endif %}
+                    </ul>
+                  </div>
+
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Exploitation status</div>
+                    <ul class="mb-0 ps-3">
+                      {% if v.observed_exploitation %}<li style="font-size:.82rem;"><strong>Observed:</strong> {{ v.observed_exploitation }}</li>{% endif %}
+                      {% if v.exploit_availability %}<li style="font-size:.82rem;"><strong>Availability:</strong> {{ v.exploit_availability }}</li>{% endif %}
+                      {% if v.exploitation_complexity %}<li style="font-size:.82rem;"><strong>Complexity:</strong> {{ v.exploitation_complexity }}</li>{% endif %}
+                    </ul>
+                  </div>
+
+                  {% if v.immediate_actions %}
+                  <div class="mb-3">
+                    <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Recommended actions</div>
+                    {{ bullets(v.immediate_actions) }}
+                    {% if v.patch_sla_internet or v.patch_sla_internal %}
+                    <p class="mt-2 mb-0" style="font-size:.78rem;color:#64748b;">
+                      {% if v.patch_sla_internet %}Internet-facing SLA: <strong>{{ v.patch_sla_internet }}</strong>{% endif %}
+                      {% if v.patch_sla_internal %} · Internal SLA: <strong>{{ v.patch_sla_internal }}</strong>{% endif %}
+                    </p>
+                    {% endif %}
+                  </div>
+                  {% endif %}
+
+                </div>
+
+                <div class="col-lg-4">
+                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;background:#fff;">
+                    <div class="fw-semibold small mb-2">Risk &amp; severity</div>
+                    {% if v.cvss %}<p class="mb-1"><strong>CVSS:</strong> {{ v.cvss }}</p>{% endif %}
+                    {% if v.cwe %}<p class="mb-1"><strong>CWE:</strong> {{ v.cwe }}</p>{% endif %}
+                    {% if v.worst_case %}<p class="mb-1"><strong>Worst case:</strong> {{ v.worst_case }}</p>{% endif %}
+                    {% if v.most_likely %}<p class="mb-1"><strong>Most likely:</strong> {{ v.most_likely }}</p>{% endif %}
+                    {% if not v.cvss and not v.cwe and not v.worst_case and not v.most_likely %}
+                    <span class="text-muted">No risk data</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+
             </div>
           </td>
         </tr>
@@ -127,4 +218,36 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+
+  document.querySelectorAll('.preview-toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var targetId = btn.getAttribute('data-target');
+      var row = document.getElementById(targetId);
+      if (!row) return;
+      var open = row.style.display !== 'none';
+      row.style.display = open ? 'none' : '';
+      var icon = btn.querySelector('i');
+      if (icon) {
+        icon.className = open ? 'fas fa-eye' : 'fas fa-eye-slash';
+      }
+      if (!open) {
+        row.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+          var raw = el.getAttribute('data-md') || '';
+          el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+          el.removeAttribute('data-md');
+        });
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

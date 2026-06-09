@@ -31,8 +31,15 @@
           {% if fia.published %}<span class="badge bg-primary">published</span>{% endif %}
         </div>
         <h5>Summary</h5>
-        <p>{{ fia.summary or '_No summary._' }}</p>
-        <p><strong>Action required:</strong> {{ fia.action_required or '-' }}</p>
+        {% if fia.summary %}
+        <div class="report-md-body" data-md="{{ fia.summary | e }}"></div>
+        {% else %}
+        <p class="text-muted">No summary.</p>
+        {% endif %}
+        {% if fia.action_required %}
+        <p class="mt-2 mb-1"><strong>Action required:</strong></p>
+        <div class="report-md-body" data-md="{{ fia.action_required | e }}"></div>
+        {% endif %}
         <hr>
         <h5>What happened</h5>
         {{ bullets(fia.what_happened) }}

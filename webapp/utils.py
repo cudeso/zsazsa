@@ -3,7 +3,15 @@
 import ast
 
 from flask import jsonify, request
+from markdown_it import MarkdownIt
 from werkzeug.routing import BuildError
+
+_md = MarkdownIt("commonmark").enable("table")
+
+
+def md_to_html(text: str) -> str:
+    """Render Markdown to HTML for server-side contexts (e.g. PDF generation)."""
+    return _md.render(text or "")
 
 
 def json_body():

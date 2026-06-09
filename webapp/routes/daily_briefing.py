@@ -16,10 +16,9 @@ from pathlib import Path
 import config
 import weasyprint
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
-from markdown_it import MarkdownIt
-
 from webapp import audit, collection_cache, misp_store
 from webapp.collection_cache import AI_SUMMARY_PREFIX
+from webapp.utils import md_to_html
 from webapp.routes.source_event_utils import parse_source_tokens, source_id_from_event_ref
 
 logger = logging.getLogger(__name__)
@@ -392,11 +391,6 @@ _UPLOADS_DIR = Path(__file__).parent.parent.parent / "data" / "uploads"
 
 # weasyprint has no JS engine to run marked.js like the HTML views do, so
 # story content is rendered to HTML server-side before going into the PDF.
-_story_markdown_renderer = MarkdownIt("commonmark").enable("table")
-
-
-def _story_markdown_to_html(text: str) -> str:
-    return _story_markdown_renderer.render(text or "")
 
 
 def _logo_data_uri():
@@ -426,7 +420,7 @@ def pdf(id):
         "logo_uri": _logo_data_uri(),
     }
     for story in briefing.stories:
-        story.html = _story_markdown_to_html(getattr(story, "content", ""))
+        story.html = md_to_html(getattr(story, "content", ""))
     document_html = render_template(
         "daily_briefing/pdf.html",
         briefing=briefing,

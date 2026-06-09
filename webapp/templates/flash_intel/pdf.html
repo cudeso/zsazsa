@@ -41,9 +41,10 @@
 
 <h2>Summary</h2>
 <div class="section-box">
-  <p>{{ fia.summary or '-' }}</p>
-  {% if fia.action_required %}
-  <p><strong>Action required:</strong> {{ fia.action_required }}</p>
+  {% if summary_html %}{{ summary_html | safe }}{% else %}<p class="no-content">None recorded.</p>{% endif %}
+  {% if action_required_html %}
+  <p style="margin-top:4pt;"><strong>Action required:</strong></p>
+  {{ action_required_html | safe }}
   {% endif %}
 </div>
 

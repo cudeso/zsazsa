@@ -1074,6 +1074,7 @@ def bulk_flag():
                 errors += 1
                 continue
             collection_cache.flag_event(uuid)
+            _refresh_cached_event(uuid, source_id, misp, context="bulk_flag")
             audit.record("flag", "misp-event", entity_id=uuid)
             flagged += 1
         except Exception as exc:
@@ -1254,6 +1255,7 @@ def flag_for_review(uuid):
         if currently_flagged:
             misp.untag(uuid, tag)
             collection_cache.unflag_event(uuid)
+            _refresh_cached_event(uuid, source_id, misp, context="unflag")
             audit.record("unflag", "misp-event", entity_id=uuid)
             return jsonify({"ok": True, "flagged": False})
         else:
@@ -1261,6 +1263,7 @@ def flag_for_review(uuid):
             if isinstance(r, dict) and "errors" in r:
                 return jsonify({"ok": False, "error": str(r["errors"])}), 400
             collection_cache.flag_event(uuid)
+            _refresh_cached_event(uuid, source_id, misp, context="flag")
             audit.record("flag", "misp-event", entity_id=uuid)
             return jsonify({"ok": True, "flagged": True})
     except Exception as exc:

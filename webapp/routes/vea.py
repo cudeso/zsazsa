@@ -1,11 +1,12 @@
 """Vulnerability Exploitation Advisory (VEA) routes."""
 
 import logging
+import os
 import re
 from types import SimpleNamespace
 
 import config as _cfg
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 from webapp.routes.source_event_utils import (
     lookup_source_event_meta,
     normalise_source_event_rows,
@@ -15,6 +16,7 @@ from webapp.routes.source_event_utils import (
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d{4,}\b', re.IGNORECASE)
 
 from webapp import audit, collection_cache, misp_store
+from webapp.utils import md_to_html
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("vea", __name__, url_prefix="/products/vea")
@@ -408,6 +410,9 @@ def approve(id):
     vea = misp_store.get_vea(id)
     if vea is None:
         return "VEA not found", 404
+    if not (vea.audience or "").strip():
+        flash("A target audience is required before publishing. Edit the advisory and select an audience first.", "warning")
+        return redirect(url_for("vea.detail", id=id))
     try:
         sent_ok = _publish_and_notify(id)
         audit.record("publish", "vea", entity_id=id, entity_label=vea.vea_id)
@@ -505,3 +510,32 @@ def add_feedback(id):
         logger.warning("add_feedback VEA %s failed: %s", id, exc)
         flash(f"Could not record feedback: {exc}", "warning")
     return redirect(url_for("vea.detail", id=id))
+
+
+@bp.route("/<string:id>/pdf")
+def pdf(id):
+    vea = misp_store.get_vea(id)
+    if vea is None:
+        return "VEA not found", 404
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "vea_pdf.css")
+    css_url = "file://" + os.path.abspath(css_path)
+    html = render_template(
+        "vea/pdf.html",
+        vea=vea,
+        css_url=css_url,
+        external_references=list(vea.references or []),
+        source_event_refs=_source_event_references(vea),
+        summary_html=md_to_html(vea.summary or ""),
+    )
+    try:
+        import weasyprint
+        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    except Exception as exc:
+        logger.warning("pdf: weasyprint failed for VEA %s: %s", id, exc)
+        return f"PDF generation failed: {exc}", 500
+    filename = f"{vea.vea_id}.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

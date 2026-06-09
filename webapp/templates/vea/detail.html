@@ -8,6 +8,9 @@
 <a href="{{ url_for('vea.review') }}" class="btn btn-sm btn-light border shadow-sm">
   <i class="fas fa-arrow-left me-1"></i> Back to list
 </a>
+<a href="{{ url_for('vea.pdf', id=vea.uuid) }}" class="btn btn-sm btn-outline-secondary" title="Download PDF">
+  <i class="fas fa-file-pdf me-1"></i> PDF
+</a>
 {% endblock %}
 
 {% macro bullets(items) %}
@@ -190,11 +193,13 @@
       <div class="card-header"><strong>Review actions</strong></div>
       <div class="card-body">
         <form method="post" action="{{ url_for('vea.approve', id=vea.uuid) }}" class="mb-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-success w-100">
             <i class="fas fa-check me-1"></i> Approve & publish
           </button>
         </form>
         <form method="post" action="{{ url_for('vea.reject', id=vea.uuid) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <textarea name="reason" class="form-control form-control-sm mb-2" rows="2"
                     placeholder="Rejection reason"></textarea>
           <button class="btn btn-outline-danger w-100">

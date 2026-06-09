@@ -484,6 +484,17 @@ def _tag_scraper_event_as_product_source(src_uuid: str, product_label: str,
                     pass
             client.tag(src_uuid, 'workflow:state="ongoing"', local=True)
         client.tag(src_uuid, f'zsazsa:product="{product_label}"', local=True)
+        try:
+            from webapp import collection_cache
+            add_tags = [f'zsazsa:product="{product_label}"']
+            remove_tags = []
+            if current_wf != 'workflow:state="complete"':
+                if current_wf:
+                    remove_tags.append(current_wf)
+                add_tags.append('workflow:state="ongoing"')
+            collection_cache.patch_event_tags(src_uuid, add_tags, remove_tags)
+        except Exception as exc:
+            logger.debug("Could not patch cache for %s: %s", src_uuid, exc)
     except Exception as exc:
         logger.warning("Could not tag source event %s: %s", src_uuid, exc)
 

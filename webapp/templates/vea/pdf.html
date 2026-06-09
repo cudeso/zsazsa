@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ vea.vea_id }}{% if vea.cve_id %} - {{ vea.cve_id }}{% endif %}</title>
+  <link rel="stylesheet" href="{{ css_url }}">
+</head>
+<body>
+
+<span class="vea-id-anchor" style="display:none;">{{ vea.vea_id }}</span>
+<span class="tlp-label-anchor" style="display:none;">TLP:{{ vea.tlp | upper }}</span>
+
+<h1>Vulnerability Exploitation Advisory{% if vea.cve_id %}: {{ vea.cve_id }}{% endif %}</h1>
+{% if vea.title %}<p style="font-size:11pt;color:#334155;margin-bottom:10pt;">{{ vea.title }}</p>{% endif %}
+
+<div class="meta-block">
+  <table>
+    <tr><td>ID:</td><td>{{ vea.vea_id }}</td></tr>
+    <tr><td>Classification:</td>
+        <td><span class="tlp-pill tlp-{{ vea.tlp | slug }}">TLP:{{ vea.tlp | upper }}</span></td></tr>
+    <tr><td>Date:</td><td>{{ vea.created_at.strftime('%Y-%m-%d') if vea.created_at else '-' }}</td></tr>
+    <tr><td>Author:</td><td>{{ vea.author or '-' }}</td></tr>
+    <tr><td>Audience:</td><td>{{ vea.audience or '-' }}</td></tr>
+    {% if vea.cvss %}<tr><td>CVSS:</td><td>{{ vea.cvss }}</td></tr>{% endif %}
+    {% if vea.cwe %}<tr><td>CWE:</td><td>{{ vea.cwe }}</td></tr>{% endif %}
+    {% if vea.cisa_kev == 'Yes' %}<tr><td>CISA KEV:</td><td><span class="kev-badge">Listed</span></td></tr>{% endif %}
+  </table>
+</div>
+
+{% macro bullets(items) %}
+  {% if items %}<ul>{% for i in items %}<li>{{ i }}</li>{% endfor %}</ul>
+  {% else %}<p class="no-content">None recorded.</p>{% endif %}
+{% endmacro %}
+
+<h2>Summary</h2>
+<div class="section-box">
+  {% if summary_html %}{{ summary_html | safe }}{% else %}<p class="no-content">None recorded.</p>{% endif %}
+</div>
+
+{% if vea.affected_product or vea.affected_versions or vea.fixed_version or vea.exposure %}
+<h2>Affected technology</h2>
+<div class="section-box">
+  <table class="detail-table">
+    {% if vea.affected_product %}<tr><th>Product</th><td>{{ vea.affected_product }}</td></tr>{% endif %}
+    {% if vea.affected_versions %}<tr><th>Affected versions</th><td>{{ vea.affected_versions }}</td></tr>{% endif %}
+    {% if vea.fixed_version %}<tr><th>Fixed version</th><td>{{ vea.fixed_version }}</td></tr>{% endif %}
+    {% if vea.exposure %}<tr><th>Our exposure</th><td>{{ vea.exposure }}</td></tr>{% endif %}
+  </table>
+</div>
+{% endif %}
+
+<h2>Exploitation status</h2>
+<div class="section-box">
+  <table class="detail-table">
+    {% if vea.observed_exploitation %}<tr><th>Observed exploitation</th><td>{{ vea.observed_exploitation }}</td></tr>{% endif %}
+    {% if vea.exploit_availability %}<tr><th>Exploit availability</th><td>{{ vea.exploit_availability }}</td></tr>{% endif %}
+    {% if vea.exploitation_complexity %}<tr><th>Exploitation complexity</th><td>{{ vea.exploitation_complexity }}</td></tr>{% endif %}
+    {% if vea.threat_actor_interest %}<tr><th>Threat actor interest</th><td>{{ vea.threat_actor_interest }}</td></tr>{% endif %}
+    <tr><th>CISA KEV listed</th><td>{% if vea.cisa_kev == 'Yes' %}<span class="kev-badge">Yes</span>{% else %}{{ vea.cisa_kev or 'No' }}{% endif %}</td></tr>
+  </table>
+  {% if vea.source_description or vea.source_reliability or vea.information_credibility %}
+  <p class="source-meta">
+    Source: {{ vea.source_description or 'unspecified' }}
+    {% if vea.source_reliability %} · Reliability: {{ vea.source_reliability }}{% endif %}
+    {% if vea.information_credibility %} · Credibility: {{ vea.information_credibility }}{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% if vea.worst_case or vea.most_likely %}
+<h2>Risk assessment</h2>
+<div class="section-box">
+  {% if vea.worst_case %}<p><strong>Worst case:</strong> {{ vea.worst_case }}</p>{% endif %}
+  {% if vea.most_likely %}<p><strong>Most likely:</strong> {{ vea.most_likely }}</p>{% endif %}
+</div>
+{% endif %}
+
+<h2>Recommended actions</h2>
+<div class="section-box">
+  {{ bullets(vea.immediate_actions) }}
+  {% if vea.patch_sla_internet or vea.patch_sla_internal or vea.target_patch_version %}
+  <p style="margin-top:6pt;">
+    {% if vea.patch_sla_internet %}<strong>Internet-facing SLA:</strong> {{ vea.patch_sla_internet }} &nbsp;{% endif %}
+    {% if vea.patch_sla_internal %}<strong>Internal SLA:</strong> {{ vea.patch_sla_internal }} &nbsp;{% endif %}
+    {% if vea.target_patch_version %}<strong>Target version:</strong> {{ vea.target_patch_version }}{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% if vea.exploitation_indicators or vea.detection_rules %}
+<h2>Detection guidance</h2>
+<div class="section-box">
+  {% if vea.exploitation_indicators %}
+  <h3>Exploitation indicators</h3>
+  {{ bullets(vea.exploitation_indicators) }}
+  {% endif %}
+  {% if vea.detection_rules %}
+  <h3>Detection rules</h3>
+  {{ bullets(vea.detection_rules) }}
+  {% endif %}
+</div>
+{% endif %}
+
+{% if external_references or source_event_refs %}
+<h2>References</h2>
+<div class="section-box">
+  <ul>
+    {% for r in external_references %}
+    <li>{{ r }}</li>
+    {% endfor %}
+    {% for ref in source_event_refs %}
+    <li>{{ ref.url }}{% if ref.info %} — {{ ref.info }}{% endif %}{% if ref.date %} ({{ ref.date }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+</body>
+</html>

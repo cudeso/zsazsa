@@ -504,6 +504,35 @@ def get_events_by_uuids(uuids: list) -> list:
         return []
 
 
+def patch_event_tags(uuid: str, add_tags: list, remove_tags: list) -> None:
+    """Patch the tags column for a cached event without a MISP round-trip.
+
+    Used when the caller knows exactly which tags were added or removed (e.g.
+    after tagging a source event as a product source) and wants the queue to
+    reflect the change immediately.
+    """
+    if not add_tags and not remove_tags:
+        return
+    remove_set = set(remove_tags)
+    try:
+        with _db() as conn:
+            rows = conn.execute(
+                "SELECT source_id, tags FROM events WHERE uuid = ?", (uuid,)
+            ).fetchall()
+            for row in rows:
+                tags = json.loads(row["tags"] or "[]")
+                tags = [t for t in tags if t not in remove_set]
+                for t in add_tags:
+                    if t not in tags:
+                        tags.append(t)
+                conn.execute(
+                    "UPDATE events SET tags = ? WHERE uuid = ? AND source_id = ?",
+                    (json.dumps(tags), uuid, row["source_id"]),
+                )
+    except Exception as exc:
+        logger.warning("patch_event_tags failed for %s: %s", uuid, exc)
+
+
 def mark_ai_summary(uuid: str, source_id: str) -> None:
     """Mark a cached event as having an AI-generated summary."""
     try:
