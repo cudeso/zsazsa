@@ -123,6 +123,24 @@ def log_pipeline_run_end(run_id: int, status: str, result: dict | None = None) -
             )
     except sqlite3.Error as e:
         logger.error("DB write failed for pipeline_run_log end: %s", e)
+    _prune_logs()
+
+
+def _prune_logs() -> None:
+    event_days = getattr(config, "EVENT_LOG_RETENTION_DAYS", 90)
+    run_days = getattr(config, "PIPELINE_RUN_LOG_RETENTION_DAYS", 365)
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM event_log WHERE processed_at < datetime('now', ?)",
+                (f"-{event_days} days",),
+            )
+            conn.execute(
+                "DELETE FROM pipeline_run_log WHERE started_at < datetime('now', ?)",
+                (f"-{run_days} days",),
+            )
+    except sqlite3.Error as e:
+        logger.warning("Log pruning failed: %s", e)
 
 
 def get_recent_pipeline_runs(limit: int = 20) -> list[dict]:

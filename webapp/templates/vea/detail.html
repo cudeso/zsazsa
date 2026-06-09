@@ -50,7 +50,7 @@
         </div>
         {% endif %}
         {% if vea.summary %}
-        <p class="mt-2 mb-0" style="font-size:.88rem;">{{ vea.summary }}</p>
+        <div class="report-md-body mt-2" data-md="{{ vea.summary | e }}" style="font-size:.88rem;"></div>
         {% endif %}
       </div>
     </div>
@@ -244,21 +244,34 @@
       </div>
     </div>
 
-    {% if vea.published %}
-    <span title="Published advisories cannot be deleted" style="cursor:not-allowed;">
-      <button class="btn btn-sm btn-outline-danger w-100" disabled style="pointer-events:none;">
-        <i class="fas fa-trash me-1"></i> Delete VEA
-      </button>
-    </span>
-    {% else %}
-    <form method="post" action="{{ url_for('vea.delete', id=vea.uuid) }}"
-          onsubmit="return confirm('Delete {{ vea.vea_id }}?');">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-sm btn-outline-danger w-100">
-        <i class="fas fa-trash me-1"></i> Delete VEA
-      </button>
-    </form>
-    {% endif %}
+    <div class="d-flex gap-2 mb-2">
+      {% if vea.published %}
+      <span title="Published advisories cannot be edited" style="cursor:not-allowed;" class="flex-fill">
+        <button class="btn btn-sm btn-outline-secondary w-100" disabled style="pointer-events:none;">
+          <i class="fas fa-pen me-1"></i> Edit
+        </button>
+      </span>
+      {% else %}
+      <a href="{{ url_for('vea.wizard_edit', id=vea.uuid) }}" class="btn btn-sm btn-outline-secondary flex-fill">
+        <i class="fas fa-pen me-1"></i> Edit
+      </a>
+      {% endif %}
+      {% if vea.published %}
+      <span title="Published advisories cannot be deleted" style="cursor:not-allowed;" class="flex-fill">
+        <button class="btn btn-sm btn-outline-danger w-100" disabled style="pointer-events:none;">
+          <i class="fas fa-trash me-1"></i> Delete VEA
+        </button>
+      </span>
+      {% else %}
+      <form method="post" action="{{ url_for('vea.delete', id=vea.uuid) }}"
+            onsubmit="return confirm('Delete {{ vea.vea_id }}?');" class="flex-fill">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger w-100">
+          <i class="fas fa-trash me-1"></i> Delete VEA
+        </button>
+      </form>
+      {% endif %}
+    </div>
   </div>
 </div>
 

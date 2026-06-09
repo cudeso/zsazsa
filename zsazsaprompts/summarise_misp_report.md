@@ -15,10 +15,12 @@ The output is rendered through a Markdown renderer, so write it as Markdown usin
 **Severity:** one of Critical / High / Medium / Low
 **Urgency:** one of Immediate / This week / Informational
 
-**MISP context** (extract from the article content - always include all three lines):
+**MISP context** (extract from the article content - always include all five lines):
 - **Targeted sector:** <comma-separated sector names from the article, e.g. Finance, Transportation - or "None identified">
 - **Geographic scope:** <comma-separated country or region names from the article, e.g. Iran, United States - or "None identified">
 - **MITRE ATT&CK techniques:** <space-separated T-numbers from the article, e.g. T1190 T1566 - or "None identified">
+- **Threat actor:** <named threat actor, group, or alias from the article, e.g. Lazarus Group, UNC3753 - or "None identified">
+- **Vendor/Technology:** <specific vendor or product name from the article, e.g. Check Point, Apache Log4j - or "None identified">
 
 Quality check: if the report content appears to be entirely non-intelligence content (only navigation elements, marketing copy, or generic boilerplate with no actual threat information), output only this single line:
 QUALITY: insufficient content for analysis

@@ -96,7 +96,11 @@
               </div>
               <div class="btn-group btn-group-sm" role="group" aria-label="FIA navigation actions">
                 <a href="{{ url_for('flash_intel.detail', id=f.uuid) }}" class="btn btn-outline-primary">Open</a>
+                {% if f.review_state == 'approved' %}
+                <button type="button" class="btn btn-outline-secondary" disabled title="Approved alerts cannot be edited">Edit</button>
+                {% else %}
                 <a href="{{ url_for('flash_intel.wizard_edit', id=f.uuid) }}" class="btn btn-outline-secondary">Edit</a>
+                {% endif %}
               </div>
             {% if f.review_state == 'approved' %}
             <form method="post" action="{{ url_for('flash_intel.resend', id=f.uuid) }}" class="d-inline m-0">
@@ -106,7 +110,13 @@
               </button>
             </form>
             {% endif %}
-            {% if f.review_state != 'approved' %}
+            {% if f.review_state == 'approved' %}
+            <span title="Approved alerts cannot be deleted" style="cursor:not-allowed;">
+              <button type="button" class="btn btn-sm btn-outline-danger" disabled style="pointer-events:none;">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </span>
+            {% else %}
             <form method="post" action="{{ url_for('flash_intel.delete', id=f.uuid) }}"
                   class="d-inline m-0"
                   onsubmit="return confirm('Delete {{ f.fia_id }}?\n\nThis also removes the MISP event and cannot be undone.');">

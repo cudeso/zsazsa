@@ -184,7 +184,9 @@
     <div class="card-header"><i class="fas fa-layer-group me-2"></i>Scope elements</div>
     <div class="card-body">
 
-      {% if story_scope_summary %}
+      {% set _ns = namespace(vendor_in_summary=false) %}
+      {% for _label, _ in story_scope_summary %}{% if _label == 'Vendor' %}{% set _ns.vendor_in_summary = true %}{% endif %}{% endfor %}
+      {% if story_scope_summary or briefing_vendor %}
       <p class="text-muted small mb-2">Already gathered from the stories above:</p>
       <div class="mb-3">
         {% for label, ranked in story_scope_summary %}
@@ -195,6 +197,14 @@
           {% endfor %}
         </div>
         {% endfor %}
+        {% if briefing_vendor and not _ns.vendor_in_summary %}
+        <div class="mb-1">
+          <span class="text-muted small me-1">Vendor:</span>
+          {% for value in briefing_vendor %}
+          <span class="badge bg-light text-dark border me-1 mb-1">{{ value }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       <hr>
       {% else %}

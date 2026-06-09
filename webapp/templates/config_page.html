@@ -243,9 +243,23 @@
       <div class="card content-card mb-4">
         <div class="card-header"><i class="fas fa-gears me-2"></i>Analyser</div>
         <div class="card-body">
-          <label class="form-label">Poll window (hours)</label>
-          <input type="number" name="POLL_WINDOW_HOURS" class="form-control" value="{{ cfg.POLL_WINDOW_HOURS }}" min="1" max="168">
-          <div class="form-text">How far back to look for new scraper events on each run.</div>
+          <div class="mb-3">
+            <label class="form-label">Poll window (hours)</label>
+            <input type="number" name="POLL_WINDOW_HOURS" class="form-control" value="{{ cfg.POLL_WINDOW_HOURS }}" min="1" max="168">
+            <div class="form-text">How far back to look for new scraper events on each run.</div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Event log retention (days)</label>
+              <input type="number" name="EVENT_LOG_RETENTION_DAYS" class="form-control" value="{{ cfg.EVENT_LOG_RETENTION_DAYS }}" min="1">
+              <div class="form-text">Recent pipeline activity entries older than this are pruned automatically.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Run log retention (days)</label>
+              <input type="number" name="PIPELINE_RUN_LOG_RETENTION_DAYS" class="form-control" value="{{ cfg.PIPELINE_RUN_LOG_RETENTION_DAYS }}" min="1">
+              <div class="form-text">Analyser run history entries older than this are pruned automatically.</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -330,7 +344,7 @@
         Two prompts have output format dependencies that the application parses back into structured data.
         Changing these headings will cause silent failures.
         <ul class="mb-0 mt-1">
-          <li><code>summarise_misp_report</code>: must output <code>**Targeted sector:**</code>, <code>**Geographic scope:**</code>, and <code>**MITRE ATT&CK techniques:**</code>. The analyser uses these to apply MISP galaxy tags to source events.</li>
+          <li><code>summarise_misp_report</code>: must output <code>**Targeted sector:**</code>, <code>**Geographic scope:**</code>, <code>**MITRE ATT&CK techniques:**</code>, <code>**Threat actor:**</code>, and <code>**Vendor/Technology:**</code>. The analyser uses these to apply MISP galaxy tags to source events and populate briefing story scope fields.</li>
           <li><code>flash_intel_generate</code>: must follow the full section and field structure shown in the template. The "Generate AI draft" feature parses the output line by line to populate FIA form fields.</li>
         </ul>
       </div>

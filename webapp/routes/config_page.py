@@ -154,6 +154,8 @@ def _read() -> dict:
         "POLL_WINDOW_HOURS": _config.POLL_WINDOW_HOURS,
         "SCRAPER_MARKER_TAG": _config.SCRAPER_MARKER_TAG,
         "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+        "EVENT_LOG_RETENTION_DAYS": getattr(_config, "EVENT_LOG_RETENTION_DAYS", 90),
+        "PIPELINE_RUN_LOG_RETENTION_DAYS": getattr(_config, "PIPELINE_RUN_LOG_RETENTION_DAYS", 365),
         "LOG_LEVEL": _config.LOG_LEVEL,
         "HOSTNAME": getattr(_config, "HOSTNAME", "0.0.0.0"),
         "PORT": getattr(_config, "PORT", 5000),
@@ -307,6 +309,8 @@ RECOMMENDED_ACTIONS_NEAR_TERM = {values.get('RECOMMENDED_ACTIONS_NEAR_TERM', [])
 POLL_WINDOW_HOURS = {int(values['POLL_WINDOW_HOURS'])}
 SCRAPER_MARKER_TAG = {values['SCRAPER_MARKER_TAG']!r}
 MISP_SCRAPER_LIMIT = {int(values.get('MISP_SCRAPER_LIMIT') or 500)}
+EVENT_LOG_RETENTION_DAYS = {int(values.get('EVENT_LOG_RETENTION_DAYS') or 90)}
+PIPELINE_RUN_LOG_RETENTION_DAYS = {int(values.get('PIPELINE_RUN_LOG_RETENTION_DAYS') or 365)}
 
 # Paths
 STATE_FILE = {_config.STATE_FILE!r}
@@ -404,6 +408,8 @@ def index():
             "RECOMMENDED_ACTIONS_NEAR_TERM": [l.strip() for l in request.form.get("RECOMMENDED_ACTIONS_NEAR_TERM", "").splitlines() if l.strip()],
             "POLL_WINDOW_HOURS": int(request.form.get("POLL_WINDOW_HOURS", 24) or 24),
             "SCRAPER_MARKER_TAG": request.form.get("SCRAPER_MARKER_TAG", ""),
+            "EVENT_LOG_RETENTION_DAYS": max(1, int(request.form.get("EVENT_LOG_RETENTION_DAYS", 90) or 90)),
+            "PIPELINE_RUN_LOG_RETENTION_DAYS": max(1, int(request.form.get("PIPELINE_RUN_LOG_RETENTION_DAYS", 365) or 365)),
             "LOG_LEVEL": request.form.get("LOG_LEVEL", "INFO"),
             "HOSTNAME": request.form.get("HOSTNAME", "0.0.0.0").strip(),
             "PORT": int(request.form.get("PORT", 5000) or 5000),

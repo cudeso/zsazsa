@@ -75,6 +75,8 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     'very-low': 1, 'low': 2, 'moderate': 3, 'high': 4, 'very-high': 5,
   };
 
+  var _filterStatePersistReady = false;
+
   var state = {
     q: '',
     include: new Set(),
@@ -374,6 +376,33 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   }
   window.zsazsaRefreshCollectionEventRow = refreshEventRowTags;
 
+  function _saveFilterState() {
+    if (!_filterStatePersistReady) return;
+    try {
+      sessionStorage.setItem('zsazsa_filter_state', JSON.stringify({
+        q: state.q,
+        sortCol: state.sortCol,
+        sortDir: state.sortDir,
+        dateFilter: state.dateFilter,
+        aiFilter: state.aiFilter,
+        reportsFilter: state.reportsFilter,
+        reqMatchFilter: state.reqMatchFilter,
+        vulnFilter: state.vulnFilter,
+        flagFilter: state.flagFilter,
+        anyProductFilter: state.anyProductFilter,
+        hideRejected: state.hideRejected,
+        ctiPredicate: state.ctiPredicate,
+        ctiOperator: state.ctiOperator,
+        ctiValue: state.ctiValue,
+        activeSources: Array.from(state.activeSources),
+        include: Array.from(state.include),
+        exclude: Array.from(state.exclude),
+        includeOrgs: Array.from(state.includeOrgs),
+        excludeOrgs: Array.from(state.excludeOrgs),
+      }));
+    } catch(e) {}
+  }
+
   function applyAll() {
     var q = state.q.toLowerCase().trim();
     var visible = 0;
@@ -513,6 +542,8 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       state.anyProductFilter || !!state.ctiPredicate;
     var clearBtn = document.getElementById('clear-filters-btn');
     if (clearBtn) clearBtn.style.display = hasFilter ? '' : 'none';
+
+    _saveFilterState();
 
     /* Update source dropdown button label to indicate active filter */
     var srcDdBtn = document.getElementById('source-dd-btn');
@@ -895,20 +926,6 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   /* ── Load more ── */
   var loadMoreBtn = document.getElementById('load-more-btn');
   if (loadMoreBtn) { loadMoreBtn.addEventListener('click', function() { state.displayLimit += 100; applyAll(); }); }
-
-  /* ── Restore source selection ── */
-  var savedActiveSources = sessionStorage.getItem('zsazsa_active_sources');
-  if (savedActiveSources) {
-    try {
-      var savedSet = new Set(JSON.parse(savedActiveSources));
-      var validSavedSet = new Set(allSourceIds.filter(function(id) { return savedSet.has(id); }));
-      state.activeSources = validSavedSet.size ? validSavedSet : new Set(allSourceIds);
-      document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) {
-        cb.checked = state.activeSources.has(cb.value);
-      });
-      syncAllSourceVisuals();
-    } catch(e) {}
-  }
 
   /* ── CTI eval filter (list page filter controls, not the tagging modal) ── */
   var ctiPredicateFilter = document.getElementById('cti-predicate-filter');
@@ -1606,6 +1623,31 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     updateOrgSummary(); updateOrgCountLabel(); updateOrgPillVisibility();
     applyAll();
   };
+
+  /* ── Restore full filter state on page load ── */
+  (function() {
+    var raw = sessionStorage.getItem('zsazsa_filter_state');
+    if (raw) {
+      try { window.zsazsaRestoreFilterState(JSON.parse(raw)); } catch(e) {}
+    } else {
+      /* Fallback: legacy source-only key */
+      var legacySources = sessionStorage.getItem('zsazsa_active_sources');
+      if (legacySources) {
+        try {
+          var saved = new Set(JSON.parse(legacySources));
+          var valid = new Set(allSourceIds.filter(function(id) { return saved.has(id); }));
+          state.activeSources = valid.size ? valid : new Set(allSourceIds);
+          document.querySelectorAll('#source-cb-container .source-cb').forEach(function(cb) {
+            cb.checked = state.activeSources.has(cb.value);
+          });
+          syncAllSourceVisuals();
+          applyAll();
+        } catch(e) {}
+      }
+    }
+    _filterStatePersistReady = true;
+    _saveFilterState();
+  })();
 
 })();
 

@@ -132,6 +132,21 @@ The installer creates a `venv` in the project root, installs Python dependencies
 
 After installation, edit `config/__init__.py` and set your MISP URL and API key settings. If you want to run zsazsa as a systemd service, use `docs/zsazsa.service.template` as your starting point.
 
+## Upgrading
+
+Go to the installation directory and pull as the web user:
+
+```bash
+cd /var/www/MISP/misp-custom/zsazsa
+sudo -u www-data git pull
+```
+
+Then restart the service to pick up the changes:
+
+```bash
+sudo systemctl restart zsazsa.service
+```
+
 ## Running the application
 
 ```bash

@@ -3546,6 +3546,7 @@ _SCOPE_SUMMARY_FIELDS = [
     ("threat_actors", "Threat actor"),
     ("techniques", "Technique"),
     ("threat_actor_types", "Threat actor type"),
+    ("vendor", "Vendor"),
 ]
 
 
@@ -3777,6 +3778,7 @@ def _write_briefing_story_report(misp, event_uuid, index, story):
         "information_credibility": story.get("information_credibility", ""),
         "cti_evaluation": story.get("cti_evaluation", {}),
         "threat_actor_types": story.get("threat_actor_types", []),
+        "vendor": story.get("vendor", []),
     })
     er.distribution = 0
     _check(misp.add_event_report(event_uuid, er), f"add briefing story {index}")

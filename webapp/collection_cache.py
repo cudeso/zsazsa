@@ -509,7 +509,7 @@ def mark_ai_summary(uuid: str, source_id: str) -> None:
     try:
         with _db() as conn:
             conn.execute(
-                "UPDATE events SET has_ai_summary = 1 WHERE uuid = ? AND source_id = ?",
+                "UPDATE events SET has_ai_summary = 1, report_count = report_count + 1 WHERE uuid = ? AND source_id = ?",
                 (uuid, source_id),
             )
     except Exception as exc:

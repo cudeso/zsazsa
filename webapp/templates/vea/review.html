@@ -86,7 +86,11 @@
             <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
             <div class="btn-group btn-group-sm" role="group" aria-label="VEA navigation actions">
               <a href="{{ url_for('vea.detail', id=v.uuid) }}" class="btn btn-outline-primary">Open</a>
+              {% if v.review_state == 'approved' %}
+              <button type="button" class="btn btn-outline-secondary" disabled title="Approved advisories cannot be edited">Edit</button>
+              {% else %}
               <a href="{{ url_for('vea.wizard_edit', id=v.uuid) }}" class="btn btn-outline-secondary">Edit</a>
+              {% endif %}
             </div>
             {% if v.review_state == 'approved' %}
             <form method="post" action="{{ url_for('vea.resend', id=v.uuid) }}" class="d-inline m-0">

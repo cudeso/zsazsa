@@ -103,12 +103,11 @@
       <div class="card-body p-0">
         {% if recent_runs %}
         <div style="overflow-x:auto;">
-          <table class="table zsazsa-table mb-0">
+          <table class="table table-sm zsazsa-table mb-0" style="font-size:.82rem;">
             <thead>
               <tr>
-                <th>Started</th>
+                <th style="white-space:nowrap;">Started</th>
                 <th>Action</th>
-                <th>Triggered by</th>
                 <th>Status</th>
                 <th>Duration</th>
                 <th>Result</th>
@@ -118,35 +117,60 @@
               {% for run in recent_runs %}
               {% set is_ok = run.status == 'completed' %}
               {% set is_fail = run.status == 'failed' %}
-              <tr>
-                <td class="text-muted small" style="white-space:nowrap;">{{ run.started_at[:16] if run.started_at else '-' }}</td>
+              {% set decisions = run.result.event_decisions if run.result and run.result.event_decisions else [] %}
+              <tr {% if decisions %}style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#run-decisions-{{ loop.index }}" aria-expanded="false"{% endif %}>
+                <td class="text-muted" style="white-space:nowrap;">{{ run.started_at[:16] if run.started_at else '-' }}</td>
                 <td>
                   {% if run.action == 'daily-briefing' %}Daily briefing
                   {% elif run.action == 'flash-intel' %}Flash intel
-                  {% elif run.action == 'vea' %}Vulnerability advisory
+                  {% elif run.action == 'vea' %}VEA
                   {% elif run.action == 'analyser' %}CLI analyser
                   {% else %}{{ run.action }}{% endif %}
+                  {% if run.triggered_by and run.triggered_by != 'dashboard' %}
+                  <span class="text-muted ms-1">({{ run.triggered_by }})</span>
+                  {% endif %}
                 </td>
-                <td><span class="source-tag">{{ run.triggered_by or '-' }}</span></td>
                 <td>
-                  <span class="badge" style="font-size:.7rem;background:{% if is_ok %}#eaf6f1{% elif is_fail %}#fdecea{% else %}#fef5e3{% endif %};color:{% if is_ok %}#1a8a5a{% elif is_fail %}#a93226{% else %}#d68910{% endif %};">
+                  <span class="badge" style="font-size:.68rem;background:{% if is_ok %}#eaf6f1{% elif is_fail %}#fdecea{% else %}#fef5e3{% endif %};color:{% if is_ok %}#1a8a5a{% elif is_fail %}#a93226{% else %}#d68910{% endif %};">
                     {{ run.status }}
                   </span>
                 </td>
-                <td class="text-muted small">
+                <td class="text-muted" style="white-space:nowrap;">
                   {% if run.duration %}{{ run.duration }}
                   {% elif run.status == 'running' %}running…
                   {% else %}-{% endif %}
                 </td>
-                <td class="text-muted small">
+                <td class="text-muted">
                   {% if run.result %}
                     {% if run.result.message %}{{ run.result.message }}
                     {% elif run.result.total_events is defined %}
-                      {{ run.result.total_events }} events: {{ run.result.product_created }} products, {{ run.result.not_relevant }} not relevant, {{ run.result.error }} errors
+                      {{ run.result.total_events }} events · {{ run.result.product_created }} products · {{ run.result.not_relevant }} skipped
                     {% endif %}
+                    {% if decisions %}<span class="text-muted ms-1" style="font-size:.72rem;"><i class="fas fa-chevron-down"></i></span>{% endif %}
                   {% else %}-{% endif %}
                 </td>
               </tr>
+              {% if decisions %}
+              <tr class="collapse" id="run-decisions-{{ loop.index }}">
+                <td colspan="5" class="px-3 py-2" style="background:#f9fafb;">
+                  <table class="table table-sm mb-0" style="font-size:.78rem;">
+                    <thead class="table-light">
+                      <tr><th style="width:45%">Event</th><th style="width:12%">Decision</th><th>Reason</th></tr>
+                    </thead>
+                    <tbody>
+                      {% for d in decisions %}
+                      {% set outcome_color = '#1a8a5a' if d.outcome == 'included' else '#a93226' if d.outcome == 'rejected' else '#d68910' %}
+                      <tr>
+                        <td class="text-muted" style="word-break:break-word;">{{ d.title or d.uuid or '-' }}</td>
+                        <td style="color:{{ outcome_color }};font-weight:600;">{{ d.outcome }}</td>
+                        <td class="text-muted">{{ d.reason or '' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+              {% endif %}
               {% endfor %}
             </tbody>
           </table>
@@ -162,10 +186,10 @@
       <div class="card-body p-0">
         {% if pipeline.recent %}
         <div style="overflow-x:auto;">
-          <table class="table zsazsa-table mb-0">
+          <table class="table table-sm zsazsa-table mb-0" style="font-size:.82rem;">
             <thead>
               <tr>
-                <th>Timestamp</th>
+                <th style="white-space:nowrap;">Timestamp</th>
                 <th>Source</th>
                 <th>Event</th>
                 <th>Outcome</th>
@@ -174,20 +198,20 @@
             <tbody>
               {% for row in pipeline.recent %}
               <tr>
-                <td class="text-muted small" style="white-space:nowrap;">{{ row.processed_at[:16] if row.processed_at else '-' }}</td>
+                <td class="text-muted" style="white-space:nowrap;">{{ row.processed_at[:16] if row.processed_at else '-' }}</td>
                 <td><span class="source-tag">{{ row.source_feed or '-' }}</span></td>
-                <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.event_info or '' }}">
-                  <span class="text-muted small" style="font-family:monospace;font-size:.75rem;">{{ row.event_uuid[:8] if row.event_uuid else '' }}…</span>
-                  {% if row.event_info %}<span class="ms-2" style="font-size:.85rem;">{{ row.event_info | truncate(60) }}</span>{% endif %}
+                <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.event_info or '' }}">
+                  <span class="text-muted" style="font-family:monospace;font-size:.72rem;">{{ row.event_uuid[:8] if row.event_uuid else '' }}…</span>
+                  {% if row.event_info %}<span class="ms-1">{{ row.event_info | truncate(55) }}</span>{% endif %}
                 </td>
-                <td>
+                <td style="white-space:nowrap;">
                   {% if row.outcome %}
                   {% set ok = row.outcome in ('matched', 'processed', 'success', 'product_created') %}
                   {% set err = 'error' in row.outcome %}
-                  <span class="badge" style="font-size:.7rem;background:{% if ok %}#eaf6f1{% elif err %}#fdecea{% else %}#fef5e3{% endif %};color:{% if ok %}#1a8a5a{% elif err %}#a93226{% else %}#d68910{% endif %};">
+                  <span class="badge" style="font-size:.68rem;background:{% if ok %}#eaf6f1{% elif err %}#fdecea{% else %}#fef5e3{% endif %};color:{% if ok %}#1a8a5a{% elif err %}#a93226{% else %}#d68910{% endif %};">
                     {{ row.outcome }}
                   </span>
-                  {% if row.detail %}<span class="text-muted small ms-1" title="{{ row.detail }}"><i class="fas fa-circle-info fa-xs"></i></span>{% endif %}
+                  {% if row.detail %}<span class="text-muted ms-1" title="{{ row.detail }}"><i class="fas fa-circle-info fa-xs"></i></span>{% endif %}
                   {% else %}-{% endif %}
                 </td>
               </tr>
