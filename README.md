@@ -345,3 +345,173 @@ Unofficially, if anyone asks in a meeting, you can pick one of these:
 - Zealous Search and Attribution for Strategic Analysis
 - Zone-focused Scouting and Assessment for Security Assurance
 - Zero-trust Scoring and Adversary Signal Assessment
+
+# Configuration settings
+
+Almost all runtime settings are in `config/__init__.py`, and most of them can be changed from the web interface without editing the file directly. The main settings page is at `/config` and groups settings across eight tabs: **Connections**, **Products**, **System**, **Prompts**, **AI**, **Context elements**, **Notifications** and **Styling**. A few settings, namely the MISP scraper connection, the list of additional **MISP servers**, and the manual **collection sources**, are managed on a separate page at `/config/sources/`, covered in its own section below. Whichever page you save from, the previous version of `config/__init__.py` is copied to `config/__init__.py.backup` first.
+
+## Connections
+
+This tab covers the MISP server zsazsa uses as its own **data store**, configured through `MISP_WEBAPP_URL`, `MISP_WEBAPP_KEY` and `MISP_WEBAPP_VERIFYCERT`. This is the MISP instance holding the stakeholder, PIR, GIR, RFI and product events created by zsazsa itself, and is separate from the scraper MISP described under data collection sources. The tab also holds `OPENAI_API_KEY`, alongside a display of recent OpenAI token usage.
+
+| Setting | Description |
+|---|---|
+| `MISP_WEBAPP_URL` | URL of the MISP server zsazsa uses to store its own program data |
+| `MISP_WEBAPP_KEY` | API key for the webapp MISP server |
+| `MISP_WEBAPP_VERIFYCERT` | Whether to verify the webapp MISP server's TLS certificate |
+| `OPENAI_API_KEY` | API key used for all OpenAI-based AI features |
+
+## Products
+
+The Products tab covers settings how products and requirements are categorised and summarised. `PRODUCT_TYPES` defines the catalogue of CTI product types offered when creating a product. `DAILY_BRIEFING_TITLE_EXCLUSIONS` lists story titles or phrases that the daily briefing analyser should ignore when proposing stories. The five `FOCUS_POINTS_*` lists (geographies, sectors, technologies, threat types and threat actors) define the organisation-wide focus points used when previewing relevance against scraper events and when generating AI summaries. `THREAT_ACTOR_TYPES` is a small table of threat actor type names and descriptions, based on the ENISA taxonomy, used when classifying threat actors in products and requirements.
+
+| Setting | Description |
+|---|---|
+| `PRODUCT_TYPES` | Catalogue of CTI product types offered when creating a product |
+| `DAILY_BRIEFING_TITLE_EXCLUSIONS` | Story titles or phrases the daily briefing analyser should ignore |
+| `FOCUS_POINTS_GEOGRAPHIES` | Organisation-wide geography focus points |
+| `FOCUS_POINTS_SECTORS` | Organisation-wide sector focus points |
+| `FOCUS_POINTS_TECHNOLOGIES` | Organisation-wide technology focus points |
+| `FOCUS_POINTS_THREAT_TYPES` | Organisation-wide threat type focus points |
+| `FOCUS_POINTS_THREAT_ACTORS` | Organisation-wide threat actor focus points |
+| `THREAT_ACTOR_TYPES` | Threat actor type names and descriptions (ENISA taxonomy) |
+
+## System
+
+The System tab is split into three cards. The Analyser card contains `POLL_WINDOW_HOURS` (how far back the analyser looks for new events on each run), `EVENT_LOG_RETENTION_DAYS` (how long rows in the `event_log` table are kept) and `PIPELINE_RUN_LOG_RETENTION_DAYS` (how long pipeline run history is kept). The Logging card sets `LOG_LEVEL`. The Web server card covers `HOSTNAME` and `PORT`, plus `SSL_ENABLED`, `SSL_CERT` and `SSL_KEY` for running the built-in server with TLS. After changing the port or SSL settings, restart the application for the change to take effect; the listener address itself is always `0.0.0.0` regardless of the `HOSTNAME` value, which is kept mainly for reference and for building links.
+
+| Setting | Description |
+|---|---|
+| `POLL_WINDOW_HOURS` | How far back the analyser looks for new events on each run |
+| `EVENT_LOG_RETENTION_DAYS` | How long rows in the `event_log` table are kept |
+| `PIPELINE_RUN_LOG_RETENTION_DAYS` | How long pipeline run history is kept |
+| `LOG_LEVEL` | Logging verbosity |
+| `HOSTNAME` | Hostname or IP shown for reference and used to build links |
+| `PORT` | Port the application listens on |
+| `SSL_ENABLED` | Whether the built-in server uses TLS |
+| `SSL_CERT` | Path to the TLS certificate file |
+| `SSL_KEY` | Path to the TLS private key file |
+
+## Prompts
+
+This tab lists every prompt template file found in `zsazsaprompts/`. New prompt files can also be created from here. Two prompts have a strict output format that the application parses back into structured data:
+
+| Prompt file | Constraint |
+|---|---|
+| `summarise_misp_report` | Must keep its `**Targeted sector:**`, `**Geographic scope:**`, `**MITRE ATT&CK techniques:**`, `**Threat actor:**` and `**Vendor/Technology:**` headings |
+| `flash_intel_generate` | Must keep its overall section and field structure, since the "Generate AI draft" feature reads it line by line |
+
+Changing these headings or structure will cause the corresponding feature to fail silently.
+
+## AI
+
+The AI tab sets `OPENAI_MODEL`, the default model used by any AI-assisted feature that does not specify its own. Below that, a table lists each AI-assisted feature (for example summarising a report or generating a Flash Intel Alert draft) with its provider, an optional per-feature model override, and the prompt file it uses. This feature-level configuration is stored separately, in `core/ai_config.py`, rather than in `config/__init__.py`. Because these features send raw MISP event content to the configured LLM, only connect AI features to MISP servers you trust, and review AI-generated output before publishing it.
+
+| Setting | Description |
+|---|---|
+| `OPENAI_MODEL` | Default OpenAI model used by AI features that don't specify their own |
+| Per-feature model and prompt (`core/ai_config.py`) | Optional model override and prompt file for each AI-assisted feature |
+
+## Context elements
+
+This tab covers the MISP tags and presets for the zsazsa's tags. The entity type markers `TAG_STAKEHOLDER`, `TAG_PIR`, `TAG_GIR` and `TAG_RFI` identify the corresponding zsazsa entities in MISP. The product classification tags `TAG_FLASH_INTEL`, `TAG_VEA`, `TAG_BRIEFING` and `TAG_TLR` mark published products by type. `SCRAPER_MARKER_TAG` is the tag the analyser and the data collection page use to recognise events coming from the misp-scraper instance, and `TAG_COLLECTION_FOLLOWUP` is the tag used to flag collection items for analyst follow-up. `RECOMMENDED_ACTIONS_IMMEDIATE` and `RECOMMENDED_ACTIONS_NEAR_TERM` are organisation-wide presets offered as one-click insert buttons in the Flash Intel and VEA wizards. Finally, `COLLECTION_TAG_STRIP_PREFIXES` and `COLLECTION_TAG_HIDE_PREFIXES` control how tags are shortened or hidden when displaying events on the data collection page.
+
+| Setting | Description |
+|---|---|
+| `TAG_STAKEHOLDER` | Marks stakeholder events |
+| `TAG_PIR` | Marks PIR events |
+| `TAG_GIR` | Marks GIR events |
+| `TAG_RFI` | Marks RFI events |
+| `TAG_FLASH_INTEL` | Marks published Flash Intel Alert products |
+| `TAG_VEA` | Marks published VEA products |
+| `TAG_BRIEFING` | Marks published daily briefing products |
+| `TAG_TLR` | Marks published threat landscape report products |
+| `SCRAPER_MARKER_TAG` | Identifies events coming from the misp-scraper instance |
+| `TAG_COLLECTION_FOLLOWUP` | Flags collection items for analyst follow-up |
+| `RECOMMENDED_ACTIONS_IMMEDIATE` | Preset immediate actions offered as one-click inserts |
+| `RECOMMENDED_ACTIONS_NEAR_TERM` | Preset near-term actions offered as one-click inserts |
+| `COLLECTION_TAG_STRIP_PREFIXES` | Tag prefixes shortened on the data collection page |
+| `COLLECTION_TAG_HIDE_PREFIXES` | Tag prefixes hidden on the data collection page |
+
+## Notifications
+
+The Notifications tab manages `NOTIFICATION_CHANNELS`, a list of named webhook channels (currently Mattermost, with Teams and Email for future use). Stakeholders are subscribed to one or more of these channels under Stakeholder management, so published products and requirement updates reach the right destinations. For backwards compatibility, the legacy `MATTERMOST_ENABLED` and `MATTERMOST_WEBHOOK_URL` settings are derived automatically from the first enabled Mattermost channel and do not need to be set by hand.
+
+| Setting | Description |
+|---|---|
+| `NOTIFICATION_CHANNELS` | Named webhook channels (name, URL, TLS verification, enabled flag) |
+| `MATTERMOST_ENABLED` (legacy) | Derived automatically from the first enabled Mattermost channel |
+| `MATTERMOST_WEBHOOK_URL` (legacy) | Derived automatically from the first enabled Mattermost channel |
+
+## Styling
+
+The Styling tab covers branding used in PDF exports and notifications: `BRAND_COMPANY` and `BRAND_DEPARTMENT` (shown in PDF headers and footers), `BRAND_LOGO` (uploaded here and stored under the application's static files), and the three brand colours `BRAND_COLOR_1`, `BRAND_COLOR_2` and `BRAND_COLOR_3`, used throughout generated PDFs and Mattermost message styling.
+
+| Setting | Description |
+|---|---|
+| `BRAND_COMPANY` | Company name shown in PDF headers and footers |
+| `BRAND_DEPARTMENT` | Department name shown in PDF headers and footers |
+| `BRAND_LOGO` | Logo image used in generated PDFs and notifications |
+| `BRAND_COLOR_1` | Primary brand colour |
+| `BRAND_COLOR_2` | Secondary brand colour |
+| `BRAND_COLOR_3` | Tertiary brand colour |
+
+## Settings not exposed in the interface
+
+A small number of settings are only ever set by editing `config/__init__.py` directly. `SECRET_KEY` is the Flask session secret and should be unique per installation. `STATE_FILE`, `DB_FILE` and `LOG_FILE` are filesystem paths for the analyser state, the SQLite database and the log file respectively. `COLLECTION_SOURCES` is rebuilt automatically from the scraper, the additional MISP servers and the manual collection sources every time the configuration is loaded, so it should not be edited by hand.
+
+| Setting | Description |
+|---|---|
+| `SECRET_KEY` | Flask session secret, should be unique per installation |
+| `STATE_FILE` | Path to the analyser state file |
+| `DB_FILE` | Path to the SQLite database |
+| `LOG_FILE` | Path to the log file |
+| `COLLECTION_SOURCES` | Auto-derived list of collection sources, do not edit by hand |
+
+# Creating data collection sources
+
+The `/config/sources/` page is where every source the analyser and the data collection view can pull from is configured: the misp-scraper connection, any additional MISP servers, and manual collection sources for material that is not collected automatically.
+
+## MISP scraper connection
+
+The "MISP scraper (collection pipeline)" card holds the connection to the misp-scraper instance: its URL, API key, whether to verify TLS, and the maximum number of events to pull per run (`MISP_SCRAPER_LIMIT`). This source is always active and always appears on the Data collection page. The "Test connection" button checks the URL and API key against the MISP server, and "Pull estimate" reports how many events currently match the scraper marker tag, which is itself configured on the Context elements tab of `/config`. The "Show query" link displays the underlying `misp.search()` call for reference.
+
+| Field | Description |
+|---|---|
+| URL | Address of the misp-scraper MISP instance (`MISP_URL`) |
+| API key | API key for the scraper MISP instance (`MISP_KEY`) |
+| Verify TLS | Whether to verify the scraper MISP server's TLS certificate (`MISP_VERIFYCERT`) |
+| Max events | Maximum number of events pulled per run (`MISP_SCRAPER_LIMIT`) |
+
+## Additional MISP servers
+
+The "Other MISP servers" card lists any extra MISP instances configured in `MISP_SERVERS`, such as community MISP servers. Use "Add MISP server" to create a new entry, then fill in a label, an optional ID (used as a URL slug, generated from the label if left blank), the server URL, API key and TLS verification setting. Only published events are fetched from these servers. Filtering is controlled with three tag fields, tags that an event must have any of, tags it must have all of, and tags that exclude it, plus an optional organisation filter that can either restrict results to a set of organisation UUIDs or exclude them. "Events from last (days)" sets how far back to look based on the event date, and "Max events" caps how many events are pulled. As with the scraper, each server can be tested, given a pull estimate, and have its query previewed before saving. Each server is saved individually with its own "Save server" button, can be enabled or disabled with the power icon, and can be deleted. Disabling or deleting a server that is referenced by a PIR or GIR as a collection source will warn you first, since the reference itself is not removed.
+
+| Field | Description |
+|---|---|
+| Label | Display name for the server |
+| ID | URL slug, generated from the label if left blank |
+| URL | Address of the MISP server |
+| API key | API key for the MISP server |
+| Verify TLS | Whether to verify the server's TLS certificate |
+| Tags OR | Fetch events with any of these tags |
+| Tags AND | Fetch events with all of these tags |
+| Tags NOT | Exclude events with any of these tags |
+| Organisation filter | Include only, or exclude, events from the given organisation UUIDs |
+| Events from last (days) | How far back to look, based on the event date |
+| Max events | Maximum number of events pulled per query |
+| Enabled | Whether the server is active and offered as a filter option |
+
+## Manual collection sources
+
+The "Manual sources" card lists collection sources that are not MISP servers, for example a newsletter, a partner portal, or any other feed an analyst monitors by hand. Selecting "Add manual source" opens a form with a name (shown in PIR and GIR collection source dropdowns), an owner (the person or team responsible for monitoring it), a location (a URL, file path or physical location), a description of what the source covers and why it matters, and a source reliability rating on the Admiralty scale.
+
+| Field | Description |
+|---|---|
+| Name | Name shown in PIR and GIR collection source dropdowns |
+| Owner | Person or team responsible for monitoring the source |
+| Location | URL, file path or physical location of the source |
+| Description | What the source covers and why it matters |
+| Source reliability | Admiralty scale rating, applied as an `admiralty-scale:source-reliability` tag |
+
+Each manual source is itself stored as a `zsazsa-collection-source` event in the webapp MISP, and can be edited, enabled or disabled, or deleted from the list. As with additional MISP servers, disabling or deleting a manual source that is referenced by a PIR or GIR will prompt for confirmation first, since the reference itself is not removed.

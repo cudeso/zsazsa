@@ -219,7 +219,7 @@ def _pipeline_status():
         misp = misp_store._scraper_misp()
         pending = misp.search(
             tags=[config.SCRAPER_MARKER_TAG],
-            limit=500, metadata=True, pythonify=True,
+            limit=getattr(config, "MISP_SCRAPER_LIMIT", 500), metadata=True, pythonify=True,
         )
         if pending and not isinstance(pending, dict):
             needed = 'workflow:state="incomplete"'

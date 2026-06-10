@@ -135,12 +135,20 @@
         </div>
       </div>
       <div class="col-md-3">
-        <div class="text-muted small">Pending scraper events</div>
+        <div class="text-muted small">
+          Pending scraper events
+          <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
+             title="Scraper events still tagged workflow:state=&quot;incomplete&quot;, i.e. not yet picked up by the analyser. Counted live from MISP (first 500 matching events)."></i>
+        </div>
         <div class="h5 mb-0">{{ pipeline.pending if pipeline.pending is not none else '-' }}</div>
         <div class="text-muted small">workflow:state="incomplete"</div>
       </div>
       <div class="col-md-3">
-        <div class="text-muted small">Processed (24h)</div>
+        <div class="text-muted small">
+          Processed (24h)
+          <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
+             title="Outcomes logged in the last 24 hours by the scheduled analyser and by manual dashboard actions (daily briefing, flash intel, vuln advisory). Product = a draft was created; skipped = event judged not relevant; errors = HTTP, content or processing errors. An event processed by more than one action is counted once per action."></i>
+        </div>
         <div class="h5 mb-0">{{ pipeline.total_24h }}</div>
         <div class="text-muted small">
           {% set p = pipeline.processed_24h %}
