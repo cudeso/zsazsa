@@ -8,6 +8,8 @@
 # run_webapp.py to bind to 127.0.0.1 instead of 0.0.0.0 so the app
 # is not directly reachable on port 5000 from the network.
 # See the "Production deployment behind Apache" section in README.md.
+#
+# Assume installation in /var/www/MISP/misp-custom/zsazsa
 
 [Unit]
 Description=zsazsa CTI web application
@@ -15,13 +17,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=CHANGE_ME_USER
-Group=CHANGE_ME_GROUP
-WorkingDirectory=/opt/zsazsa
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/MISP/misp-custom/zsazsa
 Environment=PYTHONUNBUFFERED=1
 # SECRET_KEY can also be supplied here instead of in config/__init__.py:
 # Environment=SECRET_KEY=change-me-to-a-long-random-string
-ExecStart=/opt/zsazsa/venv/bin/python /opt/zsazsa/run_webapp.py
+ExecStart=//var/www/MISP/misp-custom/zsazsa/venv/bin/python /var/www/MISP/misp-custom/zsazsa/run_webapp.py
 Restart=on-failure
 RestartSec=5
 
