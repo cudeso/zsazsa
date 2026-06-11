@@ -183,7 +183,7 @@
   <div class="col-sm-6 col-lg-3">
     <a href="{{ url_for('requirements.pir_list') }}" class="text-decoration-none">
     <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: #0078f1;"><i class="fas fa-star"></i></div>
+      <div class="stat-icon" style="--icon-color: var(--accent-blue);"><i class="fas fa-star"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ active_pir_count }} <span style="font-size:1rem;font-weight:400;color:var(--text-muted)">/ {{ pir_count }}</span></div>
         <div class="stat-label">Active / total PIRs</div>
@@ -194,7 +194,7 @@
   <div class="col-sm-6 col-lg-3">
     <a href="{{ url_for('requirements.gir_list') }}" class="text-decoration-none">
     <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: #22a06b;"><i class="fas fa-list-check"></i></div>
+      <div class="stat-icon" style="--icon-color: var(--accent-green);"><i class="fas fa-list-check"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ active_gir_count }} <span style="font-size:1rem;font-weight:400;color:var(--text-muted)">/ {{ gir_count }}</span></div>
         <div class="stat-label">Active / total GIRs</div>
@@ -204,7 +204,7 @@
   </div>
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: #e07c1e;"><i class="fas fa-users"></i></div>
+      <div class="stat-icon" style="--icon-color: var(--accent-orange);"><i class="fas fa-users"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ stakeholder_count }}</div>
         <div class="stat-label">Stakeholders</div>
@@ -213,7 +213,7 @@
   </div>
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: {% if pirs_no_fp > 0 or girs_no_fp > 0 %}#d93025{% else %}#22a06b{% endif %};">
+      <div class="stat-icon" style="--icon-color: {% if pirs_no_fp > 0 or girs_no_fp > 0 %}var(--accent-red){% else %}var(--accent-green){% endif %};">
         <i class="fas fa-crosshairs"></i>
       </div>
       <div class="stat-body">

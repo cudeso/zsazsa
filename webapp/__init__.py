@@ -71,6 +71,7 @@ def create_app():
         return {
             "misp_webapp_url": config.MISP_WEBAPP_URL,
             "brand_company": getattr(config, "BRAND_COMPANY", ""),
+            "ui_theme": getattr(config, "THEME", "default"),
         }
 
     @app.template_filter("slug")

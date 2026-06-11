@@ -31,7 +31,7 @@
           {% endif %}
           {% for t in event.tags %}
             {% if t.startswith('tlp:') %}
-            <span class="badge" style="background:#0078f1;">{{ t | upper }}</span>
+            <span class="badge" style="background:var(--accent-blue);">{{ t | upper }}</span>
             {% elif t.startswith('zsazsa:source=') %}
             <span class="badge text-bg-secondary">{{ t }}</span>
             {% elif t.startswith('zsazsa:source-type=') %}

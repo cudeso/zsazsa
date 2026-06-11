@@ -57,7 +57,7 @@
                 {% if ev.tags %}
                 <div class="mb-2">
                   {% for t in ev.tags %}
-                  <span class="badge me-1" style="background:#eef2f7;color:#455a7a;font-size:.7rem;">{{ t }}</span>
+                  <span class="badge chip-tag-generic me-1" style="font-size:.7rem;">{{ t }}</span>
                   {% endfor %}
                 </div>
                 {% endif %}
@@ -309,7 +309,7 @@
         <div class="mb-3">
           <label class="form-label">Immediate actions</label>
           {% if action_presets %}
-          <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;">
+          <div class="mb-2 p-2 border rounded" style="background:var(--neutral-50);">
             <div class="small text-muted mb-1">Presets (click to append):</div>
             {% for p in action_presets %}
             <button type="button" class="btn btn-xs btn-outline-secondary me-1 mb-1 vea-action-preset-btn"
@@ -372,7 +372,7 @@
         {% if all_ctx_tags %}
         <div class="mb-3">
           <label class="form-label">Context tags <span class="text-muted small fw-normal">select tags from source events to include</span></label>
-          <div class="d-flex flex-wrap gap-2 p-2 border rounded" style="background:#f8f9fa;">
+          <div class="d-flex flex-wrap gap-2 p-2 border rounded" style="background:var(--neutral-50);">
             {% for t in all_ctx_tags %}
             <div class="form-check mb-0">
               <input type="checkbox" name="context_tags" value="{{ t }}" class="form-check-input"
@@ -415,7 +415,7 @@
                 <div class="small text-muted mt-1 vea-uuid-meta" style="line-height:1.45;">
                   <div>
                     <strong>Source:</strong> {{ meta.source_label or 'Unknown MISP source' }}<br>
-                    <strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">{{ meta.info or '(untitled event)' }}</span>
+                    <strong>Title:</strong> <span class="outcome-success" style="padding:.05rem .35rem;border-radius:.35rem;">{{ meta.info or '(untitled event)' }}</span>
                     <strong>Creator org:</strong> {{ meta.orgc or '-' }}
                     <strong>Date:</strong> {{ meta.date or '-' }}
                   </div>
@@ -612,7 +612,7 @@
     var titleText = meta.info || '(untitled event)';
     box.innerHTML = ''
       + '<div><strong>Source:</strong> ' + sourceText + '<br>'
-      + '<strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">' + titleText + '</span> '
+      + '<strong>Title:</strong> <span class="outcome-success" style="padding:.05rem .35rem;border-radius:.35rem;">' + titleText + '</span> '
       + '<strong>Creator org:</strong> ' + (meta.orgc || '-') + ' '
       + '<strong>Date:</strong> ' + (meta.date || '-') + '</div>';
     var serverInput = row.querySelector('.vea-source-server-input');
@@ -774,14 +774,12 @@
 function _renderCvssBadge(cvssVal) {
   var badge = document.getElementById('cvss-badge');
   if (!badge || !cvssVal) return;
-  var colors = {CRITICAL: ['#dc3545','#fff'], HIGH: ['#fd7e14','#fff'], MEDIUM: ['#ffc107','#212529'], LOW: ['#0dcaf0','#212529'], NONE: ['#6c757d','#fff']};
+  var classes = {CRITICAL: 'bg-danger', HIGH: 'cvss-high', MEDIUM: 'bg-warning text-dark', LOW: 'bg-info text-dark', NONE: 'bg-secondary'};
   var upper = cvssVal.toUpperCase();
-  var sev = Object.keys(colors).find(function(k) { return upper.indexOf(k) !== -1; }) || '';
+  var sev = Object.keys(classes).find(function(k) { return upper.indexOf(k) !== -1; }) || '';
   if (sev) {
-    var c = colors[sev];
     badge.textContent = sev;
-    badge.style.background = c[0];
-    badge.style.color = c[1];
+    badge.className = 'badge rounded-pill flex-shrink-0 ' + classes[sev];
     badge.style.display = '';
   } else {
     badge.style.display = 'none';

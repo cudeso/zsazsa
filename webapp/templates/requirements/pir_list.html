@@ -73,18 +73,18 @@
                style="{{ 'cursor:grab' if can_drag else 'cursor:default' }};font-size:.75rem;">
             <div class="fw-semibold d-flex justify-content-between align-items-center">
               <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="text-decoration-none">{{ pir.pir_id }}</a>
-              {% if pir.intake_status == 'submitted' %}<i class="fas fa-inbox fa-xs" style="color:#e07c1e;" title="Triage: submitted"></i>
-              {% elif pir.intake_status == 'acknowledged' %}<i class="fas fa-eye fa-xs" style="color:#0078f1;" title="Triage: acknowledged"></i>
-              {% elif pir.intake_status == 'triaged' %}<i class="fas fa-clipboard-check fa-xs" style="color:#0891b2;" title="Triage: triaged"></i>
-              {% elif pir.intake_status == 'approved' %}<i class="fas fa-check-circle fa-xs" style="color:#1a8a5a;" title="Triage: approved"></i>
-              {% elif pir.intake_status == 'deferred' %}<i class="fas fa-pause-circle fa-xs" style="color:#6c757d;" title="Triage: deferred"></i>
-              {% elif pir.intake_status == 'merged' %}<i class="fas fa-code-branch fa-xs" style="color:#6c757d;" title="Triage: merged"></i>
+              {% if pir.intake_status == 'submitted' %}<i class="fas fa-inbox fa-xs" style="color:var(--accent-orange);" title="Triage: submitted"></i>
+              {% elif pir.intake_status == 'acknowledged' %}<i class="fas fa-eye fa-xs" style="color:var(--accent-blue);" title="Triage: acknowledged"></i>
+              {% elif pir.intake_status == 'triaged' %}<i class="fas fa-clipboard-check fa-xs" style="color:var(--accent-cyan);" title="Triage: triaged"></i>
+              {% elif pir.intake_status == 'approved' %}<i class="fas fa-check-circle fa-xs" style="color:var(--status-active-fg);" title="Triage: approved"></i>
+              {% elif pir.intake_status == 'deferred' %}<i class="fas fa-pause-circle fa-xs" style="color:var(--neutral-600);" title="Triage: deferred"></i>
+              {% elif pir.intake_status == 'merged' %}<i class="fas fa-code-branch fa-xs" style="color:var(--neutral-600);" title="Triage: merged"></i>
               {% endif %}
             </div>
             <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ pir.question }}">{{ pir.question | truncate(30) }}</div>
             {% if pir.intake_status == 'deferred' %}
             <div class="mt-1">
-              <span class="badge" style="font-size:.6rem;background:#6c757d;color:#fff;">deferred</span>
+              <span class="badge" style="font-size:.6rem;background:var(--neutral-600);color:var(--text-on-accent);">deferred</span>
             </div>
             {% endif %}
             {% if not can_drag %}
@@ -117,11 +117,11 @@
                data-id="{{ pir.id }}" style="cursor:default;font-size:.75rem;opacity:.75;">
             <div class="fw-semibold d-flex justify-content-between align-items-center">
               <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="text-decoration-none">{{ pir.pir_id }}</a>
-              <i class="fas fa-ban fa-xs" style="color:#c0392b;" title="Triage: rejected"></i>
+              <i class="fas fa-ban fa-xs" style="color:var(--status-rejected-fg);" title="Triage: rejected"></i>
             </div>
             <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ pir.question }}">{{ pir.question | truncate(30) }}</div>
             <div class="mt-1">
-              <span class="badge" style="font-size:.6rem;background:#dc3545;color:#fff;">rejected</span>
+              <span class="badge" style="font-size:.6rem;background:var(--danger-red);color:var(--text-on-accent);">rejected</span>
             </div>
           </div>
           {% endif %}
@@ -196,19 +196,19 @@
             {% endif %}
             {% endif %}
             {% if pir.intake_status == 'submitted' %}
-            <i class="fas fa-inbox fa-xs ms-1" style="color:#e07c1e;" title="Triage: submitted"></i>
+            <i class="fas fa-inbox fa-xs ms-1" style="color:var(--accent-orange);" title="Triage: submitted"></i>
             {% elif pir.intake_status == 'acknowledged' %}
-            <i class="fas fa-eye fa-xs ms-1" style="color:#0078f1;" title="Triage: acknowledged"></i>
+            <i class="fas fa-eye fa-xs ms-1" style="color:var(--accent-blue);" title="Triage: acknowledged"></i>
             {% elif pir.intake_status == 'triaged' %}
-            <i class="fas fa-clipboard-check fa-xs ms-1" style="color:#0891b2;" title="Triage: triaged"></i>
+            <i class="fas fa-clipboard-check fa-xs ms-1" style="color:var(--accent-cyan);" title="Triage: triaged"></i>
             {% elif pir.intake_status == 'approved' %}
-            <i class="fas fa-check-circle fa-xs ms-1" style="color:#1a8a5a;" title="Triage: approved"></i>
+            <i class="fas fa-check-circle fa-xs ms-1" style="color:var(--status-active-fg);" title="Triage: approved"></i>
             {% elif pir.intake_status == 'rejected' %}
-            <i class="fas fa-ban fa-xs ms-1" style="color:#c0392b;" title="Triage: rejected"></i>
+            <i class="fas fa-ban fa-xs ms-1" style="color:var(--status-rejected-fg);" title="Triage: rejected"></i>
             {% elif pir.intake_status == 'deferred' %}
-            <i class="fas fa-pause-circle fa-xs ms-1" style="color:#6c757d;" title="Triage: deferred"></i>
+            <i class="fas fa-pause-circle fa-xs ms-1" style="color:var(--neutral-600);" title="Triage: deferred"></i>
             {% elif pir.intake_status == 'merged' %}
-            <i class="fas fa-code-branch fa-xs ms-1" style="color:#6c757d;" title="Triage: merged"></i>
+            <i class="fas fa-code-branch fa-xs ms-1" style="color:var(--neutral-600);" title="Triage: merged"></i>
             {% endif %}
           </td>
           <td>
@@ -274,14 +274,14 @@
     col.addEventListener('dragover', function(e) {
       if (!dragging) return;
       e.preventDefault();
-      col.querySelector('.kanban-cards').style.background = '#f0f4ff';
+      col.querySelector('.kanban-cards').classList.add('kanban-dragover');
     });
     col.addEventListener('dragleave', function() {
-      col.querySelector('.kanban-cards').style.background = '';
+      col.querySelector('.kanban-cards').classList.remove('kanban-dragover');
     });
     col.addEventListener('drop', function(e) {
       e.preventDefault();
-      col.querySelector('.kanban-cards').style.background = '';
+      col.querySelector('.kanban-cards').classList.remove('kanban-dragover');
       if (!dragging) return;
       var newStatus = col.dataset.status;
       var url = dragging.dataset.updateUrl;

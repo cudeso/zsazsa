@@ -23,7 +23,7 @@
       </div>
       <div class="card-body">
         <div class="report-md-body" data-md="{{ story.content | e }}"></div>
-        <div class="mt-3 small" style="border-top:1px solid #f0f2f5;padding-top:.6rem;">
+        <div class="mt-3 small" style="border-top:1px solid var(--border-faint);padding-top:.6rem;">
           {% if story.source_url %}
           <div class="text-muted mb-1">
             <strong>Source:</strong>
@@ -253,8 +253,8 @@
         <h6 class="mb-2"><i class="fas fa-circle-check text-success me-1"></i>Will receive <span class="badge bg-success rounded-pill">{{ recipients | length }}</span></h6>
         <div class="d-flex flex-wrap gap-2 mb-2">
           {% for r in recipients %}
-          <span class="badge rounded-pill px-3 py-2"
-                style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-size:.82rem;cursor:default;"
+          <span class="badge rounded-pill delivery-ok px-3 py-2"
+                style="font-size:.82rem;cursor:default;"
                 title="Subscribed to Daily threat briefing">
             {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
           </span>

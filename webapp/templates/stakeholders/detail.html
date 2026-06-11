@@ -65,7 +65,7 @@
           {% set mode = stakeholder.product_modes.get(p) if stakeholder.product_modes else None %}
           <span class="product-tag">
             {{ p }}
-            <span class="badge ms-1" style="background:{{ '#22a06b' if mode == 'automated' else '#888' }};font-weight:500;">
+            <span class="badge ms-1" style="background:{{ 'var(--accent-green)' if mode == 'automated' else 'var(--source-disabled-fg)' }};font-weight:500;">
               {{ mode or 'after-approval' }}
             </span>
           </span>

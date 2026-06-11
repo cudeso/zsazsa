@@ -189,7 +189,7 @@
           {% endif %}
           {% if gir.out_of_scope %}
           <dt>Out of scope</dt>
-          <dd><div class="d-flex flex-wrap gap-1">{% for v in gir.out_of_scope %}<span class="source-tag" style="background:#fdecea;border-color:#f5c6c6;color:#a93226;">{{ v }}</span>{% endfor %}</div></dd>
+          <dd><div class="d-flex flex-wrap gap-1">{% for v in gir.out_of_scope %}<span class="source-tag" style="background:var(--tlp-red-bg);border-color:var(--scope-out-border);color:var(--tlp-red-fg);">{{ v }}</span>{% endfor %}</div></dd>
           {% endif %}
         </dl>
       </div>
@@ -198,12 +198,12 @@
 
     <!-- MITRE ATT&CK techniques -->
     {% if gir.mitre_attack_techniques %}
-    <div class="card content-card mb-4" style="border-color:#c0392b22;">
-      <div class="card-header" style="background:#fdecea;border-bottom-color:#c0392b22;">
-        <span style="color:#7b1a10;font-weight:600;">
+    <div class="card content-card mb-4" style="border-color:var(--mitre-card-border);">
+      <div class="card-header" style="background:var(--tlp-red-bg);border-bottom-color:var(--mitre-card-border);">
+        <span style="color:var(--chip-mitre-fg);font-weight:600;">
           <i class="fas fa-shield-halved me-2"></i>MITRE ATT&amp;CK techniques
         </span>
-        <span class="badge ms-2" style="background:#c0392b;font-size:.65rem;">{{ gir.mitre_attack_techniques | length }}</span>
+        <span class="badge ms-2" style="background:var(--chip-mitre-accent);font-size:.65rem;">{{ gir.mitre_attack_techniques | length }}</span>
       </div>
       <div class="card-body">
         <div class="d-flex flex-wrap gap-2">
@@ -337,8 +337,8 @@
   align-items: center;
   gap: .3rem;
   padding: .25rem .55rem;
-  background: #fdecea;
-  border: 1.5px solid #e8b4b0;
+  background: var(--tlp-red-bg);
+  border: 1.5px solid var(--chip-mitre-border);
   border-radius: .4rem;
   font-size: .78rem;
   line-height: 1.3;
@@ -347,12 +347,12 @@
 .attack-tid {
   font-family: monospace;
   font-weight: 700;
-  color: #c0392b;
+  color: var(--chip-mitre-accent);
   white-space: nowrap;
   flex-shrink: 0;
 }
 .attack-tname {
-  color: #5a1f1f;
+  color: var(--mitre-technique-name-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

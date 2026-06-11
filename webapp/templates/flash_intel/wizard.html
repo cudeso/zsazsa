@@ -33,13 +33,13 @@
             </button>
             <ul class="dropdown-menu dropdown-menu-end p-1" style="min-width:270px;" id="build-ai-menu">
               <li class="px-3 pt-2 pb-1">
-                <span style="font-size:.62rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;">Report source</span>
+                <span style="font-size:.62rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--admiralty-section-fg);">Report source</span>
               </li>
               <li>
                 <a class="dropdown-item rounded-2 py-2 build-ai-option" href="#" data-mode="both">
                   <div class="d-flex align-items-start gap-2">
-                    <span class="build-ai-check" style="width:13px;font-size:.75rem;color:#16a34a;visibility:visible;">&#10003;</span>
-                    <i class="fas fa-layer-group" style="color:#16a34a;margin-top:2px;width:13px;font-size:.8rem;"></i>
+                    <span class="build-ai-check" style="width:13px;font-size:.75rem;color:var(--adm-tlp-green-border);visibility:visible;">&#10003;</span>
+                    <i class="fas fa-layer-group" style="color:var(--adm-tlp-green-border);margin-top:2px;width:13px;font-size:.8rem;"></i>
                     <div>
                       <div style="font-size:.78rem;font-weight:600;">AI summary + raw report</div>
                       <div class="text-muted" style="font-size:.67rem;line-height:1.35;">Uses the AI summary when available, combined with the full article</div>
@@ -51,8 +51,8 @@
               <li>
                 <a class="dropdown-item rounded-2 py-2 build-ai-option" href="#" data-mode="raw_only">
                   <div class="d-flex align-items-start gap-2">
-                    <span class="build-ai-check" style="width:13px;font-size:.75rem;color:#16a34a;visibility:hidden;">&#10003;</span>
-                    <i class="fas fa-file-lines" style="color:#64748b;margin-top:2px;width:13px;font-size:.8rem;"></i>
+                    <span class="build-ai-check" style="width:13px;font-size:.75rem;color:var(--adm-tlp-green-border);visibility:hidden;">&#10003;</span>
+                    <i class="fas fa-file-lines" style="color:var(--admiralty-section-fg);margin-top:2px;width:13px;font-size:.8rem;"></i>
                     <div>
                       <div style="font-size:.78rem;font-weight:600;">Raw report only</div>
                       <div class="text-muted" style="font-size:.67rem;line-height:1.35;">Ignores AI summaries; uses only the original scraped article</div>
@@ -70,9 +70,9 @@
       </div>
       {% if not any_reports %}
       <div class="d-flex align-items-start gap-2 px-3 py-2"
-           style="background:linear-gradient(90deg,#fef3c7,#fffbeb);border-bottom:1px solid #fde68a;">
-        <i class="fas fa-circle-exclamation flex-shrink-0" style="color:#d97706;font-size:1rem;margin-top:2px;"></i>
-        <div style="font-size:.82rem;line-height:1.5;color:#78350f;">
+           style="background:linear-gradient(90deg,var(--ai-warn-grad-1),var(--ai-warn-grad-2));border-bottom:1px solid var(--ai-warn-border);">
+        <i class="fas fa-circle-exclamation flex-shrink-0" style="color:var(--ai-warn-icon);font-size:1rem;margin-top:2px;"></i>
+        <div style="font-size:.82rem;line-height:1.5;color:var(--ai-warn-fg);">
           <strong>No reports available in these events.</strong>
           AI generation requires at least one event with a scraped report attached.
           You can still compose <strong>Observed facts</strong> manually by using the
@@ -101,7 +101,7 @@
                 {% if ev.tags %}
                 <div class="mb-2">
                   {% for t in ev.tags %}
-                  <span class="badge me-1" style="background:#eef2f7;color:#455a7a;font-size:.7rem;">{{ t }}</span>
+                  <span class="badge chip-tag-generic me-1" style="font-size:.7rem;">{{ t }}</span>
                   {% endfor %}
                 </div>
                 {% endif %}
@@ -318,7 +318,7 @@
           <div class="col-md-6">
             <label class="form-label">Immediate (0–24h)</label>
             {% if action_presets_immediate %}
-            <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;">
+            <div class="mb-2 p-2 border rounded" style="background:var(--neutral-50);">
               <div class="small text-muted mb-1">Presets (click to append):</div>
               {% for p in action_presets_immediate %}
               <button type="button" class="btn btn-xs btn-outline-secondary me-1 mb-1 action-preset-btn"
@@ -332,7 +332,7 @@
           <div class="col-md-6">
             <label class="form-label">Near-term (1–7d)</label>
             {% if action_presets_near_term %}
-            <div class="mb-2 p-2 border rounded" style="background:#f8f9fa;">
+            <div class="mb-2 p-2 border rounded" style="background:var(--neutral-50);">
               <div class="small text-muted mb-1">Presets (click to append):</div>
               {% for p in action_presets_near_term %}
               <button type="button" class="btn btn-xs btn-outline-secondary me-1 mb-1 action-preset-btn"
@@ -415,7 +415,7 @@
                 <div class="small text-muted mt-1 uuid-meta" style="line-height:1.45;">
                   <div>
                     <strong>Source:</strong> {{ meta.source_label or 'Unknown MISP source' }}<br>
-                    <strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">{{ meta.info or '(untitled event)' }}</span>
+                    <strong>Title:</strong> <span class="outcome-success" style="padding:.05rem .35rem;border-radius:.35rem;">{{ meta.info or '(untitled event)' }}</span>
                     <strong>Creator org:</strong> {{ meta.orgc or '-' }}
                     <strong>Date:</strong> {{ meta.date or '-' }}
                   </div>
@@ -440,7 +440,7 @@
         {% if all_ctx_tags %}
         <div class="mb-3">
           <label class="form-label">Context tags <span class="text-muted small fw-normal">select tags from source events to include in this alert</span></label>
-          <div class="d-flex flex-wrap gap-2 p-2 border rounded" style="background:#f8f9fa;">
+          <div class="d-flex flex-wrap gap-2 p-2 border rounded" style="background:var(--neutral-50);">
             {% for t in all_ctx_tags %}
             <div class="form-check mb-0">
               <input type="checkbox" name="context_tags" value="{{ t }}" class="form-check-input"
@@ -624,7 +624,7 @@
     var titleText = meta.info || '(untitled event)';
     box.innerHTML = ''
       + '<div><strong>Source:</strong> ' + sourceText + '<br>'
-      + '<strong>Title:</strong> <span style="background:#eaf6f1;color:#1a8a5a;padding:.05rem .35rem;border-radius:.35rem;">' + titleText + '</span> '
+      + '<strong>Title:</strong> <span class="outcome-success" style="padding:.05rem .35rem;border-radius:.35rem;">' + titleText + '</span> '
       + '<strong>Creator org:</strong> ' + (meta.orgc || '-') + ' '
       + '<strong>Date:</strong> ' + (meta.date || '-') + '</div>';
     var serverInput = row.querySelector('.source-server-input');
@@ -1027,28 +1027,6 @@
   padding: .4rem .5rem;
 }
 .fia-scope-row .gms-selected-display { margin-top: .4rem; }
-
-.actor-type-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: .3rem .75rem;
-  border: 1.5px solid #dee2e6;
-  border-radius: .4rem;
-  font-size: .85rem;
-  font-weight: 500;
-  cursor: pointer;
-  background: #fff;
-  color: #6c757d;
-  user-select: none;
-  transition: border-color .12s, background .12s, color .12s;
-}
-.actor-type-pill:hover { border-color: #adb5bd; background: #f8f9fa; color: #495057; }
-.actor-type-pill.selected {
-  border-color: #0078f1;
-  background: #ddeeff;
-  color: #00408a;
-  font-weight: 600;
-}
 </style>
 
 <script>

@@ -79,7 +79,7 @@
             {% if pipeline.by_outcome %}
             <ul class="list-unstyled mb-0">
               {% for row in pipeline.by_outcome %}
-              {% set color = '#22a06b' if row.outcome in ('matched', 'processed', 'success', 'product_created') else '#d93025' if 'error' in (row.outcome or '') else '#e07c1e' %}
+              {% set color = 'var(--accent-green)' if row.outcome in ('matched', 'processed', 'success', 'product_created') else 'var(--accent-red)' if 'error' in (row.outcome or '') else 'var(--accent-orange)' %}
               <li class="px-3 py-2 border-bottom d-flex align-items-center justify-content-between">
                 <span class="d-flex align-items-center gap-2">
                   <span style="width:8px;height:8px;border-radius:50%;background:{{ color }};display:inline-block;flex-shrink:0;"></span>
@@ -131,7 +131,7 @@
                   {% endif %}
                 </td>
                 <td>
-                  <span class="badge" style="font-size:.68rem;background:{% if is_ok %}#eaf6f1{% elif is_fail %}#fdecea{% else %}#fef5e3{% endif %};color:{% if is_ok %}#1a8a5a{% elif is_fail %}#a93226{% else %}#d68910{% endif %};">
+                  <span class="badge {% if is_ok %}outcome-success{% elif is_fail %}outcome-error{% else %}outcome-warning{% endif %}" style="font-size:.68rem;">
                     {{ run.status }}
                   </span>
                 </td>
@@ -152,17 +152,17 @@
               </tr>
               {% if decisions %}
               <tr class="collapse" id="run-decisions-{{ loop.index }}">
-                <td colspan="5" class="px-3 py-2" style="background:#f9fafb;">
+                <td colspan="5" class="px-3 py-2" style="background:var(--surface-muted);">
                   <table class="table table-sm mb-0" style="font-size:.78rem;">
                     <thead class="table-light">
                       <tr><th style="width:45%">Event</th><th style="width:12%">Decision</th><th>Reason</th></tr>
                     </thead>
                     <tbody>
                       {% for d in decisions %}
-                      {% set outcome_color = '#1a8a5a' if d.outcome == 'included' else '#a93226' if d.outcome == 'rejected' else '#d68910' %}
+                      {% set outcome_fg = 'var(--outcome-success-fg)' if d.outcome == 'included' else 'var(--outcome-error-fg)' if d.outcome == 'rejected' else 'var(--outcome-warning-fg)' %}
                       <tr>
                         <td class="text-muted" style="word-break:break-word;">{{ d.title or d.uuid or '-' }}</td>
-                        <td style="color:{{ outcome_color }};font-weight:600;">{{ d.outcome }}</td>
+                        <td style="color:{{ outcome_fg }};font-weight:600;">{{ d.outcome }}</td>
                         <td class="text-muted">{{ d.reason or '' }}</td>
                       </tr>
                       {% endfor %}
@@ -208,7 +208,7 @@
                   {% if row.outcome %}
                   {% set ok = row.outcome in ('matched', 'processed', 'success', 'product_created') %}
                   {% set err = 'error' in row.outcome %}
-                  <span class="badge" style="font-size:.68rem;background:{% if ok %}#eaf6f1{% elif err %}#fdecea{% else %}#fef5e3{% endif %};color:{% if ok %}#1a8a5a{% elif err %}#a93226{% else %}#d68910{% endif %};">
+                  <span class="badge {% if ok %}outcome-success{% elif err %}outcome-error{% else %}outcome-warning{% endif %}" style="font-size:.68rem;">
                     {{ row.outcome }}
                   </span>
                   {% if row.detail %}<span class="text-muted ms-1" title="{{ row.detail }}"><i class="fas fa-circle-info fa-xs"></i></span>{% endif %}
@@ -249,11 +249,11 @@
             <div class="d-flex align-items-center justify-content-between mb-1">
               <span class="fw-semibold" style="font-size:.875rem;">{{ label }}</span>
               {% if conn.ok %}
-              <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;">
+              <span class="badge outcome-success" style="font-size:.7rem;">
                 <i class="fas fa-circle-check me-1"></i>Connected
               </span>
               {% else %}
-              <span class="badge" style="background:#fdecea;color:#a93226;font-size:.7rem;">
+              <span class="badge outcome-error" style="font-size:.7rem;">
                 <i class="fas fa-circle-xmark me-1"></i>Unreachable
               </span>
               {% endif %}
@@ -282,15 +282,15 @@
             <div class="d-flex align-items-center justify-content-between mb-1">
               <span class="fw-semibold" style="font-size:.875rem;">{{ src.label }}</span>
               {% if src.manual %}
-              <span class="badge" style="background:#f0f4ff;color:#0078f1;font-size:.7rem;">
+              <span class="badge outcome-info" style="font-size:.7rem;">
                 <i class="fas fa-hand me-1"></i>Manual
               </span>
               {% elif src.ok %}
-              <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;">
+              <span class="badge outcome-success" style="font-size:.7rem;">
                 <i class="fas fa-circle-check me-1"></i>Online
               </span>
               {% else %}
-              <span class="badge" style="background:#fdecea;color:#a93226;font-size:.7rem;">
+              <span class="badge outcome-error" style="font-size:.7rem;">
                 <i class="fas fa-circle-xmark me-1"></i>Unreachable
               </span>
               {% endif %}

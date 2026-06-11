@@ -171,6 +171,7 @@ def _read() -> dict:
         "BRAND_COLOR_2": getattr(_config, "BRAND_COLOR_2", "#0078f1"),
         "BRAND_COLOR_3": getattr(_config, "BRAND_COLOR_3", "#64748b"),
         "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
+        "THEME": getattr(_config, "THEME", "default"),
     }
 
 
@@ -334,6 +335,9 @@ BRAND_COLOR_1    = {values.get('BRAND_COLOR_1', '#0f2d52')!r}
 BRAND_COLOR_2    = {values.get('BRAND_COLOR_2', '#0078f1')!r}
 BRAND_COLOR_3    = {values.get('BRAND_COLOR_3', '#64748b')!r}
 BRAND_LOGO       = {values.get('BRAND_LOGO', '')!r}
+
+# UI theme: 'default' (zsazsa navy) or 'uibeta' (MISP UiBeta-style light theme)
+THEME = {values.get('THEME', 'default')!r}
 """
     cfg_path = str(_CONFIG_FILE)
     cfg_dir = os.path.dirname(cfg_path)
@@ -348,6 +352,12 @@ BRAND_LOGO       = {values.get('BRAND_LOGO', '')!r}
         except OSError:
             pass
         raise
+
+
+_CONFIG_TABS = (
+    "tab-connections", "tab-products", "tab-system", "tab-prompts",
+    "tab-ai", "tab-context", "tab-notifications", "tab-styling",
+)
 
 
 @bp.route("/config", methods=["GET", "POST"])
@@ -422,7 +432,13 @@ def index():
             "BRAND_COLOR_2": request.form.get("BRAND_COLOR_2", "#0078f1").strip() or "#0078f1",
             "BRAND_COLOR_3": request.form.get("BRAND_COLOR_3", "#64748b").strip() or "#64748b",
             "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
+            "THEME": request.form.get("THEME", "default").strip() or "default",
         }
+        if values["THEME"] not in ("default", "uibeta"):
+            values["THEME"] = "default"
+        active_tab = request.form.get("active_tab", "tab-connections")
+        if active_tab not in _CONFIG_TABS:
+            active_tab = "tab-connections"
         try:
             _write(values)
             importlib.reload(_config)
@@ -432,10 +448,13 @@ def index():
             logger.exception("config save failed")
             audit.record("update", "config", details="save failed")
             flash("Could not save configuration.", "warning")
-        return redirect(url_for("config_page.index"))
+        return redirect(url_for("config_page.index", tab=active_tab))
 
     cfg = _read()
-    return render_template("config_page.html", cfg=cfg)
+    active_tab = request.args.get("tab", "tab-connections")
+    if active_tab not in _CONFIG_TABS:
+        active_tab = "tab-connections"
+    return render_template("config_page.html", cfg=cfg, active_tab=active_tab)
 
 
 @bp.route("/config/sources/save-scraper", methods=["POST"])

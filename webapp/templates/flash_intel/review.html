@@ -65,7 +65,7 @@
             {% if f.audience %}
             <div class="mt-1">
               {% for a in f.audience.split(', ') %}{% if a.strip() %}
-              <span class="badge" style="font-size:.63rem;background:#e8f0fe;color:#1a56a0;border:1px solid #b3c8ed;">{{ a.strip() }}</span>
+              <span class="badge chip-source" style="font-size:.63rem;">{{ a.strip() }}</span>
               {% endif %}{% endfor %}
             </div>
             {% endif %}
@@ -133,7 +133,7 @@
         {# ── Expandable preview row ── #}
         <tr id="fia-preview-{{ f.uuid }}" style="display:none;">
           <td colspan="6" class="p-0">
-            <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:1rem 1.25rem;">
+            <div style="background:var(--surface-muted);border-top:1px solid var(--border-light);padding:1rem 1.25rem;">
 
               {# Header strip #}
               <div class="d-flex align-items-center gap-3 mb-3">
@@ -162,7 +162,7 @@
                   <div class="mb-3">
                     <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">What happened</div>
                     {{ bullets(f.what_happened) }}
-                    <p class="mt-2 mb-0" style="font-size:.78rem;color:#64748b;">
+                    <p class="mt-2 mb-0" style="font-size:.78rem;color:var(--admiralty-section-fg);">
                       Source: {{ f.source_description or 'unspecified' }}
                       {% if f.source_reliability %} · Reliability: <strong>{{ f.source_reliability }}</strong>{% endif %}
                       {% if f.information_credibility %} · Credibility: <strong>{{ f.information_credibility }}</strong>{% endif %}
@@ -221,7 +221,7 @@
 
                 {# Right column: attribution + metadata #}
                 <div class="col-lg-4">
-                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;background:#fff;">
+                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;background:var(--card-bg);">
                     <div class="fw-semibold small mb-2">Attribution &amp; scope</div>
                     {% if f.threat_actors %}
                     <p class="mb-1"><strong>Threat actors:</strong> {{ f.threat_actors | join(', ') }}</p>
@@ -240,7 +240,7 @@
                     {% endif %}
                   </div>
                   {% if f.external_references or f.source_event_uuids %}
-                  <div class="border rounded p-2" style="font-size:.8rem;background:#fff;">
+                  <div class="border rounded p-2" style="font-size:.8rem;background:var(--card-bg);">
                     <div class="fw-semibold small mb-1">References</div>
                     <ul class="mb-0 ps-3">
                       {% for r in f.external_references %}

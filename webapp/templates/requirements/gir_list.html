@@ -168,11 +168,11 @@
     card.addEventListener('dragend', function() { card.style.opacity = ''; dragging = null; });
   });
   document.querySelectorAll('.kanban-col').forEach(function(col) {
-    col.addEventListener('dragover', function(e) { e.preventDefault(); col.querySelector('.kanban-cards').style.background = '#f0f4ff'; });
-    col.addEventListener('dragleave', function() { col.querySelector('.kanban-cards').style.background = ''; });
+    col.addEventListener('dragover', function(e) { e.preventDefault(); col.querySelector('.kanban-cards').classList.add('kanban-dragover'); });
+    col.addEventListener('dragleave', function() { col.querySelector('.kanban-cards').classList.remove('kanban-dragover'); });
     col.addEventListener('drop', function(e) {
       e.preventDefault();
-      col.querySelector('.kanban-cards').style.background = '';
+      col.querySelector('.kanban-cards').classList.remove('kanban-dragover');
       if (!dragging) return;
       var fd = new FormData();
       fd.append('status', col.dataset.status);

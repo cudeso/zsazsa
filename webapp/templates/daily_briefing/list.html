@@ -96,7 +96,7 @@
         {# ── Inline preview row ── #}
         <tr id="briefing-preview-{{ b.uuid }}" style="display:none;">
           <td colspan="7" class="p-0">
-            <div class="px-4 py-3" style="background:#f8fafc;border-top:1px solid #e2e8f0;">
+            <div class="px-4 py-3" style="background:var(--surface-muted);border-top:1px solid var(--border-light);">
               <div class="row g-3">
                 <div class="col-md-9">
                   {% for story in b.stories %}
@@ -104,7 +104,7 @@
                     <div class="fw-semibold small mb-1">
                       <i class="fas fa-newspaper me-1 text-muted"></i>Story {{ loop.index }}: {{ story.title or '(untitled)' }}
                     </div>
-                    <div class="report-md-body" style="font-size:.82rem;color:#374151;" data-md="{{ story.content | e }}"></div>
+                    <div class="report-md-body" style="font-size:.82rem;color:var(--neutral-700);" data-md="{{ story.content | e }}"></div>
                     {% if story.source_url %}
                     <div class="text-muted" style="font-size:.75rem;margin-top:2px;">
                       <a href="{{ story.source_url }}" target="_blank" rel="noopener">{{ story.source_url | truncate(80) }}</a>

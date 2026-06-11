@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ ui_theme }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,6 +12,119 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
+
+{% set stakeholders_section_active = request.blueprint in ('stakeholders', 'community') %}
+{% set requirements_section_active = (request.endpoint and request.endpoint.startswith('requirements.')) or request.blueprint == 'rfi' %}
+{% set products_section_active = request.blueprint in ('data_collection', 'daily_briefing', 'threat_landscape', 'flash_intel', 'vea', 'products') %}
+{% set reporting_section_active = request.blueprint == 'pipeline' or request.endpoint in ('stats.index', 'logs.index') %}
+{% set settings_section_active = request.endpoint == 'config_page.index' or request.blueprint == 'collection_sources' %}
+{% set current_user_email = 'admin@admin.test' %}
+
+<!-- Top navigation (UiBeta theme) -->
+<nav id="topnav" class="navbar navbar-expand-lg">
+  <a href="{{ url_for('dashboard.index') }}" class="topnav-brand">
+    <span class="brand-icon">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+      </svg>
+    </span>
+    <span class="brand-name">zsazsa <span class="brand-sub">CTI</span></span>
+  </a>
+  <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+          data-bs-target="#topnavCollapse" aria-controls="topnavCollapse"
+          aria-expanded="false" aria-label="Toggle navigation">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+  <div class="collapse navbar-collapse" id="topnavCollapse">
+    <ul class="navbar-nav">
+      <li class="nav-item">
+        <a href="{{ url_for('dashboard.index') }}" class="topnav-link {{ 'active' if request.endpoint == 'dashboard.index' }}">
+          <i class="fas fa-gauge-high fa-fw"></i> Dashboard
+        </a>
+      </li>
+
+      <li class="nav-item dropdown">
+        <a href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"
+           class="topnav-link dropdown-toggle {{ 'active' if stakeholders_section_active }}">
+          <i class="fas fa-people-group fa-fw"></i> Stakeholders
+        </a>
+        <ul class="dropdown-menu topnav-dropdown-menu">
+          <li><a href="{{ url_for('stakeholders.list') }}" class="dropdown-item {{ 'active' if request.blueprint == 'stakeholders' }}"><i class="fas fa-people-group fa-fw"></i> Stakeholders</a></li>
+          <li><a href="{{ url_for('community.organisations') }}" class="dropdown-item {{ 'active' if request.endpoint == 'community.organisations' }}"><i class="fas fa-building fa-fw"></i> Organisations</a></li>
+          <li><a href="{{ url_for('community.users') }}" class="dropdown-item {{ 'active' if request.endpoint == 'community.users' }}"><i class="fas fa-user fa-fw"></i> Users</a></li>
+          <li><a href="{{ url_for('community.roles') }}" class="dropdown-item {{ 'active' if request.endpoint == 'community.roles' }}"><i class="fas fa-shield-halved fa-fw"></i> Roles</a></li>
+        </ul>
+      </li>
+
+      <li class="nav-item dropdown">
+        <a href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"
+           class="topnav-link dropdown-toggle {{ 'active' if requirements_section_active }}">
+          <i class="fas fa-clipboard-list fa-fw"></i> Requirements
+        </a>
+        <ul class="dropdown-menu topnav-dropdown-menu">
+          <li><a href="{{ url_for('requirements.pir_list') }}" class="dropdown-item {{ 'active' if request.endpoint and 'pir' in request.endpoint and 'triage' not in request.endpoint }}"><i class="fas fa-star fa-fw"></i> PIRs <span class="sidebar-hint">Priority</span></a></li>
+          <li><a href="{{ url_for('requirements.pir_triage_queue') }}" class="dropdown-item {{ 'active' if request.endpoint and request.endpoint.startswith('requirements.') and 'triage' in request.endpoint }}"><i class="fas fa-gavel fa-fw"></i> PIR Triage <span class="sidebar-hint">Queue</span></a></li>
+          <li><a href="{{ url_for('requirements.gir_list') }}" class="dropdown-item {{ 'active' if request.endpoint and 'gir' in request.endpoint }}"><i class="fas fa-list-check fa-fw"></i> GIRs <span class="sidebar-hint">General</span></a></li>
+          <li><a href="{{ url_for('rfi.rfi_list') }}" class="dropdown-item {{ 'active' if request.blueprint == 'rfi' }}"><i class="fas fa-circle-question fa-fw"></i> RFIs <span class="sidebar-hint">Requests</span></a></li>
+        </ul>
+      </li>
+
+      <li class="nav-item dropdown">
+        <a href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"
+           class="topnav-link dropdown-toggle {{ 'active' if products_section_active }}">
+          <i class="fas fa-boxes-stacked fa-fw"></i> Products
+        </a>
+        <ul class="dropdown-menu topnav-dropdown-menu">
+          <li><a href="{{ url_for('data_collection.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'data_collection' }}"><i class="fas fa-database fa-fw"></i> Data collection</a></li>
+          <li><a href="{{ url_for('daily_briefing.list_briefings') }}" class="dropdown-item {{ 'active' if request.blueprint == 'daily_briefing' }}"><i class="fas fa-newspaper fa-fw"></i> Daily briefing</a></li>
+          <li><a href="{{ url_for('threat_landscape.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'threat_landscape' }}"><i class="fas fa-globe fa-fw"></i> Threat landscape</a></li>
+          <li><a href="{{ url_for('flash_intel.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'flash_intel' }}"><i class="fas fa-bolt fa-fw"></i> Flash intel <span class="sidebar-hint">Review queue</span></a></li>
+          <li><a href="{{ url_for('vea.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'vea' }}"><i class="fas fa-bug fa-fw"></i> Vuln advisories <span class="sidebar-hint">VEA</span></a></li>
+          <li><a href="{{ url_for('products.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'products' }}"><i class="fas fa-cubes fa-fw"></i> All products</a></li>
+        </ul>
+      </li>
+
+      <li class="nav-item dropdown">
+        <a href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"
+           class="topnav-link dropdown-toggle {{ 'active' if reporting_section_active }}">
+          <i class="fas fa-chart-line fa-fw"></i> Reporting
+        </a>
+        <ul class="dropdown-menu topnav-dropdown-menu">
+          <li><a href="{{ url_for('stats.index') }}" class="dropdown-item {{ 'active' if request.endpoint == 'stats.index' }}"><i class="fas fa-chart-bar fa-fw"></i> Statistics</a></li>
+          <li><a href="{{ url_for('pipeline.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'pipeline' }}"><i class="fas fa-satellite-dish fa-fw"></i> Pipeline</a></li>
+          <li><a href="{{ url_for('logs.index') }}" class="dropdown-item {{ 'active' if request.endpoint == 'logs.index' }}"><i class="fas fa-scroll fa-fw"></i> Logs</a></li>
+        </ul>
+      </li>
+
+      <li class="nav-item dropdown">
+        <a href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false"
+           class="topnav-link dropdown-toggle {{ 'active' if settings_section_active }}">
+          <i class="fas fa-sliders fa-fw"></i> Settings
+        </a>
+        <ul class="dropdown-menu topnav-dropdown-menu">
+          <li><a href="{{ url_for('config_page.index') }}" class="dropdown-item {{ 'active' if request.endpoint == 'config_page.index' }}"><i class="fas fa-sliders fa-fw"></i> Configuration</a></li>
+          <li><a href="{{ url_for('collection_sources.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'collection_sources' }}"><i class="fas fa-satellite-dish fa-fw"></i> Collection sources</a></li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="topnav-right">
+    <a class="misp-status-badge" title="Checking MISP connection…"
+       href="{{ self.misp_object_url() }}" target="_blank" rel="noopener">
+      <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" class="misp-status-logo">
+      <span class="misp-status-icon misp-status-checking">
+        <i class="fas fa-circle-notch fa-spin"></i>
+      </span>
+    </a>
+    <button type="button" class="btn btn-xs btn-link p-0 admiralty-ref-btn"
+            data-bs-toggle="modal" data-bs-target="#admiralty-modal"
+            title="Intelligence Reference">
+      <i class="fas fa-star-half-stroke"></i>
+    </button>
+    <span class="topbar-user"><i class="fas fa-circle-user fa-fw"></i> {{ current_user_email }}</span>
+  </div>
+</nav>
 
 <div class="layout-wrapper">
 
@@ -180,25 +293,19 @@
         {% endif %}
       </div>
       <div class="topbar-right">
-        <a id="misp-status-badge" class="misp-status-badge me-1" title="Checking MISP connection…"
+        <a class="misp-status-badge me-3" title="Checking MISP connection…"
            href="{% block misp_object_url %}{{ misp_webapp_url }}{% endblock %}" target="_blank" rel="noopener">
           <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" class="misp-status-logo">
-          <span id="misp-status-icon" class="misp-status-icon misp-status-checking">
+          <span class="misp-status-icon misp-status-checking">
             <i class="fas fa-circle-notch fa-spin"></i>
           </span>
         </a>
-        <button type="button" id="global-refresh-btn" class="btn btn-xs btn-link text-muted me-3 p-0"
-                title="Reload page - re-fetches all data from MISP"
-                style="font-size:.78rem;line-height:1;opacity:.65;"
-                onclick="this.disabled=true;this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i>';window.location.reload();">
-          <i class="fas fa-arrows-rotate"></i>
-        </button>
         <button type="button" class="btn btn-xs btn-link p-0 me-3 admiralty-ref-btn"
                 data-bs-toggle="modal" data-bs-target="#admiralty-modal"
                 title="Intelligence Reference">
           <i class="fas fa-star-half-stroke"></i>
         </button>
-        <span class="topbar-user me-2"><i class="fas fa-circle-user fa-fw"></i> admin@admin.test</span>
+        <span class="topbar-user me-2"><i class="fas fa-circle-user fa-fw"></i> {{ current_user_email }}</span>
         {% block topbar_actions %}{% endblock %}
       </div>
     </div>
@@ -424,11 +531,11 @@
             </p>
             <div class="d-flex align-items-center gap-1 mb-3 flex-wrap">
               <span class="text-muted small me-1">Scale:</span>
-              <span class="badge" style="background:#dc3545;">Very Low</span>
-              <span class="badge" style="background:#fd7e14;">Low</span>
-              <span class="badge text-dark" style="background:#ffc107;">Moderate</span>
-              <span class="badge" style="background:#20c997;">High</span>
-              <span class="badge" style="background:#198754;">Very High</span>
+              <span class="badge cti-eval-legend-very-low">Very Low</span>
+              <span class="badge cti-eval-legend-low">Low</span>
+              <span class="badge text-dark cti-eval-legend-moderate">Moderate</span>
+              <span class="badge cti-eval-legend-high">High</span>
+              <span class="badge cti-eval-legend-very-high">Very High</span>
               <span class="text-muted small ms-2">lower = weaker, higher = stronger</span>
             </div>
             <div class="row g-3">
@@ -436,28 +543,28 @@
                 <div class="admiralty-section-label mb-1"><i class="fas fa-chart-line me-2"></i>Analytical Quality</div>
                 <div class="admiralty-scale-list">
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">overall-score</span>
+                    <span class="adm-code adm-code-eval">overall-score</span>
                     <div class="adm-body">
                       <span class="adm-name">Overall Score</span>
                       <span class="adm-desc">Composite quality rating combining all evaluation dimensions</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">accuracy</span>
+                    <span class="adm-code adm-code-eval">accuracy</span>
                     <div class="adm-body">
                       <span class="adm-name">Accuracy</span>
                       <span class="adm-desc">Factual correctness and absence of errors or misleading claims</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">clarity</span>
+                    <span class="adm-code adm-code-eval">clarity</span>
                     <div class="adm-body">
                       <span class="adm-name">Clarity</span>
                       <span class="adm-desc">Readability, structure, and ease of understanding</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">specificity</span>
+                    <span class="adm-code adm-code-eval">specificity</span>
                     <div class="adm-body">
                       <span class="adm-name">Specificity</span>
                       <span class="adm-desc">Level of technical detail, context, and actionable depth</span>
@@ -467,28 +574,28 @@
                 <div class="admiralty-section-label mt-3 mb-1"><i class="fas fa-bullseye me-2"></i>Operational Value</div>
                 <div class="admiralty-scale-list">
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">relevance</span>
+                    <span class="adm-code adm-code-eval">relevance</span>
                     <div class="adm-body">
                       <span class="adm-name">Relevance</span>
                       <span class="adm-desc">Alignment with your organisation's threat landscape and priorities</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">timeliness</span>
+                    <span class="adm-code adm-code-eval">timeliness</span>
                     <div class="adm-body">
                       <span class="adm-name">Timeliness</span>
                       <span class="adm-desc">Currency and actionability given the current threat timeline</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">usefulness</span>
+                    <span class="adm-code adm-code-eval">usefulness</span>
                     <div class="adm-body">
                       <span class="adm-name">Usefulness</span>
                       <span class="adm-desc">Practical operational value for your team's mission</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">confidence</span>
+                    <span class="adm-code adm-code-eval">confidence</span>
                     <div class="adm-body">
                       <span class="adm-name">Confidence</span>
                       <span class="adm-desc">Overall analytical confidence in the intelligence assessment</span>
@@ -500,28 +607,28 @@
                 <div class="admiralty-section-label mb-1"><i class="fas fa-link me-2"></i>Provenance &amp; Fidelity</div>
                 <div class="admiralty-scale-list">
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">source-reliability</span>
+                    <span class="adm-code adm-code-eval">source-reliability</span>
                     <div class="adm-body">
                       <span class="adm-name">Source Reliability</span>
                       <span class="adm-desc">Trustworthiness and track record of the originating source</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">evidence-strength</span>
+                    <span class="adm-code adm-code-eval">evidence-strength</span>
                     <div class="adm-body">
                       <span class="adm-name">Evidence Strength</span>
                       <span class="adm-desc">Quality and weight of evidence supporting the claims</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">format-validity</span>
+                    <span class="adm-code adm-code-eval">format-validity</span>
                     <div class="adm-body">
                       <span class="adm-name">Format Validity</span>
                       <span class="adm-desc">Structural correctness of the MISP format and data model</span>
                     </div>
                   </div>
                   <div class="adm-row">
-                    <span class="adm-code" style="font-family:monospace;font-size:.65rem;min-width:8rem;letter-spacing:0;">conversion-fidelity</span>
+                    <span class="adm-code adm-code-eval">conversion-fidelity</span>
                     <div class="adm-body">
                       <span class="adm-name">Conversion Fidelity</span>
                       <span class="adm-desc">Accuracy of data transformation or conversion from the original source</span>
@@ -589,28 +696,33 @@
 {% block scripts %}{% endblock %}
 <script>
   (function() {
-    var badge = document.getElementById('misp-status-badge');
-    var icon  = document.getElementById('misp-status-icon');
-    if (!badge || !icon) return;
+    var badges = document.querySelectorAll('.misp-status-badge');
+    if (!badges.length) return;
 
     function update() {
       fetch(SCRIPT_ROOT + '/api/misp-status')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          if (data.ok) {
-            icon.className = 'misp-status-icon misp-status-ok';
-            icon.innerHTML = '<i class="fas fa-circle-check"></i>';
-            badge.title = 'MISP connected: ' + (data.version || data.url || '');
-          } else {
-            icon.className = 'misp-status-icon misp-status-error';
-            icon.innerHTML = '<i class="fas fa-circle-xmark"></i>';
-            badge.title = 'MISP unreachable: ' + (data.error || data.url || '');
-          }
+          badges.forEach(function(badge) {
+            var icon = badge.querySelector('.misp-status-icon');
+            if (data.ok) {
+              icon.className = 'misp-status-icon misp-status-ok';
+              icon.innerHTML = '<i class="fas fa-circle-check"></i>';
+              badge.title = 'MISP connected: ' + (data.version || data.url || '');
+            } else {
+              icon.className = 'misp-status-icon misp-status-error';
+              icon.innerHTML = '<i class="fas fa-circle-xmark"></i>';
+              badge.title = 'MISP unreachable: ' + (data.error || data.url || '');
+            }
+          });
         })
         .catch(function() {
-          icon.className = 'misp-status-icon misp-status-error';
-          icon.innerHTML = '<i class="fas fa-circle-xmark"></i>';
-          badge.title = 'MISP status check failed';
+          badges.forEach(function(badge) {
+            var icon = badge.querySelector('.misp-status-icon');
+            icon.className = 'misp-status-icon misp-status-error';
+            icon.innerHTML = '<i class="fas fa-circle-xmark"></i>';
+            badge.title = 'MISP status check failed';
+          });
         });
     }
 

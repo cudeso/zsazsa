@@ -2,19 +2,19 @@
 
 {% set VALUE_CHIP_CONFIG = {
   'scraper:data-collection-source': {
-    'icon': 'fa-at', 'bg': '#e8f0fe', 'color': '#1a56a0', 'border': '#b3c8ed',
+    'icon': 'fa-at', 'cls': 'chip-source',
     'label': '', 'cloud_hide': false
   },
   'scraper:primary-data-collection-source': {
-    'icon': 'fa-globe', 'bg': '#ede9fe', 'color': '#5b21b6', 'border': '#c4b5fd',
+    'icon': 'fa-globe', 'cls': 'chip-primary-source',
     'label': '', 'cloud_hide': true
   },
   'admiralty-scale:source-reliability': {
-    'icon': 'fa-star-half-stroke', 'bg': '#fdf0d5', 'color': '#7a4800', 'border': '#f0c96e',
+    'icon': 'fa-star-half-stroke', 'cls': 'chip-admiralty-reliability',
     'label': 'Source reliability', 'cloud_hide': false
   },
   'admiralty-scale:information-credibility': {
-    'icon': 'fa-check-double', 'bg': '#fdf0d5', 'color': '#7a4800', 'border': '#f0c96e',
+    'icon': 'fa-check-double', 'cls': 'chip-admiralty-credibility',
     'label': 'Information credibility', 'cloud_hide': false
   },
 } %}
@@ -50,12 +50,12 @@
 }
 .alt4-l1 {
   padding: .4rem 0 .55rem;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--alt4-divider);
   margin-bottom: .4rem;
 }
 .alt4-l2 {
   padding: .35rem 0 .55rem;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--alt4-divider);
   margin-bottom: .5rem;
 }
 
@@ -64,15 +64,15 @@
   display: flex;
   align-items: center;
   gap: .3rem;
-  background: #fff;
-  border: 1.5px solid #d8dde6;
+  background: var(--card-bg);
+  border: 1.5px solid var(--form-border);
   border-radius: 999px;
   padding: .22rem .75rem;
   transition: border-color .15s, box-shadow .15s;
 }
 .alt4-search:focus-within {
-  border-color: #0078f1;
-  box-shadow: 0 0 0 2.5px rgba(0,120,241,.13);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent-blue) 13%, transparent);
 }
 .alt4-search input {
   border: 0;
@@ -83,28 +83,28 @@
   min-width: 160px;
   max-width: 220px;
 }
-.alt4-search .search-icon { font-size: .76rem; color: #9aa5b4; flex-shrink: 0; }
+.alt4-search .search-icon { font-size: .76rem; color: var(--alt4-icon-muted); flex-shrink: 0; }
 
 /* Panel toggle buttons - shared class for open-state CSS */
 .alt4-panel-toggle[aria-expanded="true"] {
-  background: #eef4ff;
-  border-color: #8ab4f8;
-  color: #1a56a0;
+  background: var(--alt4-toggle-active-bg);
+  border-color: var(--alt4-toggle-active-border);
+  color: var(--chip-source-fg);
 }
 .alt4-panel-toggle.has-filter {
-  background: #0078f1;
-  border-color: #0062cc;
-  color: #fff;
+  background: var(--accent-blue);
+  border-color: var(--alt4-blue-dark);
+  color: var(--text-on-accent);
 }
 .alt4-panel-toggle.has-filter[aria-expanded="true"] {
-  background: #0062cc;
-  border-color: #004fa3;
+  background: var(--alt4-blue-dark);
+  border-color: var(--alt4-blue-darker);
 }
 
 /* Collapsible filter panels */
 .alt4-panel {
-  background: #f8f9fc;
-  border: 1px solid #e4e8f0;
+  background: var(--alt4-panel-bg);
+  border: 1px solid var(--alt4-panel-border);
   border-radius: .45rem;
   padding: .7rem 1rem .65rem;
   margin-bottom: .4rem;
@@ -114,7 +114,7 @@
   font-weight: 700;
   letter-spacing: .07em;
   text-transform: uppercase;
-  color: #6c757d;
+  color: var(--neutral-600);
   margin-bottom: .45rem;
   display: flex;
   align-items: center;
@@ -130,11 +130,11 @@
 /* Hide-rejected toggle */
 /* Hide-rejected toggle: uses action-pill for sizing, only overrides state colours */
 .hide-rej-btn.is-hiding {
-  background: #edf0f5;
-  border-color: #b8c0cc;
-  color: #48515f;
+  background: var(--alt4-hide-rej-bg);
+  border-color: var(--alt4-hide-rej-border);
+  color: var(--alt4-hide-rej-fg);
 }
-.hide-rej-btn.is-hiding:hover { background: #e2e6ea; border-color: #9aa4b0; }
+.hide-rej-btn.is-hiding:hover { background: var(--alt4-hide-rej-hover-bg); border-color: var(--alt4-hide-rej-hover-border); }
 .hide-rej-btn.is-showing {
   /* neutral: inherits action-pill defaults */
   border-style: dashed;
@@ -146,10 +146,10 @@
   align-items: center;
   gap: .35rem;
   padding: .28rem .55rem;
-  border: 1px solid #d5dbe3;
+  border: 1px solid var(--alt4-preset-border);
   border-radius: .4rem;
-  background: #f1f3f5;
-  color: #334155;
+  background: var(--neutral-100);
+  color: var(--alt4-preset-fg);
   font-size: .72rem;
   line-height: 1;
   max-width: 320px;
@@ -161,9 +161,9 @@
   max-width: 220px;
 }
 .preset-active-indicator.modified {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: #9a3412;
+  background: var(--vuln-advisory-bg);
+  border-color: var(--vuln-advisory-border);
+  color: var(--vuln-advisory-fg);
 }
 .preset-clear-btn {
   border: 0;
@@ -190,23 +190,23 @@
   justify-content: center;
   width: 1.4rem;
   height: 1.4rem;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--neutral-300);
   border-radius: .3rem;
-  background: #fff;
-  color: #9aa5b4;
+  background: var(--card-bg);
+  color: var(--alt4-icon-muted);
   cursor: pointer;
   font-size: .6rem;
   transition: border-color .12s, background .12s, color .12s;
   padding: 0;
 }
-.scope-btn:hover { border-color: #0078f1; background: #eef6ff; color: #0078f1; }
-.scope-btn.active { border-color: #0078f1; background: #ddeeff; color: #00408a; }
+.scope-btn:hover { border-color: var(--accent-blue); background: var(--source-toggle-hover-bg); color: var(--accent-blue); }
+.scope-btn.active { border-color: var(--accent-blue); background: var(--source-toggle-on-bg); color: var(--pill-active-fg); }
 
 /* Scope panel (inserted as a table row below the event) */
 .scope-panel-row > td { padding: 0 !important; border-top: 0 !important; }
 .scope-panel-container {
-  background: #f8f9fc;
-  border-top: 2px solid #0078f1;
+  background: var(--alt4-panel-bg);
+  border-top: 2px solid var(--accent-blue);
   padding: .65rem .75rem;
 }
 .scope-panel-header {
@@ -220,14 +220,14 @@
   font-weight: 700;
   letter-spacing: .05em;
   text-transform: uppercase;
-  color: #0078f1;
+  color: var(--accent-blue);
 }
 .scope-panel-search {
   flex: 1;
   max-width: 220px;
   font-size: .78rem;
   padding: .2rem .5rem;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--neutral-300);
   border-radius: .3rem;
 }
 .scope-selected-chips {
@@ -243,9 +243,9 @@
   gap: .25rem;
   padding: .15rem .45rem;
   border-radius: 999px;
-  background: #ddeeff;
-  color: #00408a;
-  border: 1px solid #93c5fd;
+  background: var(--source-toggle-on-bg);
+  color: var(--pill-active-fg);
+  border: 1px solid var(--alt4-scope-chip-border);
   font-size: .68rem;
   font-weight: 500;
 }
@@ -270,11 +270,11 @@
   font-size: .72rem;
   cursor: pointer;
   border-radius: .25rem;
-  color: #495057;
+  color: var(--neutral-700);
   white-space: nowrap;
   user-select: none;
 }
-.scope-item:hover { background: #e9ecef; }
+.scope-item:hover { background: var(--neutral-200); }
 .scope-item input { cursor: pointer; margin: 0; }
 .scope-item.hidden { display: none; }
 .scope-custom-add {
@@ -292,8 +292,8 @@
 /* CTI Evaluation inline panel */
 .cti-eval-panel-row > td { padding: 0 !important; border-top: 0 !important; }
 .cti-eval-panel-container {
-  background: #f8f9fc;
-  border-top: 2px solid #0078f1;
+  background: var(--alt4-panel-bg);
+  border-top: 2px solid var(--accent-blue);
   padding: .65rem .75rem .75rem;
 }
 .cti-eval-panel-header {
@@ -307,11 +307,11 @@
   font-weight: 700;
   letter-spacing: .05em;
   text-transform: uppercase;
-  color: #0078f1;
+  color: var(--accent-blue);
 }
 .cti-eval-panel-event-name {
   font-size: .75rem;
-  color: #6b7e99;
+  color: var(--text-muted);
   flex: 1;
   min-width: 0;
 }
@@ -320,12 +320,12 @@
   border: none;
   font-size: 1rem;
   line-height: 1;
-  color: #9aa5b4;
+  color: var(--alt4-icon-muted);
   cursor: pointer;
   padding: 0 .15rem;
   flex-shrink: 0;
 }
-.cti-eval-panel-close:hover { color: #0d1829; }
+.cti-eval-panel-close:hover { color: var(--text-primary); }
 .cti-eval-predicates {
   display: flex;
   flex-wrap: wrap;
@@ -365,7 +365,7 @@
   align-items: center;
   gap: .35rem;
   padding: .3rem 0 .55rem;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--alt4-divider);
   margin-bottom: .5rem;
 }
 .action-pill {
@@ -373,11 +373,11 @@
   align-items: center;
   gap: .3rem;
   padding: .26rem .6rem;
-  border: 1.5px solid #dee2e6;
+  border: 1.5px solid var(--neutral-300);
   border-radius: .4rem;
-  background: #fff;
+  background: var(--card-bg);
   font-size: .78rem;
-  color: #6c757d;
+  color: var(--neutral-600);
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
@@ -386,9 +386,9 @@
   vertical-align: middle;
 }
 .action-pill:hover {
-  border-color: #adb5bd;
-  background: #f8f9fa;
-  color: #495057;
+  border-color: var(--neutral-500);
+  background: var(--neutral-50);
+  color: var(--neutral-700);
   text-decoration: none;
 }
 .action-pill:disabled, .action-pill.disabled {
@@ -397,30 +397,30 @@
   pointer-events: none;
 }
 .action-pill-danger {
-  border-color: #f5c2c7;
-  color: #842029;
-  background: #fff5f7;
+  border-color: var(--alt4-danger-border);
+  color: var(--alt4-danger-fg);
+  background: var(--alt4-danger-bg);
 }
 .action-pill-danger:hover {
-  border-color: #dc3545;
-  background: #f8d7da;
-  color: #58151c;
+  border-color: var(--danger-red);
+  background: var(--tag-exclude-bg);
+  color: var(--tag-exclude-fg);
 }
 .action-pill-refresh-meta {
   font-size: .7rem;
-  color: #9aa5b4;
+  color: var(--alt4-icon-muted);
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, monospace;
 }
 .action-pill-preview-active {
-  border-color: #0078f1;
-  background: #e8f0fe;
-  color: #1a56a0;
+  border-color: var(--accent-blue);
+  background: var(--chip-source-bg);
+  color: var(--chip-source-fg);
 }
 .action-pill-preview-active:hover {
-  border-color: #0062cc;
-  background: #d0e3fd;
-  color: #0d3d7a;
+  border-color: var(--alt4-blue-dark);
+  background: var(--alt4-preview-active-hover-bg);
+  color: var(--alt4-preview-active-hover-fg);
 }
 .exclusion-actions {
   display: inline-flex;
@@ -466,7 +466,7 @@
           data-bs-toggle="collapse" data-bs-target="#alt4-tags-panel" aria-expanded="false">
     <i class="fas fa-tags me-1"></i>Tags
     <span class="badge ms-1 d-none" id="tags-active-badge"
-          style="font-size:.58rem;padding:.15em .4em;background:rgba(0,0,0,.15);">0</span>
+          style="font-size:.58rem;padding:.15em .4em;background:var(--overlay-black-15);">0</span>
   </button>
 
   <!-- Org (collapse toggle) -->
@@ -474,7 +474,7 @@
           data-bs-toggle="collapse" data-bs-target="#alt4-org-panel" aria-expanded="false">
     <i class="fas fa-building me-1"></i>Org
     <span class="badge ms-1 d-none" id="org-active-badge"
-          style="font-size:.58rem;padding:.15em .4em;background:rgba(0,0,0,.15);">0</span>
+          style="font-size:.58rem;padding:.15em .4em;background:var(--overlay-black-15);">0</span>
   </button>
 
   <!-- More: event properties (collapse toggle) -->
@@ -493,7 +493,7 @@
   <div class="ms-auto d-flex align-items-center gap-2">
     <span class="text-muted small" style="font-variant-numeric:tabular-nums;white-space:nowrap;">
       <span id="visible-count">{{ events | length }}</span>
-      <span id="total-count-note" style="font-size:.85em;color:#adb5bd;"></span>
+      <span id="total-count-note" style="font-size:.85em;color:var(--neutral-500);"></span>
       events
     </span>
     <button class="btn btn-xs btn-link text-danger p-0" id="clear-filters-btn"
@@ -519,8 +519,8 @@
       </span>
       <span class="d-flex flex-column" style="line-height:1.2;">
         <span class="source-toggle-label">{{ s.label }}</span>
-        {% if s.kind == 'misp' %}<span style="font-size:.6rem;font-weight:400;color:#6c757d;">last {{ s.since_days }}d</span>
-        {% elif s.kind == 'manual' %}<span style="font-size:.6rem;font-weight:400;color:#6c757d;">manual</span>{% endif %}
+        {% if s.kind == 'misp' %}<span style="font-size:.6rem;font-weight:400;color:var(--neutral-600);">last {{ s.since_days }}d</span>
+        {% elif s.kind == 'manual' %}<span style="font-size:.6rem;font-weight:400;color:var(--neutral-600);">manual</span>{% endif %}
       </span>
       {% if has_err %}
         <span class="source-toggle-badge text-bg-danger"><i class="fas fa-triangle-exclamation"></i></span>
@@ -576,7 +576,7 @@
          data-last-fetch="{{ cache_last_fetch_ts or '' }}"
          class="action-pill-refresh-meta"></small>
   <i class="fas fa-circle-info" id="refresh-info" role="button" tabindex="0"
-     style="font-size:.75rem;color:#c0c9d6;cursor:help;"
+     style="font-size:.75rem;color:var(--alt4-info-icon);cursor:help;"
      data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="bottom" data-bs-html="true"
      data-bs-title="How cache refresh works"
      data-bs-content="The cache is refreshed automatically every <strong>{{ (cache_interval_s // 60) }} minutes</strong> by a background worker that polls every configured source. Clicking <strong>Refresh cache</strong> wakes the worker early without changing the schedule."></i>
@@ -649,7 +649,7 @@
 
     <!-- Quick filters: used in products -->
     <div class="mb-1 d-flex align-items-center flex-wrap gap-1">
-      <span class="text-muted me-1" style="font-size:.7rem;white-space:nowrap;font-weight:600;color:#7c3aed;">Used in:</span>
+      <span class="text-muted me-1" style="font-size:.7rem;white-space:nowrap;font-weight:600;color:var(--chip-product-strong-bg);">Used in:</span>
       <button type="button" class="tag-pill tag-pill-neutral" data-tag='zsazsa:product="daily-briefing"' data-state="neutral">
         <i class="fas fa-newspaper fa-xs me-1"></i>daily briefing
       </button>
@@ -663,7 +663,7 @@
 
     <!-- Quick filters: product events -->
     <div class="mb-2 d-flex align-items-center flex-wrap gap-1">
-      <span class="text-muted me-1" style="font-size:.7rem;white-space:nowrap;font-weight:600;color:#0078f1;">Products:</span>
+      <span class="text-muted me-1" style="font-size:.7rem;white-space:nowrap;font-weight:600;color:var(--accent-blue);">Products:</span>
       <button type="button" class="tag-pill tag-pill-neutral" data-tag="{{ tag_briefing }}" data-state="neutral">
         <i class="fas fa-newspaper fa-xs me-1"></i>daily threat briefing
       </button>
@@ -1224,7 +1224,7 @@
     td.innerHTML =
       '<div class="scope-panel-container">' +
         '<div class="scope-panel-header">' +
-          '<i class="fas ' + SCOPE_ICONS[type] + ' me-1" style="color:#0078f1;font-size:.8rem;"></i>' +
+          '<i class="fas ' + SCOPE_ICONS[type] + ' me-1" style="color:var(--accent-blue);font-size:.8rem;"></i>' +
           '<span class="scope-panel-type-label">' + SCOPE_LABELS[type] + '</span>' +
           '<input class="scope-panel-search" placeholder="Filter…" autocomplete="off">' +
           '<button type="button" class="btn btn-xs btn-success scope-apply-btn ms-2" title="Apply selected tags to event" disabled>' +
@@ -1537,28 +1537,28 @@
 
   function buildGalaxyBadge(tag) {
     var value = TAG_TO_VALUE[tag] || tag.split('=').slice(1).join('=').replace(/"/g,'').trim();
-    var style, icon, inner;
+    var cls, icon, inner;
     if (tag.startsWith('misp-galaxy:threat-actor=')) {
-      style = 'background:#fef5e3;color:#7a4f0a;border:1px solid #f5d89a;'; icon = 'fa-user-secret';
+      cls = 'chip-threat-actor'; icon = 'fa-user-secret';
       inner = '<i class="fas ' + icon + ' fa-xs me-1"></i>' + esc(value);
     } else if (tag.startsWith('misp-galaxy:country=') || tag.startsWith('misp-galaxy:target-information=')) {
-      style = 'background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;'; icon = 'fa-globe';
+      cls = 'chip-galaxy-geo'; icon = 'fa-globe';
       inner = '<i class="fas ' + icon + ' fa-xs me-1"></i>' + esc(value);
     } else if (tag.startsWith('misp-galaxy:sector=')) {
-      style = 'background:#e8f3fb;color:#1a5f8a;border:1px solid #b3d5ed;'; icon = 'fa-building';
+      cls = 'chip-galaxy-geo'; icon = 'fa-building';
       inner = '<i class="fas ' + icon + ' fa-xs me-1"></i>' + esc(value);
     } else if (tag.startsWith('misp-galaxy:mitre-attack-pattern=')) {
-      style = 'background:#fdecea;color:#7b1a10;border:1px solid #e8b4b0;'; icon = 'fa-shield-halved';
+      cls = 'chip-mitre'; icon = 'fa-shield-halved';
       var parts = value.split(' - ', 2);
       inner = '<i class="fas ' + icon + ' fa-xs me-1"></i><span style="font-family:monospace;font-weight:700;">' + esc(parts[0]) + '</span>' + (parts[1] ? ' ' + esc(parts[1]) : '');
     } else {
-      style = 'background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;'; icon = 'fa-circle-nodes';
+      cls = 'chip-galaxy-generic'; icon = 'fa-circle-nodes';
       inner = '<i class="fas ' + icon + ' fa-xs me-1"></i>' + esc(value);
     }
     var span = document.createElement('span');
-    span.className = 'badge tag-row-badge';
+    span.className = 'badge tag-row-badge ' + cls;
     span.dataset.tag = tag;
-    span.style.cssText = style + 'cursor:pointer;';
+    span.style.cssText = 'cursor:pointer;';
     span.title = tag + ' · Click to filter';
     span.innerHTML = inner;
     return span;

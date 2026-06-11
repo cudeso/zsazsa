@@ -50,7 +50,7 @@
         {% if reports[0].tags %}
         <span>
           {% for t in reports[0].tags %}
-          <span class="badge" style="background:#eef2f7;color:#455a7a;font-weight:500;font-size:.7rem;">{{ t }}</span>
+          <span class="badge chip-tag-generic" style="font-weight:500;font-size:.7rem;">{{ t }}</span>
           {% endfor %}
         </span>
         {% endif %}
@@ -73,7 +73,7 @@
             {% if r.tags %}
             <span class="ms-3 d-flex gap-1">
               {% for t in r.tags %}
-              <span class="badge" style="background:#eef2f7;color:#455a7a;font-weight:500;font-size:.65rem;">{{ t }}</span>
+              <span class="badge chip-tag-generic" style="font-weight:500;font-size:.65rem;">{{ t }}</span>
               {% endfor %}
             </span>
             {% endif %}
@@ -230,7 +230,7 @@
           {% for t in event.tags %}
           <a href="{{ url_for('data_collection.index') }}?tag={{ t.name | urlencode }}&source={{ source_id }}"
              class="badge text-decoration-none"
-             style="background:{{ t.colour }};color:#fff;font-size:.72rem;">
+             style="background:{{ t.colour }};color:var(--text-on-accent);font-size:.72rem;">
             {{ t.name }}
           </a>
           {% endfor %}
@@ -304,10 +304,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
-.report-md-body { font-size: .92rem; line-height: 1.6; color: #2d3748; }
+.report-md-body { font-size: .92rem; line-height: 1.6; color: var(--text-primary); }
 .report-md-body h1, .report-md-body h2, .report-md-body h3,
 .report-md-body h4, .report-md-body h5 {
-  font-weight: 600; margin-top: 1.1em; margin-bottom: .4em; color: #1a2b42;
+  font-weight: 600; margin-top: 1.1em; margin-bottom: .4em; color: var(--text-primary);
 }
 .report-md-body h1 { font-size: 1.15rem; }
 .report-md-body h2 { font-size: 1.05rem; }
@@ -319,14 +319,14 @@
 .report-md-body code {
   font-family: var(--bs-font-monospace);
   font-size: .82em;
-  background: #f0f4f8;
+  background: var(--neutral-100);
   padding: .1em .35em;
   border-radius: .2em;
-  color: #c0392b;
+  color: var(--priority-must-fg);
 }
 .report-md-body pre {
-  background: #f0f4f8;
-  border: 1px solid #dee2e6;
+  background: var(--neutral-100);
+  border: 1px solid var(--neutral-300);
   border-radius: .4em;
   padding: .75rem 1rem;
   overflow-x: auto;
@@ -334,16 +334,16 @@
 }
 .report-md-body pre code { background: none; padding: 0; color: inherit; font-size: .83rem; }
 .report-md-body blockquote {
-  border-left: 3px solid #0078f1;
+  border-left: 3px solid var(--accent-blue);
   padding-left: .75rem;
-  color: #6c757d;
+  color: var(--neutral-600);
   margin: .5em 0;
 }
 .report-md-body table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-bottom: .7em; }
-.report-md-body th, .report-md-body td { border: 1px solid #dee2e6; padding: .3rem .6rem; text-align: left; }
-.report-md-body th { background: #f8f9fa; font-weight: 600; }
-.report-md-body a { color: #0078f1; }
-.report-md-body hr { border-color: #dee2e6; margin: .8em 0; }
+.report-md-body th, .report-md-body td { border: 1px solid var(--neutral-300); padding: .3rem .6rem; text-align: left; }
+.report-md-body th { background: var(--neutral-50); font-weight: 600; }
+.report-md-body a { color: var(--accent-blue); }
+.report-md-body hr { border-color: var(--neutral-300); margin: .8em 0; }
 .report-md-body > *:last-child { margin-bottom: 0; }
 </style>
 <script>

@@ -5,45 +5,46 @@
 
 {% block content %}
 <form method="post">
+  <input type="hidden" name="active_tab" id="cfg-active-tab-input" value="{{ active_tab }}">
 
   <ul class="nav nav-tabs mb-4" id="cfg-tabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-connections" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-connections' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-connections" type="button" role="tab">
         <i class="fas fa-plug me-1"></i> Connections
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-products" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-products' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-products" type="button" role="tab">
         <i class="fas fa-boxes-stacked me-1"></i> Products
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-system" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-system' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-system" type="button" role="tab">
         <i class="fas fa-gears me-1"></i> System
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-prompts" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-prompts' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-prompts" type="button" role="tab">
         <i class="fas fa-message me-1"></i> Prompts
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ai" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-ai' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-ai" type="button" role="tab">
         <i class="fas fa-robot me-1"></i> AI
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-context" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-context' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-context" type="button" role="tab">
         <i class="fas fa-tags me-1"></i> Context elements
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-notifications" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-notifications' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-notifications" type="button" role="tab">
         <i class="fas fa-bell me-1"></i> Notifications
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-styling" type="button" role="tab">
+      <button class="nav-link {{ 'active' if active_tab == 'tab-styling' else '' }}" data-bs-toggle="tab" data-bs-target="#tab-styling" type="button" role="tab">
         <i class="fas fa-palette me-1"></i> Styling
       </button>
     </li>
@@ -53,7 +54,7 @@
 
 
     <!-- ── Connections tab ────────────────────────────────────────────── -->
-    <div class="tab-pane fade show active" id="tab-connections" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-connections' else '' }}" id="tab-connections" role="tabpanel">
 
       <div class="d-flex justify-content-end mb-3">
         <button type="submit" class="btn btn-primary">
@@ -141,7 +142,7 @@
     </div>
 
     <!-- ── Products tab ───────────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-products" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-products' else '' }}" id="tab-products" role="tabpanel">
 
       <div class="d-flex justify-content-end mb-3">
         <button type="submit" class="btn btn-primary">
@@ -232,7 +233,7 @@
     </div>
 
     <!-- ── System tab ─────────────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-system" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-system' else '' }}" id="tab-system" role="tabpanel">
 
       <div class="d-flex justify-content-end mb-3">
         <button type="submit" class="btn btn-primary">
@@ -326,7 +327,7 @@
     </div>
 
     <!-- ── Prompts tab ──────────────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-prompts" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-prompts' else '' }}" id="tab-prompts" role="tabpanel">
 
       <div class="d-flex justify-content-between align-items-center mb-3">
         <p class="text-muted small mb-0">
@@ -399,7 +400,7 @@
     </div>
 
     <!-- ── AI tab ────────────────────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-ai" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-ai' else '' }}" id="tab-ai" role="tabpanel">
 
       <div class="d-flex justify-content-between align-items-center mb-3">
         <p class="text-muted small mb-0">
@@ -496,7 +497,7 @@
     </div>
 
     <!-- ── Context elements tab ───────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-context" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-context' else '' }}" id="tab-context" role="tabpanel">
     {% set misp_browse_base = cfg.MISP_WEBAPP_URL or cfg.MISP_URL %}
 
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -713,7 +714,7 @@
     </div>
 
     <!-- ── Notifications tab ──────────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-notifications" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-notifications' else '' }}" id="tab-notifications" role="tabpanel">
 
       <div class="d-flex justify-content-between align-items-center mb-4">
         <p class="text-muted small mb-0">
@@ -823,7 +824,7 @@
     </div>
 
     <!-- ── Styling tab ────────────────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tab-styling" role="tabpanel">
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'tab-styling' else '' }}" id="tab-styling" role="tabpanel">
 
       <div class="d-flex justify-content-between align-items-center mb-4">
         <p class="text-muted small mb-0">
@@ -832,6 +833,22 @@
         <button type="submit" class="btn btn-primary">
           <i class="fas fa-floppy-disk me-1"></i> Save styling
         </button>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-swatchbook me-2"></i>Theme</div>
+        <div class="card-body">
+          <label class="form-label">UI theme</label>
+          <select name="THEME" class="form-select" style="max-width:320px;">
+            <option value="default" {{ 'selected' if cfg.THEME == 'default' }}>Default (zsazsa navy)</option>
+            <option value="uibeta" {{ 'selected' if cfg.THEME == 'uibeta' }}>UiBeta (MISP-style light)</option>
+          </select>
+          <div class="form-text">
+            Re-colours the entire interface. "UiBeta" mirrors MISP's UiBeta theme: a top
+            navigation bar instead of the side menu, MISP blue accents, and neutral grey
+            surfaces. Takes effect on the next page load.
+          </div>
+        </div>
       </div>
 
       <div class="card content-card mb-4">
@@ -861,7 +878,7 @@
           {% if cfg.BRAND_LOGO %}
           <div class="mb-3">
             <img src="{{ url_for('config_page.serve_logo') }}" alt="Current logo"
-                 style="max-height:60px;max-width:240px;object-fit:contain;border:1px solid #e2e8f0;border-radius:4px;padding:6px;">
+                 style="max-height:60px;max-width:240px;object-fit:contain;border:1px solid var(--border-light);border-radius:4px;padding:6px;">
             <div class="form-text mt-1">Current: {{ cfg.BRAND_LOGO }}</div>
           </div>
           {% endif %}
@@ -924,15 +941,11 @@
 (function() {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-  // Keep tab state across save reloads
-  const lastTab = sessionStorage.getItem('cfg-active-tab');
-  if (lastTab) {
-    const trigger = document.querySelector('[data-bs-target="' + lastTab + '"]');
-    try { if (trigger) new bootstrap.Tab(trigger).show(); } catch(e) {}
-  }
+  // Keep tab state across save reloads (server renders the active tab from ?tab=...)
+  const activeTabInput = document.getElementById('cfg-active-tab-input');
   document.querySelectorAll('#cfg-tabs button').forEach(btn => {
     btn.addEventListener('shown.bs.tab', e => {
-      sessionStorage.setItem('cfg-active-tab', e.target.dataset.bsTarget);
+      activeTabInput.value = e.target.dataset.bsTarget.replace('#', '');
     });
   });
 

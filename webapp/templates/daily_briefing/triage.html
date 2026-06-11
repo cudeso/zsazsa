@@ -105,10 +105,10 @@
 <div id="previewPanel" style="
   position:fixed; top:0; right:0; height:100vh;
   width:min(560px,100vw); z-index:1050;
-  background:#fff; box-shadow:-4px 0 24px rgba(0,0,0,.15);
+  background:var(--card-bg); box-shadow:var(--shadow-panel);
   transform:translateX(100%); transition:transform .25s ease;
   display:flex; flex-direction:column;">
-  <div style="display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid #dee2e6;flex-shrink:0;">
+  <div style="display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid var(--neutral-300);flex-shrink:0;">
     <h6 id="previewTitle" style="margin:0;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;"></h6>
     <a href="#" id="previewExternalLink" target="_blank"
        class="btn btn-xs btn-outline-secondary flex-shrink-0" title="Open in data collection">
@@ -124,7 +124,7 @@
       <i class="fas fa-circle-notch fa-spin me-2"></i>Loading…
     </div>
     <div id="previewContent" style="display:none;">
-      <div id="previewMeta" style="padding:.75rem 1rem;border-bottom:1px solid #dee2e6;font-size:.82rem;"></div>
+      <div id="previewMeta" style="padding:.75rem 1rem;border-bottom:1px solid var(--neutral-300);font-size:.82rem;"></div>
       <div id="previewReports" style="padding:1rem;font-size:.88rem;line-height:1.6;"></div>
     </div>
     <div id="previewError" class="p-4 text-danger" style="display:none;"></div>

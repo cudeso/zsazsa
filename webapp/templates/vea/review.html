@@ -67,7 +67,7 @@
             {% if v.audience %}
             <div class="mt-1">
               {% for a in v.audience.split(', ') %}{% if a.strip() %}
-              <span class="badge" style="font-size:.63rem;background:#e8f0fe;color:#1a56a0;border:1px solid #b3c8ed;">{{ a.strip() }}</span>
+              <span class="badge chip-source" style="font-size:.63rem;">{{ a.strip() }}</span>
               {% endif %}{% endfor %}
             </div>
             {% endif %}
@@ -138,7 +138,7 @@
         {# ── Expandable preview row ── #}
         <tr id="vea-preview-{{ v.uuid }}" style="display:none;">
           <td colspan="7" class="p-0">
-            <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:1rem 1.25rem;">
+            <div style="background:var(--surface-muted);border-top:1px solid var(--border-light);padding:1rem 1.25rem;">
 
               <div class="d-flex align-items-center gap-3 mb-3">
                 <span class="req-id-badge">{{ v.vea_id }}</span>
@@ -183,7 +183,7 @@
                     <div class="fw-semibold small text-uppercase text-muted mb-1" style="letter-spacing:.05em;">Recommended actions</div>
                     {{ bullets(v.immediate_actions) }}
                     {% if v.patch_sla_internet or v.patch_sla_internal %}
-                    <p class="mt-2 mb-0" style="font-size:.78rem;color:#64748b;">
+                    <p class="mt-2 mb-0" style="font-size:.78rem;color:var(--admiralty-section-fg);">
                       {% if v.patch_sla_internet %}Internet-facing SLA: <strong>{{ v.patch_sla_internet }}</strong>{% endif %}
                       {% if v.patch_sla_internal %} · Internal SLA: <strong>{{ v.patch_sla_internal }}</strong>{% endif %}
                     </p>
@@ -194,7 +194,7 @@
                 </div>
 
                 <div class="col-lg-4">
-                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;background:#fff;">
+                  <div class="border rounded p-2 mb-2" style="font-size:.8rem;background:var(--card-bg);">
                     <div class="fw-semibold small mb-2">Risk &amp; severity</div>
                     {% if v.cvss %}<p class="mb-1"><strong>CVSS:</strong> {{ v.cvss }}</p>{% endif %}
                     {% if v.cwe %}<p class="mb-1"><strong>CWE:</strong> {{ v.cwe }}</p>{% endif %}

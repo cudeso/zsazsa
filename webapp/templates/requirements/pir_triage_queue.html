@@ -16,13 +16,13 @@
       <i class="{{ icon }} me-1"></i>{{ label }}
     </span>
     <span class="badge rounded-pill" style="background:{{ color }};font-size:.65rem;">{{ section_pirs | length }}</span>
-    <div class="flex-grow-1 border-bottom" style="border-color:#e3e9f0 !important;"></div>
+    <div class="flex-grow-1 border-bottom" style="border-color:var(--border-subtle) !important;"></div>
   </div>
   <div class="row g-3">
     {% for pir in section_pirs %}
     <div class="col-md-6 col-xl-4">
       <div class="card h-100 border-0 shadow-sm" style="border-left:3px solid {{ color }} !important;border-radius:8px;transition:box-shadow .15s,transform .15s;"
-           onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,.1)';this.style.transform='translateY(-2px)'"
+           onmouseover="this.style.boxShadow='var(--shadow-hover-lift)';this.style.transform='translateY(-2px)'"
            onmouseout="this.style.boxShadow='';this.style.transform=''">
         <div class="card-body d-flex flex-column" style="padding:.85rem 1rem;">
 
@@ -37,7 +37,7 @@
             {{ pir.question }}
           </a>
 
-          <div class="d-flex align-items-center gap-2 flex-wrap mt-auto pt-2 border-top" style="border-color:#f0f3f7 !important;">
+          <div class="d-flex align-items-center gap-2 flex-wrap mt-auto pt-2 border-top" style="border-color:var(--border-faint) !important;">
             {% if pir.owner_name %}
             <span class="text-muted small d-flex align-items-center gap-1">
               <i class="fas fa-user-tie fa-xs"></i>{{ pir.owner_name }}
@@ -57,7 +57,7 @@
         <div class="card-footer bg-transparent border-0 pt-0 pb-3 px-3">
           <a href="{{ url_for('requirements.pir_triage', id=pir.uuid) }}"
              class="btn btn-sm w-100 fw-medium"
-             style="background:{{ color }};border-color:{{ color }};color:#fff;">
+             style="background:{{ color }};border-color:{{ color }};color:var(--text-on-accent);">
             <i class="fas fa-gavel me-1"></i>Triage
           </a>
         </div>
@@ -79,7 +79,7 @@
 <!-- Stat bar -->
 <div class="row g-3 mb-4">
   <div class="col-sm-3">
-    <div class="stat-card" style="--icon-color:#e07c1e;">
+    <div class="stat-card" style="--icon-color:var(--accent-orange);">
       <div class="stat-icon"><i class="fas fa-inbox"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ submitted | length }}</div>
@@ -88,7 +88,7 @@
     </div>
   </div>
   <div class="col-sm-3">
-    <div class="stat-card" style="--icon-color:#0078f1;">
+    <div class="stat-card" style="--icon-color:var(--accent-blue);">
       <div class="stat-icon"><i class="fas fa-eye"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ ackd | length }}</div>
@@ -97,7 +97,7 @@
     </div>
   </div>
   <div class="col-sm-3">
-    <div class="stat-card" style="--icon-color:#0891b2;">
+    <div class="stat-card" style="--icon-color:var(--accent-cyan);">
       <div class="stat-icon"><i class="fas fa-clipboard-check"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ triaged | length }}</div>
@@ -106,7 +106,7 @@
     </div>
   </div>
   <div class="col-sm-3">
-    <div class="stat-card" style="--icon-color:#6c757d;">
+    <div class="stat-card" style="--icon-color:var(--neutral-600);">
       <div class="stat-icon"><i class="fas fa-pause-circle"></i></div>
       <div class="stat-body">
         <div class="stat-number">{{ defrd | length }}</div>
@@ -126,10 +126,10 @@
 </div>
 {% else %}
 
-{{ intake_section(submitted, 'Needs acknowledgement', 'fas fa-inbox', '#e07c1e') }}
-{{ intake_section(ackd, 'Acknowledged - needs triage', 'fas fa-eye', '#0078f1') }}
-{{ intake_section(triaged, 'Triaged - awaiting decision', 'fas fa-clipboard-check', '#0891b2') }}
-{{ intake_section(defrd, 'Deferred - awaiting re-triage', 'fas fa-pause-circle', '#6c757d') }}
+{{ intake_section(submitted, 'Needs acknowledgement', 'fas fa-inbox', 'var(--accent-orange)') }}
+{{ intake_section(ackd, 'Acknowledged - needs triage', 'fas fa-eye', 'var(--accent-blue)') }}
+{{ intake_section(triaged, 'Triaged - awaiting decision', 'fas fa-clipboard-check', 'var(--accent-cyan)') }}
+{{ intake_section(defrd, 'Deferred - awaiting re-triage', 'fas fa-pause-circle', 'var(--neutral-600)') }}
 
 {% endif %}
 {% endblock %}

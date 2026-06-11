@@ -20,7 +20,7 @@
         <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:15px;width:auto;vertical-align:middle;margin-right:6px;opacity:.8;">MISP scraper (collection pipeline)
       </span>
       <div class="d-flex align-items-center gap-2">
-        <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Always active</span>
+        <span class="badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Always active</span>
         <button type="submit" class="btn btn-sm btn-primary">
           <i class="fas fa-floppy-disk me-1"></i>Save
         </button>
@@ -104,9 +104,9 @@
             <span class="server-url-display text-muted small"
                   style="font-size:.78rem;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ s.url or '' }}</span>
             {% if s.get('enabled', True) %}
-            <span class="server-enabled-badge badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            <span class="server-enabled-badge badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
             {% else %}
-            <span class="server-enabled-badge badge" style="background:#f5f5f5;color:#888;font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
+            <span class="server-enabled-badge badge source-disabled" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
             {% endif %}
             <button type="button" class="btn btn-xs btn-outline-secondary toggle-server-enabled ms-1"
                     data-label="{{ s.label }}"
@@ -224,7 +224,7 @@
             <span class="server-label-display fw-semibold flex-grow-1 text-muted fst-italic">New server</span>
             <span class="server-url-display text-muted small"
                   style="font-size:.78rem;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-            <span class="server-enabled-badge badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            <span class="server-enabled-badge badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
             <button type="button" class="btn btn-xs btn-outline-secondary toggle-server-enabled ms-1"
                     data-label="" data-enabled="true" title="Enable or disable this server">
               <i class="fas fa-power-off"></i>
@@ -370,9 +370,9 @@
           </td>
           <td>
             {% if src.enabled %}
-            <span class="badge" style="background:#eaf6f1;color:#1a8a5a;font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            <span class="badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
             {% else %}
-            <span class="badge" style="background:#f5f5f5;color:#888;font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
+            <span class="badge source-disabled" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
             {% endif %}
           </td>
           <td class="text-end" style="white-space:nowrap;">
@@ -539,11 +539,11 @@
           } catch (err) { /* ignore, proceed */ }
           hiddenField.value = 'false';
           badge.innerHTML = '<i class="fas fa-circle-pause me-1"></i>Disabled';
-          badge.style.background = '#f5f5f5'; badge.style.color = '#888';
+          badge.classList.remove('source-enabled'); badge.classList.add('source-disabled');
         } else {
           hiddenField.value = 'true';
           badge.innerHTML = '<i class="fas fa-circle-check me-1"></i>Enabled';
-          badge.style.background = '#eaf6f1'; badge.style.color = '#1a8a5a';
+          badge.classList.remove('source-disabled'); badge.classList.add('source-enabled');
         }
         const saveBtn = row.querySelector('.save-server-btn');
         if (saveBtn) saveBtn.click();
