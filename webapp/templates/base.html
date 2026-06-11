@@ -18,7 +18,6 @@
 {% set products_section_active = request.blueprint in ('data_collection', 'daily_briefing', 'threat_landscape', 'flash_intel', 'vea', 'products') %}
 {% set reporting_section_active = request.blueprint == 'pipeline' or request.endpoint in ('stats.index', 'logs.index') %}
 {% set settings_section_active = request.endpoint == 'config_page.index' or request.blueprint == 'collection_sources' %}
-{% set current_user_email = 'admin@admin.test' %}
 
 <!-- Top navigation (UiBeta theme) -->
 <nav id="topnav" class="navbar navbar-expand-lg">

@@ -29,6 +29,7 @@ from types import SimpleNamespace
 
 import config
 from pymisp import MISPAttribute, MISPEvent, MISPObject, PyMISP
+from webapp import misp_session
 from webapp.collection_cache import AI_SUMMARY_PREFIX
 from webapp.models import STAKEHOLDER_ROLES
 
@@ -755,13 +756,17 @@ def _pir_ns(event):
         next_review=_parse_date(_obj_attr(obj, "next-review")),
         intake_status=_obj_attr(obj, "intake-status") or "submitted",
         acknowledged_at=_obj_attr(obj, "acknowledged-at") or "",
+        acknowledged_by=_obj_attr(obj, "acknowledged-by") or "",
         triaged_at=_obj_attr(obj, "triaged-at") or "",
+        triaged_by=_obj_attr(obj, "triaged-by") or "",
         decision_at=_obj_attr(obj, "decision-at") or "",
+        decision_by=_obj_attr(obj, "decision-by") or "",
         rejection_reason=_obj_attr(obj, "rejection-reason") or "",
         deferral_reason=_obj_attr(obj, "deferral-reason") or "",
         linked_pir_uuid=_obj_attr(obj, "linked-pir-uuid") or "",
         mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
         triage_checklist=_json_list(_obj_attr(obj, "triage-checklist")),
+        creator=_obj_attr(obj, "creator") or "",
         created_at=_parse_dt(event_date.isoformat() if event_date else None),
         focus_points=fps,
     )
@@ -815,6 +820,7 @@ def _gir_ns(event):
         next_review=_parse_date(_obj_attr(obj, "next-review")),
         intel_level=_json_list_or_str(_obj_attr(obj, "intel-level")),
         mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
+        creator=_obj_attr(obj, "creator") or "",
         created_at=_parse_dt(event_date.isoformat() if event_date else None),
         focus_points=fps,
     )
@@ -872,13 +878,17 @@ def _pir_obj(data):
     _oa(obj, "next-review", data.get("next_review"))
     _oa(obj, "intake-status", data.get("intake_status", "submitted"))
     _oa(obj, "acknowledged-at", data.get("acknowledged_at"))
+    _oa(obj, "acknowledged-by", data.get("acknowledged_by"))
     _oa(obj, "triaged-at", data.get("triaged_at"))
+    _oa(obj, "triaged-by", data.get("triaged_by"))
     _oa(obj, "decision-at", data.get("decision_at"))
+    _oa(obj, "decision-by", data.get("decision_by"))
     _oa(obj, "rejection-reason", data.get("rejection_reason"))
     _oa(obj, "deferral-reason", data.get("deferral_reason"))
     _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
     _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
     _oa_json(obj, "triage-checklist", data.get("triage_checklist", []))
+    _oa(obj, "creator", data.get("creator"))
     return obj
 
 
@@ -910,6 +920,7 @@ def _gir_obj(data):
     _oa(obj, "next-review", data.get("next_review"))
     _oa_json(obj, "intel-level", data.get("intel_level", []))
     _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
+    _oa(obj, "creator", data.get("creator"))
     return obj
 
 
@@ -1029,6 +1040,7 @@ def create_pir(data):
     pir_id = data["pir_id"]
     if "intake_status" not in data:
         data = dict(data, intake_status="submitted")
+    data["creator"] = misp_session.current_user_email()
     event = _make_event(f"[zsazsa:pir] {pir_id}", config.TAG_PIR)
     for t in _build_scope_tags(data):
         event.add_tag(t)
@@ -1053,6 +1065,7 @@ def update_pir(uuid, data):
         return create_pir(data)
     old = _get_obj(event, "zsazsa-pir")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
         misp.delete_object(old.id)
     _check(misp.add_object(_event_ref(event), _pir_obj(data)), "update PIR object")
     _replace_focus_points(uuid, data.get("focus_points", []))
@@ -1081,13 +1094,17 @@ def update_pir_intake(uuid, intake_status, reason=None, linked_pir_uuid=None, ch
         for fp in pir.focus_points
     ]
     today = date.today().isoformat()
+    user = misp_session.current_user_email()
     data["intake_status"] = intake_status
     if intake_status == "acknowledged":
         data["acknowledged_at"] = today
+        data["acknowledged_by"] = user
     elif intake_status == "triaged":
         data["triaged_at"] = today
+        data["triaged_by"] = user
     elif intake_status in ("approved", "rejected", "deferred", "merged"):
         data["decision_at"] = today
+        data["decision_by"] = user
         if intake_status == "approved":
             data["status"] = "Active"
         elif intake_status == "merged":
@@ -1127,6 +1144,7 @@ def get_gir(uuid):
 def create_gir(data):
     misp = _misp()
     gir_id = data["gir_id"]
+    data["creator"] = misp_session.current_user_email()
     event = _make_event(f"[zsazsa:gir] {gir_id}: {data.get('topic', '')}", config.TAG_GIR)
     for t in _build_scope_tags(data):
         event.add_tag(t)
@@ -1156,6 +1174,7 @@ def update_gir(uuid, data):
         return create_gir(data)
     old = _get_obj(event, "zsazsa-gir")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
         misp.delete_object(old.id)
     _check(misp.add_object(_event_ref(event), _gir_obj(data)), "update GIR object")
     topic = data.get("topic", "")
@@ -1257,8 +1276,11 @@ def _pir_data_from_ns(ns):
         "next_review": ns.next_review.isoformat() if ns.next_review else "",
         "intake_status": getattr(ns, "intake_status", "submitted") or "submitted",
         "acknowledged_at": getattr(ns, "acknowledged_at", "") or "",
+        "acknowledged_by": getattr(ns, "acknowledged_by", "") or "",
         "triaged_at": getattr(ns, "triaged_at", "") or "",
+        "triaged_by": getattr(ns, "triaged_by", "") or "",
         "decision_at": getattr(ns, "decision_at", "") or "",
+        "decision_by": getattr(ns, "decision_by", "") or "",
         "rejection_reason": getattr(ns, "rejection_reason", "") or "",
         "deferral_reason": getattr(ns, "deferral_reason", "") or "",
         "linked_pir_uuid": getattr(ns, "linked_pir_uuid", "") or "",
@@ -1448,6 +1470,7 @@ def _rfi_obj(data):
     _oa(obj, "feedback-on-time", data.get("feedback_on_time"))
     _oa(obj, "feedback-usefulness", data.get("feedback_usefulness"))
     _oa(obj, "feedback-suggestions", data.get("feedback_suggestions"))
+    _oa(obj, "creator", data.get("creator"))
     return obj
 
 
@@ -1497,6 +1520,7 @@ def _rfi_ns(event):
         feedback_on_time=_obj_attr(obj, "feedback-on-time") or "",
         feedback_usefulness=_obj_attr(obj, "feedback-usefulness") or "",
         feedback_suggestions=_obj_attr(obj, "feedback-suggestions") or "",
+        creator=_obj_attr(obj, "creator") or "",
         created_at=_parse_dt(event_date.isoformat() if event_date else None),
         attachments=attachments,
         notes=notes,
@@ -1528,6 +1552,7 @@ def get_rfi(uuid):
 def create_rfi(data):
     misp = _misp()
     rfi_id = data["rfi_id"]
+    data["creator"] = misp_session.current_user_email()
     info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
     event = _make_event(info, config.TAG_RFI)
     result = _check(misp.add_event(event, pythonify=True), "create RFI")
@@ -1546,6 +1571,7 @@ def update_rfi(uuid, data):
         return create_rfi(data)
     old = _get_obj(event, "zsazsa-rfi")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
         misp.delete_object(old.id)
     _check(misp.add_object(_event_ref(event), _rfi_obj(data)), "update RFI object")
     rfi_id = data.get("rfi_id", "")
@@ -2524,6 +2550,8 @@ def _fia_obj(data):
     _oa_json(obj, "source-event-hints", src_hints)
     _oa_json(obj, "context-tags", data.get("context_tags", []))
     _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
+    _oa(obj, "creator", data.get("creator"))
+    _oa(obj, "approved-by", data.get("approved_by"))
     return obj
 
 
@@ -2583,6 +2611,8 @@ def _fia_ns(event):
         source_event_uuid=source_event_uuids[0] if source_event_uuids else "",
         context_tags=_json_list(g("context-tags")),
         linked_pir_uuid=g("linked-pir-uuid"),
+        creator=g("creator"),
+        approved_by=g("approved-by"),
         published=bool(getattr(event, "published", False)),
         created_at=_parse_dt(event.date.isoformat() if event.date else None),
     )
@@ -2777,6 +2807,9 @@ def create_fia(data):
     fia_id = _fia_id_from_event_id(result.id)
     data["fia_id"] = fia_id
     data.setdefault("review_state", FIA_REVIEW_DRAFT)
+    data["creator"] = misp_session.current_user_email()
+    if data["review_state"] == FIA_REVIEW_APPROVED:
+        data["approved_by"] = misp_session.current_user_email()
     _check(misp.add_object(_event_ref(result), _fia_obj(data)), "add FIA object")
 
     fia = _fia_ns(result)
@@ -2801,7 +2834,14 @@ def update_fia(uuid, data):
     fia_id = (data.get("fia_id") or (_obj_attr(old, "fia-id") if old else None)
               or _fia_id_from_event_id(event.id))
     data["fia_id"] = fia_id
+    old_review_state = _obj_attr(old, "review-state") if old else None
+    new_review_state = data.get("review_state", FIA_REVIEW_DRAFT)
+    if new_review_state == FIA_REVIEW_APPROVED and old_review_state != FIA_REVIEW_APPROVED:
+        data["approved_by"] = misp_session.current_user_email()
+    else:
+        data.setdefault("approved_by", _obj_attr(old, "approved-by") or "")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
         misp.delete_object(old.id)
     _check(misp.add_object(_event_ref(event), _fia_obj(data)), "update FIA object")
 
@@ -3095,6 +3135,8 @@ def _vea_obj(data):
     _oa_json(obj, "source-event-hints", src_hints)
     _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
     _oa_json(obj, "context-tags", data.get("context_tags", []))
+    _oa(obj, "creator", data.get("creator"))
+    _oa(obj, "approved-by", data.get("approved_by"))
     return obj
 
 
@@ -3153,6 +3195,8 @@ def _vea_ns(event):
         source_event_uuid=source_event_uuids[0] if source_event_uuids else "",
         linked_pir_uuid=g("linked-pir-uuid"),
         context_tags=_json_list(g("context-tags")),
+        creator=g("creator"),
+        approved_by=g("approved-by"),
         published=bool(getattr(event, "published", False)),
         created_at=_parse_dt(event.date.isoformat() if event.date else None),
     )
@@ -3337,6 +3381,9 @@ def create_vea(data):
     vea_id = _vea_id_from_event_id(result.id)
     data["vea_id"] = vea_id
     data.setdefault("review_state", VEA_REVIEW_DRAFT)
+    data["creator"] = misp_session.current_user_email()
+    if data["review_state"] == VEA_REVIEW_APPROVED:
+        data["approved_by"] = misp_session.current_user_email()
     _check(misp.add_object(_event_ref(result), _vea_obj(data)), "add VEA object")
 
     vea = _vea_ns(result)
@@ -3360,7 +3407,14 @@ def update_vea(uuid, data):
     vea_id = (data.get("vea_id") or (_obj_attr(old, "vea-id") if old else None)
               or _vea_id_from_event_id(event.id))
     data["vea_id"] = vea_id
+    old_review_state = _obj_attr(old, "review-state") if old else None
+    new_review_state = data.get("review_state", VEA_REVIEW_DRAFT)
+    if new_review_state == VEA_REVIEW_APPROVED and old_review_state != VEA_REVIEW_APPROVED:
+        data["approved_by"] = misp_session.current_user_email()
+    else:
+        data.setdefault("approved_by", _obj_attr(old, "approved-by") or "")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
         misp.delete_object(old.id)
     _check(misp.add_object(_event_ref(event), _vea_obj(data)), "update VEA object")
 
@@ -3500,6 +3554,8 @@ def _briefing_obj(data):
     _oa_json(obj, "vendor", data.get("vendor", []))
     _oa_json(obj, "incident", data.get("incident", []))
     _oa_json(obj, "campaign", data.get("campaign", []))
+    _oa(obj, "creator", data.get("creator"))
+    _oa(obj, "approved-by", data.get("approved_by"))
     return obj
 
 
@@ -3545,6 +3601,8 @@ def _briefing_ns(event):
         vendor=_json_list(_obj_attr(obj, "vendor")),
         incident=_json_list(_obj_attr(obj, "incident")),
         campaign=_json_list(_obj_attr(obj, "campaign")),
+        creator=g("creator"),
+        approved_by=g("approved-by"),
         stories=stories,
         published=bool(getattr(event, "published", False)),
         created_at=event.timestamp if getattr(event, "timestamp", None) else _parse_dt(event.date.isoformat() if event.date else None),
@@ -3836,6 +3894,7 @@ def create_briefing(data):
     try:
         data["date"] = bdate
         data.setdefault("review_state", BRIEFING_REVIEW_DRAFT)
+        data["creator"] = misp_session.current_user_email()
         _check(misp.add_object(_event_ref(result), _briefing_obj(data)), "add briefing object")
 
         for i, story in enumerate(data.get("stories", []), 1):
@@ -3877,6 +3936,8 @@ def update_briefing(uuid, data):
 
     old = _get_obj(event, "zsazsa-daily-briefing")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
+        data.setdefault("approved_by", _obj_attr(old, "approved-by") or "")
         misp.delete_object(old.id)
     _check(misp.add_object(_event_ref(event), _briefing_obj(data)), "update briefing object")
 
@@ -3918,6 +3979,8 @@ def publish_briefing(uuid):
         "vendor": briefing.vendor,
         "incident": briefing.incident,
         "campaign": briefing.campaign,
+        "creator": briefing.creator,
+        "approved_by": misp_session.current_user_email(),
     }
     _check(misp.add_object(_event_ref(event), _briefing_obj(data)), "publish briefing object")
     for tag in list(getattr(event, "tags", []) or []):
@@ -4087,6 +4150,8 @@ def _tlr_obj(data):
     _oa(obj, "recommendations", data.get("recommendations"))
     _oa(obj, "outlook", data.get("outlook"))
     _oa(obj, "review-state", data.get("review_state", TLR_REVIEW_DRAFT))
+    _oa(obj, "creator", data.get("creator"))
+    _oa(obj, "approved-by", data.get("approved_by"))
     return obj
 
 
@@ -4113,6 +4178,8 @@ def _tlr_ns(event):
         recommendations=g("recommendations"),
         outlook=g("outlook"),
         review_state=g("review-state") or TLR_REVIEW_DRAFT,
+        creator=g("creator"),
+        approved_by=g("approved-by"),
         published=bool(getattr(event, "published", False)),
         created_at=_parse_dt(event.date.isoformat() if event.date else None),
     )
@@ -4191,6 +4258,7 @@ def create_tlr(data):
         raise RuntimeError("create TLR: missing UUID in MISP response")
     data["tlr_id"] = tlr_id
     data.setdefault("review_state", TLR_REVIEW_DRAFT)
+    data["creator"] = misp_session.current_user_email()
     _check(misp.add_object(_event_ref(result), _tlr_obj(data)), "add TLR object")
     return uuid
 
@@ -4202,6 +4270,8 @@ def update_tlr(uuid, data):
         raise RuntimeError(f"TLR event {uuid} not found")
     old = _get_obj(event, "zsazsa-threat-landscape-report")
     if old:
+        data["creator"] = _obj_attr(old, "creator") or ""
+        data.setdefault("approved_by", _obj_attr(old, "approved-by") or "")
         misp.delete_object(old.id)
     title = data.get("title", "")
     tlr_id = data.get("tlr_id", "")
@@ -4226,6 +4296,8 @@ def publish_tlr(uuid):
         "top_threats": tlr.top_threats, "trending_actors": tlr.trending_actors,
         "key_incidents": tlr.key_incidents, "recommendations": tlr.recommendations,
         "outlook": tlr.outlook, "review_state": TLR_REVIEW_PUBLISHED,
+        "creator": tlr.creator,
+        "approved_by": misp_session.current_user_email(),
     }
     _check(misp.add_object(_event_ref(event), _tlr_obj(data)), "publish TLR object")
     for tag in list(getattr(event, "tags", []) or []):

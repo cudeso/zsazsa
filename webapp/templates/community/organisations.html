@@ -33,7 +33,7 @@
           </thead>
           <tbody>
             {% for o in orgs %}
-            <tr>
+            <tr id="org-{{ o.uuid }}">
               <td class="fw-semibold">{{ o.name }}</td>
               <td class="text-muted">{{ o.sector or '-' }}</td>
               <td class="text-muted">{{ o.country or '-' }}</td>
@@ -46,12 +46,18 @@
                       <i class="fas fa-rotate"></i>
                     </button>
                   </form>
+                  {% if o.uuid in sso_org_uuids %}
+                  <button class="btn btn-xs btn-outline-danger" title="Cannot remove: in use by a zsazsa user" disabled>
+                    <i class="fas fa-trash"></i>
+                  </button>
+                  {% else %}
                   <form method="post" action="{{ url_for('community.organisations_delete', uuid=o.uuid) }}"
                         onsubmit="return confirm('Remove organisation {{ o.name | e }}?')">
                     <button class="btn btn-xs btn-outline-danger" title="Remove">
                       <i class="fas fa-trash"></i>
                     </button>
                   </form>
+                  {% endif %}
                 </div>
               </td>
             </tr>

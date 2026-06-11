@@ -162,6 +162,13 @@ def _read() -> dict:
         "SSL_ENABLED": getattr(_config, "SSL_ENABLED", False),
         "SSL_CERT": getattr(_config, "SSL_CERT", "certs/zsazsa.crt"),
         "SSL_KEY": getattr(_config, "SSL_KEY", "certs/zsazsa.key"),
+        "MISP_SESSION_COOKIE_NAME": getattr(_config, "MISP_SESSION_COOKIE_NAME", ""),
+        "MISP_SESSION_REDIS_HOST": getattr(_config, "MISP_SESSION_REDIS_HOST", "127.0.0.1"),
+        "MISP_SESSION_REDIS_PORT": getattr(_config, "MISP_SESSION_REDIS_PORT", 6379),
+        "MISP_SESSION_REDIS_DB": getattr(_config, "MISP_SESSION_REDIS_DB", 0),
+        "MISP_SESSION_REDIS_USERNAME": getattr(_config, "MISP_SESSION_REDIS_USERNAME", ""),
+        "MISP_SESSION_REDIS_PASSWORD": getattr(_config, "MISP_SESSION_REDIS_PASSWORD", ""),
+        "MISP_SESSION_REDIRECT_TO_LOGIN": getattr(_config, "MISP_SESSION_REDIRECT_TO_LOGIN", False),
         "prompts": _list_prompts(),
         "llm_usage": _llm_usage_stats(),
         "ai_features": _load_ai_features(),
@@ -328,6 +335,19 @@ SSL_ENABLED = {bool(values['SSL_ENABLED'])}
 SSL_CERT = {values['SSL_CERT']!r}
 SSL_KEY = {values['SSL_KEY']!r}
 
+# MISP - shared session SSO. zsazsa runs as a subpath behind MISP and
+# identifies the logged-in user from MISP's own PHP session cookie, read
+# directly from the Redis instance MISP stores its sessions in.
+MISP_SESSION_COOKIE_NAME = {values['MISP_SESSION_COOKIE_NAME']!r}
+MISP_SESSION_REDIS_HOST = {values['MISP_SESSION_REDIS_HOST']!r}
+MISP_SESSION_REDIS_PORT = {int(values['MISP_SESSION_REDIS_PORT'])}
+MISP_SESSION_REDIS_DB = {int(values['MISP_SESSION_REDIS_DB'])}
+MISP_SESSION_REDIS_USERNAME = {values['MISP_SESSION_REDIS_USERNAME']!r}
+MISP_SESSION_REDIS_PASSWORD = {values['MISP_SESSION_REDIS_PASSWORD']!r}
+# If True, visitors without a valid MISP session are redirected to MISP's
+# login page. If False, they fall back to the admin@admin.test identity.
+MISP_SESSION_REDIRECT_TO_LOGIN = {bool(values['MISP_SESSION_REDIRECT_TO_LOGIN'])}
+
 # Branding (used for PDF outputs and channel notifications)
 BRAND_COMPANY    = {values.get('BRAND_COMPANY', '')!r}
 BRAND_DEPARTMENT = {values.get('BRAND_DEPARTMENT', '')!r}
@@ -426,6 +446,13 @@ def index():
             "SSL_ENABLED": request.form.get("SSL_ENABLED") == "true",
             "SSL_CERT": request.form.get("SSL_CERT", "certs/zsazsa.crt").strip(),
             "SSL_KEY": request.form.get("SSL_KEY", "certs/zsazsa.key").strip(),
+            "MISP_SESSION_COOKIE_NAME": getattr(_config, "MISP_SESSION_COOKIE_NAME", ""),
+            "MISP_SESSION_REDIS_HOST": request.form.get("MISP_SESSION_REDIS_HOST", "127.0.0.1").strip(),
+            "MISP_SESSION_REDIS_PORT": int(request.form.get("MISP_SESSION_REDIS_PORT", 6379) or 6379),
+            "MISP_SESSION_REDIS_DB": int(request.form.get("MISP_SESSION_REDIS_DB", 0) or 0),
+            "MISP_SESSION_REDIS_USERNAME": request.form.get("MISP_SESSION_REDIS_USERNAME", "").strip(),
+            "MISP_SESSION_REDIS_PASSWORD": request.form.get("MISP_SESSION_REDIS_PASSWORD", ""),
+            "MISP_SESSION_REDIRECT_TO_LOGIN": request.form.get("MISP_SESSION_REDIRECT_TO_LOGIN") == "true",
             "BRAND_COMPANY": request.form.get("BRAND_COMPANY", "").strip(),
             "BRAND_DEPARTMENT": request.form.get("BRAND_DEPARTMENT", "").strip(),
             "BRAND_COLOR_1": request.form.get("BRAND_COLOR_1", "#0f2d52").strip() or "#0f2d52",

@@ -76,6 +76,18 @@
             "ui-priority": 11,
             "description": "Workflow state: draft / published",
             "disable_correlation": true
+        },
+        "creator": {
+            "misp-attribute": "text",
+            "ui-priority": 12,
+            "description": "User who created this report (set at creation, not editable)",
+            "disable_correlation": true
+        },
+        "approved-by": {
+            "misp-attribute": "text",
+            "ui-priority": 13,
+            "description": "User who published this report",
+            "disable_correlation": true
         }
     }
 }

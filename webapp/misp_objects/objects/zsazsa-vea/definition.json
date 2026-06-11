@@ -202,6 +202,18 @@
       "ui-priority": 32,
       "description": "JSON array of context tag strings",
       "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 33,
+      "description": "User who created this advisory (set at creation, not editable)",
+      "disable_correlation": true
+    },
+    "approved-by": {
+      "misp-attribute": "text",
+      "ui-priority": 34,
+      "description": "User who approved/published this advisory",
+      "disable_correlation": true
     }
   }
 }

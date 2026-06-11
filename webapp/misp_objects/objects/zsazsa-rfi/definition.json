@@ -130,6 +130,12 @@
       "ui-priority": 19,
       "description": "Free-text feedback or suggestions for improvement",
       "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 20,
+      "description": "User who created this RFI (set at creation, not editable)",
+      "disable_correlation": true
     }
   }
 }

@@ -170,15 +170,15 @@
           <dd class="col-7"><span class="badge bg-secondary">{{ pir.intake_status }}</span></dd>
           {% if pir.acknowledged_at %}
           <dt class="col-5">Acknowledged</dt>
-          <dd class="col-7">{{ pir.acknowledged_at }}</dd>
+          <dd class="col-7">{{ pir.acknowledged_at }}{% if pir.acknowledged_by %} <span class="text-muted">by {{ pir.acknowledged_by }}</span>{% endif %}</dd>
           {% endif %}
           {% if pir.triaged_at %}
           <dt class="col-5">Triaged</dt>
-          <dd class="col-7">{{ pir.triaged_at }}</dd>
+          <dd class="col-7">{{ pir.triaged_at }}{% if pir.triaged_by %} <span class="text-muted">by {{ pir.triaged_by }}</span>{% endif %}</dd>
           {% endif %}
           {% if pir.decision_at %}
           <dt class="col-5">Decision</dt>
-          <dd class="col-7">{{ pir.decision_at }}</dd>
+          <dd class="col-7">{{ pir.decision_at }}{% if pir.decision_by %} <span class="text-muted">by {{ pir.decision_by }}</span>{% endif %}</dd>
           {% endif %}
           {% if pir.rejection_reason %}
           <dt class="col-5">Rejection reason</dt>

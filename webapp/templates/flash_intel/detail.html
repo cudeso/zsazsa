@@ -115,6 +115,10 @@
         <p class="mb-1"><strong>Audience:</strong> {{ fia.audience or '-' }}</p>
         <p class="mb-1"><strong>Author:</strong> {{ fia.author or '-' }}</p>
         <p class="mb-1"><strong>Created:</strong> {{ fia.created_at.strftime('%Y-%m-%d %H:%M UTC') if fia.created_at else '-' }}</p>
+        <p class="mb-1"><strong>Created by:</strong> {{ fia.creator or '-' }}</p>
+        {% if fia.approved_by %}
+        <p class="mb-1"><strong>Approved by:</strong> {{ fia.approved_by }}</p>
+        {% endif %}
         {% if notify_status %}
         <p class="mb-1">
           <strong>Last notification:</strong>

@@ -1,6 +1,6 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-from webapp import audit, org_store
+from webapp import audit, org_store, sso_users
 
 bp = Blueprint("community", __name__, url_prefix="/community")
 
@@ -8,7 +8,8 @@ bp = Blueprint("community", __name__, url_prefix="/community")
 @bp.route("/organisations")
 def organisations():
     orgs = org_store.list_organisations()
-    return render_template("community/organisations.html", orgs=orgs)
+    sso_org_uuids = sso_users.organisation_uuids_in_use()
+    return render_template("community/organisations.html", orgs=orgs, sso_org_uuids=sso_org_uuids)
 
 
 @bp.route("/organisations/add", methods=["POST"])
@@ -70,7 +71,8 @@ def organisations_sync_all():
 
 @bp.route("/users")
 def users():
-    return render_template("community/users.html")
+    seen_users = sso_users.list_sso_users()
+    return render_template("community/users.html", sso_users=seen_users)
 
 
 @bp.route("/roles")

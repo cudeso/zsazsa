@@ -106,6 +106,18 @@
       "ui-priority": 16,
       "description": "Additional campaign references added at briefing level (JSON-encoded list)",
       "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 17,
+      "description": "User who created this briefing (set at creation, not editable)",
+      "disable_correlation": true
+    },
+    "approved-by": {
+      "misp-attribute": "text",
+      "ui-priority": 18,
+      "description": "User who published this briefing",
+      "disable_correlation": true
     }
   }
 }

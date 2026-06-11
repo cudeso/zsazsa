@@ -168,6 +168,10 @@
         {% if vea.cve_id %}<p class="mb-1"><strong>CVE:</strong> <code>{{ vea.cve_id }}</code></p>{% endif %}
         <p class="mb-1"><strong>Author:</strong> {{ vea.author or '-' }}</p>
         <p class="mb-1"><strong>Created:</strong> {{ vea.created_at.strftime('%d-%m-%Y') if vea.created_at else '-' }}</p>
+        <p class="mb-1"><strong>Created by:</strong> {{ vea.creator or '-' }}</p>
+        {% if vea.approved_by %}
+        <p class="mb-1"><strong>Approved by:</strong> {{ vea.approved_by }}</p>
+        {% endif %}
         {% if notify_status %}
         <p class="mb-1">
           <strong>Last notification:</strong>

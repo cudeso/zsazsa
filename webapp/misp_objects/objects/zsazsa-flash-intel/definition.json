@@ -202,6 +202,18 @@
       "ui-priority": 22,
       "description": "JSON array of originating scraper event UUIDs",
       "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 23,
+      "description": "User who created this alert (set at creation, not editable)",
+      "disable_correlation": true
+    },
+    "approved-by": {
+      "misp-attribute": "text",
+      "ui-priority": 24,
+      "description": "User who approved/published this alert",
+      "disable_correlation": true
     }
   }
 }

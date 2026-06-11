@@ -160,6 +160,12 @@
       "ui-priority": 35,
       "description": "JSON array of MITRE ATT\\&CK technique strings (from misp-galaxy:mitre-attack-pattern)",
       "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 36,
+      "description": "User who created this GIR (set at creation, not editable)",
+      "disable_correlation": true
     }
   }
 }

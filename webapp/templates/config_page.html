@@ -324,6 +324,64 @@
         </div>
       </div>
 
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-right-to-bracket me-2"></i>Single sign-on</div>
+        <div class="card-body">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="MISP_SESSION_REDIRECT_TO_LOGIN" id="misp_session_redirect_to_login"
+                   value="true" {{ 'checked' if cfg.MISP_SESSION_REDIRECT_TO_LOGIN }}>
+            <label class="form-check-label" for="misp_session_redirect_to_login">Require a MISP session</label>
+          </div>
+          <div class="form-text">
+            zsazsa identifies the current user from MISP's own session cookie, which only works when
+            zsazsa is deployed as a subpath behind MISP (e.g. <code>/zsazsa/</code>) so the browser
+            sends MISP's session cookie along with requests. When enabled, visitors without a valid
+            MISP session are redirected to MISP's login page. When disabled, requests without a MISP
+            session fall back to the <code>admin@admin.test</code> identity used throughout zsazsa.
+          </div>
+
+          <hr>
+
+          <div class="form-text mb-3">
+            MISP stores its PHP sessions in Redis. zsazsa connects to that same Redis instance to
+            read the logged-in user from MISP's session cookie. Leave username and password empty
+            if Redis requires no authentication.
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Redis host</label>
+              <input type="text" name="MISP_SESSION_REDIS_HOST" class="form-control font-monospace"
+                     value="{{ cfg.MISP_SESSION_REDIS_HOST }}" placeholder="127.0.0.1">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Port</label>
+              <input type="number" name="MISP_SESSION_REDIS_PORT" class="form-control"
+                     value="{{ cfg.MISP_SESSION_REDIS_PORT }}" min="1" max="65535">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Database index</label>
+              <input type="number" name="MISP_SESSION_REDIS_DB" class="form-control"
+                     value="{{ cfg.MISP_SESSION_REDIS_DB }}" min="0">
+            </div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Username <span class="text-muted">(optional)</span></label>
+              <input type="text" name="MISP_SESSION_REDIS_USERNAME" class="form-control font-monospace"
+                     value="{{ cfg.MISP_SESSION_REDIS_USERNAME }}" placeholder="leave empty if not used">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Password <span class="text-muted">(optional)</span></label>
+              <div class="input-group">
+                <input type="password" name="MISP_SESSION_REDIS_PASSWORD" class="form-control font-monospace api-key-input"
+                       value="{{ cfg.MISP_SESSION_REDIS_PASSWORD }}" placeholder="leave empty if not used">
+                <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── Prompts tab ──────────────────────────────────────────────────── -->

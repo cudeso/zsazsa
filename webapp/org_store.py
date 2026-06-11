@@ -148,11 +148,13 @@ def sync_all_organisations():
 
 
 def delete_organisation(uuid):
-    """Delete organisation. Raises ValueError if any stakeholder references it."""
-    from webapp import misp_store
+    """Delete organisation. Raises ValueError if a stakeholder or zsazsa user references it."""
+    from webapp import misp_store, sso_users
     for s in misp_store.list_stakeholders():
         if s.organization == uuid:
             raise ValueError(f"Organisation is linked to stakeholder \"{s.name}\"")
+    if uuid in sso_users.organisation_uuids_in_use():
+        raise ValueError("Organisation is linked to a zsazsa user")
     with _conn() as db:
         db.execute("DELETE FROM organisations WHERE uuid = ?", (uuid,))
 

@@ -391,8 +391,11 @@ def pir_edit(id):
             # Carry intake fields forward - the edit form does not touch them
             "intake_status": getattr(pir, "intake_status", "submitted") or "submitted",
             "acknowledged_at": getattr(pir, "acknowledged_at", "") or "",
+            "acknowledged_by": getattr(pir, "acknowledged_by", "") or "",
             "triaged_at": getattr(pir, "triaged_at", "") or "",
+            "triaged_by": getattr(pir, "triaged_by", "") or "",
             "decision_at": getattr(pir, "decision_at", "") or "",
+            "decision_by": getattr(pir, "decision_by", "") or "",
             "rejection_reason": getattr(pir, "rejection_reason", "") or "",
             "deferral_reason": getattr(pir, "deferral_reason", "") or "",
             "linked_pir_uuid": getattr(pir, "linked_pir_uuid", "") or "",

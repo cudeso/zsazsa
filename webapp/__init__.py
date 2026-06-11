@@ -4,13 +4,13 @@ import os
 import secrets
 from pathlib import Path
 
-from flask import Flask, abort, request, session, jsonify, render_template
+from flask import Flask, abort, g, redirect, request, session, jsonify, render_template
 from pymisp.exceptions import PyMISPError
 from requests.exceptions import RequestException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
-from webapp import audit, org_store, collection_cache
+from webapp import audit, misp_session, org_store, sso_users, collection_cache
 from webapp.version import APP_VERSION
 
 
@@ -46,6 +46,7 @@ def create_app():
     _setup_file_logging()
     audit.init()
     org_store.init_db()
+    sso_users.init_db()
     from core.db import init_db as _init_core_db
     _init_core_db()
     collection_cache.start_worker()
@@ -62,6 +63,17 @@ def create_app():
             if not token or token != session.get("_csrf_token"):
                 abort(403)
 
+    @app.before_request
+    def _load_misp_user():
+        if request.endpoint == "static":
+            return
+        misp_session.load_request_user()
+        if g.misp_user:
+            sso_users.record_sighting(g.misp_user)
+        login_url = misp_session.login_redirect_url()
+        if login_url:
+            return redirect(login_url)
+
     app.jinja_env.globals["csrf_token"] = _csrf_token
 
     app.jinja_env.globals["app_version"] = APP_VERSION
@@ -72,6 +84,7 @@ def create_app():
             "misp_webapp_url": config.MISP_WEBAPP_URL,
             "brand_company": getattr(config, "BRAND_COMPANY", ""),
             "ui_theme": getattr(config, "THEME", "default"),
+            "current_user_email": misp_session.current_user_email(),
         }
 
     @app.template_filter("slug")

@@ -3,8 +3,7 @@ import sqlite3
 from datetime import datetime
 
 import config
-
-CURRENT_USER = "admin@admin.test"
+from webapp import misp_session
 
 
 def _conn():
@@ -38,7 +37,7 @@ def record(action, entity_type, entity_id=None, entity_label=None, details=None)
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 datetime.utcnow().isoformat(timespec="seconds"),
-                CURRENT_USER,
+                misp_session.current_user_email(),
                 action,
                 entity_type,
                 entity_id,

@@ -244,6 +244,30 @@
       "ui-priority": 36,
       "description": "JSON array of completed triage checklist items",
       "disable_correlation": true
+    },
+    "acknowledged-by": {
+      "misp-attribute": "text",
+      "ui-priority": 37,
+      "description": "User who acknowledged the PIR at intake",
+      "disable_correlation": true
+    },
+    "triaged-by": {
+      "misp-attribute": "text",
+      "ui-priority": 38,
+      "description": "User who completed the PIR triage",
+      "disable_correlation": true
+    },
+    "decision-by": {
+      "misp-attribute": "text",
+      "ui-priority": 39,
+      "description": "User who recorded the intake decision",
+      "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 40,
+      "description": "User who created this PIR (set at creation, not editable)",
+      "disable_correlation": true
     }
   }
 }

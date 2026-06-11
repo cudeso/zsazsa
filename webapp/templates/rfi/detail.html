@@ -274,6 +274,9 @@
 
           <dt class="col-5">Created</dt>
           <dd class="col-7">{{ rfi.created_at.strftime('%d-%m-%Y') if rfi.created_at else '-' }}</dd>
+
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ rfi.creator or '-' }}</dd>
         </dl>
       </div>
     </div>

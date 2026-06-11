@@ -417,6 +417,8 @@
           <dd>{{ pir.time_sensitivity or '-' }}</dd>
           <dt>Created</dt>
           <dd>{{ pir.created_at.strftime('%d-%m-%Y') if pir.created_at else '-' }}</dd>
+          <dt>Created by</dt>
+          <dd>{{ pir.creator or '-' }}</dd>
           <dt>Next review</dt>
           <dd>{{ pir.next_review.strftime('%d-%m-%Y') if pir.next_review else '-' }}</dd>
         </dl>
@@ -445,13 +447,13 @@
             {% endif %}
           </dd>
           {% if pir.acknowledged_at %}
-          <dt>Acknowledged</dt><dd>{{ pir.acknowledged_at }}</dd>
+          <dt>Acknowledged</dt><dd>{{ pir.acknowledged_at }}{% if pir.acknowledged_by %} <span class="text-muted">by {{ pir.acknowledged_by }}</span>{% endif %}</dd>
           {% endif %}
           {% if pir.triaged_at %}
-          <dt>Triaged</dt><dd>{{ pir.triaged_at }}</dd>
+          <dt>Triaged</dt><dd>{{ pir.triaged_at }}{% if pir.triaged_by %} <span class="text-muted">by {{ pir.triaged_by }}</span>{% endif %}</dd>
           {% endif %}
           {% if pir.decision_at %}
-          <dt>Decision</dt><dd>{{ pir.decision_at }}</dd>
+          <dt>Decision</dt><dd>{{ pir.decision_at }}{% if pir.decision_by %} <span class="text-muted">by {{ pir.decision_by }}</span>{% endif %}</dd>
           {% endif %}
           {% if pir.rejection_reason %}
           <dt>Rejection reason</dt><dd>{{ pir.rejection_reason }}</dd>

@@ -4,10 +4,91 @@
 {% block page_title %}Users{% endblock %}
 
 {% block content %}
-<div class="card content-card">
-  <div class="card-body text-center py-5">
-    <i class="fas fa-users fa-2x text-muted mb-3 d-block"></i>
-    <p class="text-muted mb-0">User management is not yet implemented.</p>
+<div class="row g-4">
+
+  <div class="col-lg-8">
+    <div class="card content-card">
+      <div class="card-header"><i class="fas fa-users me-2"></i>Users seen via MISP SSO</div>
+      <div class="card-body p-0">
+        {% if sso_users %}
+        <table class="table table-hover zsazsa-table mb-0">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>User ID</th>
+              <th>Organisation</th>
+              <th>Role</th>
+              <th>First seen</th>
+              <th>Last seen</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in sso_users %}
+            <tr class="{{ 'table-warning' if u.possible_duplicate }}">
+              <td class="fw-semibold">
+                {{ u.email }}
+                {% if u.possible_duplicate %}
+                <i class="fas fa-triangle-exclamation text-warning ms-1"
+                   title="Same MISP user ID as the adjacent row, possibly the same user under a different email"></i>
+                {% endif %}
+              </td>
+              <td class="text-muted font-monospace">{{ u.misp_user_id }}</td>
+              <td class="text-muted">
+                {% if u.organisation_uuid %}
+                <a href="{{ url_for('community.organisations') }}#org-{{ u.organisation_uuid }}">{{ u.organisation or u.organisation_uuid }}</a>
+                {% else %}
+                {{ u.organisation or '-' }}
+                {% endif %}
+              </td>
+              <td class="text-muted">{{ u.role or '-' }}</td>
+              <td class="text-muted small font-monospace">{{ u.first_seen }}</td>
+              <td class="text-muted small font-monospace">{{ u.last_seen }}</td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-2">
+                  <a class="btn btn-xs btn-outline-secondary" title="View in MISP"
+                     href="{{ misp_webapp_url }}/admin/users/view/{{ u.misp_user_id }}"
+                     target="_blank" rel="noopener">
+                    <i class="fas fa-eye"></i>
+                  </a>
+                  <a class="btn btn-xs btn-outline-secondary" title="Edit in MISP"
+                     href="{{ misp_webapp_url }}/admin/users/edit/{{ u.misp_user_id }}"
+                     target="_blank" rel="noopener">
+                    <i class="fas fa-pen"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state py-5">
+          <i class="fas fa-users fa-2x text-muted mb-3 d-block"></i>
+          <p class="text-muted mb-0 small">No MISP users have signed in to zsazsa via SSO yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
   </div>
+
+  <div class="col-lg-4">
+    <div class="card content-card">
+      <div class="card-header"><i class="fas fa-circle-info me-2"></i>About users</div>
+      <div class="card-body">
+        <p class="small text-muted">
+          zsazsa does not have its own user management. Accounts cannot be added here.
+        </p>
+        <p class="small text-muted mb-0">
+          A user must already exist in MISP and sign in there; zsazsa then recognises
+          them through the shared MISP session. If single sign-on is not enabled, every
+          visitor instead shares the single static <code>admin@admin.test</code> identity.
+          The table on the left lists every MISP user zsazsa has recognised through an
+          SSO session.
+        </p>
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

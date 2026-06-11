@@ -263,6 +263,8 @@
           </dd>
           <dt>Created</dt>
           <dd>{{ gir.created_at.strftime('%d-%m-%Y') if gir.created_at else '-' }}</dd>
+          <dt>Created by</dt>
+          <dd>{{ gir.creator or '-' }}</dd>
           <dt>Next review</dt>
           <dd>{{ gir.next_review.strftime('%d-%m-%Y') if gir.next_review else '-' }}</dd>
         </dl>

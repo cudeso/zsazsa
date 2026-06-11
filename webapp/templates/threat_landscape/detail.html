@@ -98,6 +98,14 @@
 
           <dt class="col-5">Created</dt>
           <dd class="col-7">{{ tlr.created_at.strftime('%d-%m-%Y') if tlr.created_at else '-' }}</dd>
+
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ tlr.creator or '-' }}</dd>
+
+          {% if tlr.approved_by %}
+          <dt class="col-5">Approved by</dt>
+          <dd class="col-7">{{ tlr.approved_by }}</dd>
+          {% endif %}
         </dl>
       </div>
     </div>
