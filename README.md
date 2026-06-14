@@ -262,6 +262,15 @@ Stakeholders are managed locally and linked to MISP organisations. Each record s
 
 Stakeholders can be linked to PIRs and GIRs for ownership and distribution, which makes accountability and downstream delivery easier to track.
 
+**Stakeholder matrix**
+
+![docs/2-stakeholder-matrix.png](docs/2-stakeholder-matrix.png)
+
+![docs/2-stakeholder-view.png](docs/2-stakeholder-view.png)
+
+![docs/2-stakeholder-edit.png](docs/2-stakeholder-edit.png)
+
+
 ## PIR
 
 PIR pages capture the core intelligence questions that drive collection and analysis priorities.
