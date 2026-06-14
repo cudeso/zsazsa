@@ -75,10 +75,12 @@
         </a>
         <ul class="dropdown-menu topnav-dropdown-menu">
           <li><a href="{{ url_for('data_collection.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'data_collection' }}"><i class="fas fa-database fa-fw"></i> Data collection</a></li>
+          <li><hr class="dropdown-divider"></li>
           <li><a href="{{ url_for('daily_briefing.list_briefings') }}" class="dropdown-item {{ 'active' if request.blueprint == 'daily_briefing' }}"><i class="fas fa-newspaper fa-fw"></i> Daily briefing</a></li>
           <li><a href="{{ url_for('threat_landscape.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'threat_landscape' }}"><i class="fas fa-globe fa-fw"></i> Threat landscape</a></li>
           <li><a href="{{ url_for('flash_intel.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'flash_intel' }}"><i class="fas fa-bolt fa-fw"></i> Flash intel <span class="sidebar-hint">Review queue</span></a></li>
           <li><a href="{{ url_for('vea.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'vea' }}"><i class="fas fa-bug fa-fw"></i> Vuln advisories <span class="sidebar-hint">VEA</span></a></li>
+          <li><hr class="dropdown-divider"></li>
           <li><a href="{{ url_for('products.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'products' }}"><i class="fas fa-cubes fa-fw"></i> All products</a></li>
         </ul>
       </li>

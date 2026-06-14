@@ -269,9 +269,19 @@ def send_rfi_notification(
     return send_text(text, f"RFI {rfi.rfi_id}", channel_ids=channel_ids)
 
 
-def send_flash_intel_alert(product_event, fia_id: str, fia_content: str) -> bool:
-    """Send the full Flash Intel Alert report to all active Mattermost channels."""
-    urls = _active_webhooks()
+def send_flash_intel_alert(product_event, fia_id: str, fia_content: str, stakeholders: list | None = None) -> bool:
+    """Send the full Flash Intel Alert report to subscribed stakeholders' Mattermost channels."""
+    channel_ids = None
+    if stakeholders:
+        ids: set[str] = set()
+        for s in stakeholders:
+            for cid in (getattr(s, "notification_channels", None) or []):
+                if cid:
+                    ids.add(cid)
+        if ids:
+            channel_ids = sorted(ids)
+
+    urls = _active_webhooks(channel_ids)
     if not urls:
         return False
     misp_url = f"{config.MISP_WEBAPP_URL}/events/view/{product_event.id}"

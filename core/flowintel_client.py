@@ -17,9 +17,50 @@ _CVSS_SCORE_RE = re.compile(r"\d+(?:\.\d+)?")
 _CWE_ID_RE = re.compile(r"cwe-\d+", re.IGNORECASE)
 
 
+CHANNEL_PREFIX = "flowintel:"
+
+
 def get_instances() -> list[dict]:
     """Return the configured Flowintel instances."""
     return getattr(config, "FLOWINTEL_INSTANCES", []) or []
+
+
+def notification_channels() -> list[dict]:
+    """Represent configured Flowintel instances as notification channels."""
+    return [
+        {
+            "id": f"{CHANNEL_PREFIX}{instance.get('id')}",
+            "name": instance.get("name") or instance.get("id"),
+            "type": "flowintel",
+            "enabled": bool(instance.get("enabled")),
+        }
+        for instance in get_instances()
+        if instance.get("id")
+    ]
+
+
+def send_to_eligible_instances(stakeholders, product_key: str, send_fn):
+    """Call `send_fn(instance)` for each Flowintel instance that a stakeholder in
+    `stakeholders` is subscribed to and that has `product_key` enabled.
+
+    Returns a list of (instance, result) tuples, where result is whatever
+    send_fn returns (typically the dict from create_case_from_product).
+    """
+    subscribed_ids = {
+        cid[len(CHANNEL_PREFIX):]
+        for s in stakeholders
+        for cid in (getattr(s, "notification_channels", None) or [])
+        if cid.startswith(CHANNEL_PREFIX)
+    }
+    results = []
+    for instance in get_instances():
+        if instance.get("id") not in subscribed_ids or not instance.get("enabled"):
+            continue
+        product = (instance.get("case_templates") or {}).get(product_key) or {}
+        if not product.get("enabled"):
+            continue
+        results.append((instance, send_fn(instance)))
+    return results
 
 
 def test_connection(url: str, api_key: str, verify_tls: bool = True) -> dict:

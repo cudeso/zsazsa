@@ -369,13 +369,13 @@ def resend(id):
         return redirect(redirect_target)
 
     content = misp_store.render_fia_markdown(fia, fia.fia_id)
+    stakeholders = _eligible_flash_recipients(fia)
 
     try:
         from notifier import mattermost
 
-        stakeholders = _eligible_flash_recipients(fia)
         shim = SimpleNamespace(id=id)
-        sent_ok = mattermost.send_flash_intel_alert(shim, fia.fia_id, content)
+        sent_ok = mattermost.send_flash_intel_alert(shim, fia.fia_id, content, stakeholders=stakeholders)
         audit.record(
             "notify",
             "fia",
@@ -397,14 +397,12 @@ def resend(id):
         from core import flowintel_client
 
         preview_url = url_for("flash_intel.detail", id=id, _external=True)
-        for instance in flowintel_client.get_instances():
-            if not instance.get("enabled"):
-                continue
-            product = (instance.get("case_templates") or {}).get("Flash intel alert") or {}
-            if not product.get("enabled"):
-                continue
+
+        def send_fn(instance):
+            return flowintel_client.send_flash_intel_to_flowintel(instance, fia, content, preview_url=preview_url)
+
+        for instance, result in flowintel_client.send_to_eligible_instances(stakeholders, "Flash intel alert", send_fn):
             instance_name = instance.get("name") or instance.get("id")
-            result = flowintel_client.send_flash_intel_to_flowintel(instance, fia, content, preview_url=preview_url)
             if result["ok"]:
                 audit.record(
                     "notify", "fia", entity_id=id, entity_label=fia.fia_id,
@@ -479,16 +477,48 @@ def pdf(id):
 
 
 def _publish_and_notify(uuid):
-    """Publish FIA and send Mattermost alert (best-effort)."""
+    """Publish FIA and send Mattermost/Flowintel alerts (best-effort)."""
     misp_store.publish_fia(uuid)
     fia = misp_store.get_fia(uuid)
     if fia is None:
         return False
+
+    stakeholders = _eligible_flash_recipients(fia)
+    content = misp_store.render_fia_markdown(fia, fia.fia_id)
+
+    sent_ok = False
     try:
         from notifier import mattermost
-        content = misp_store.render_fia_markdown(fia, fia.fia_id)
+
         shim = SimpleNamespace(id=uuid)
-        return bool(mattermost.send_flash_intel_alert(shim, fia.fia_id, content))
+        sent_ok = bool(mattermost.send_flash_intel_alert(shim, fia.fia_id, content, stakeholders=stakeholders))
     except Exception as exc:
         logger.warning("mattermost notify failed for %s: %s", uuid, exc)
-        return False
+
+    try:
+        from core import flowintel_client
+
+        preview_url = url_for("flash_intel.detail", id=uuid, _external=True)
+
+        def send_fn(instance):
+            return flowintel_client.send_flash_intel_to_flowintel(instance, fia, content, preview_url=preview_url)
+
+        for instance, result in flowintel_client.send_to_eligible_instances(stakeholders, "Flash intel alert", send_fn):
+            instance_name = instance.get("name") or instance.get("id")
+            if result["ok"]:
+                sent_ok = True
+                audit.record(
+                    "notify", "fia", entity_id=uuid, entity_label=fia.fia_id,
+                    details=f"Flowintel case {result['case_id']} created on {instance_name}",
+                )
+                flash(f"{fia.fia_id} sent to Flowintel ({instance_name}): case {result['case_id']} created.", "success")
+            else:
+                audit.record(
+                    "notify", "fia", entity_id=uuid, entity_label=fia.fia_id,
+                    details=f"Flowintel case creation on {instance_name} failed: {result.get('error', 'unknown error')}",
+                )
+                flash(f"Could not create Flowintel case on {instance_name}: {result.get('error', 'unknown error')}", "warning")
+    except Exception as exc:
+        logger.warning("flowintel notify failed for %s: %s", uuid, exc)
+
+    return sent_ok

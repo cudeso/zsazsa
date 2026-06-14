@@ -202,7 +202,10 @@
               <input class="form-check-input" type="checkbox" name="notification_channels"
                      value="{{ ch.id }}" id="nch_{{ loop.index }}"
                      {{ 'checked' if ch.id in current_channels }}>
-              <label class="form-check-label" for="nch_{{ loop.index }}">{{ ch.name }}</label>
+              <label class="form-check-label" for="nch_{{ loop.index }}">
+                {% if ch.type == 'flowintel' %}<img src="{{ url_for('static', filename='flowintel-icon.png') }}" alt="Flowintel" style="height:14px;width:auto;" class="me-1">{% endif %}
+                {{ ch.name }}
+              </label>
             </div>
             {% endfor %}
           </div>

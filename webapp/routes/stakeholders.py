@@ -8,12 +8,15 @@ from webapp.utils import normalize_notification_channels, product_detail_url
 
 
 def _notification_channels() -> list[dict]:
-    """Return all configured notification channels, migrating legacy single-webhook if needed."""
-    return normalize_notification_channels(
+    """Return all configured notification channels (Mattermost + Flowintel)."""
+    from core import flowintel_client
+
+    channels = normalize_notification_channels(
         getattr(_config, "NOTIFICATION_CHANNELS", []),
         legacy_url=getattr(_config, "MATTERMOST_WEBHOOK_URL", ""),
         legacy_enabled=getattr(_config, "MATTERMOST_ENABLED", False),
     )
+    return channels + flowintel_client.notification_channels()
 
 
 def _active_notification_channels() -> list[dict]:

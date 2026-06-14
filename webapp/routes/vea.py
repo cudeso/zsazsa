@@ -176,16 +176,46 @@ def _publish_and_notify(uuid):
     vea = misp_store.get_vea(uuid)
     if vea is None:
         return False
+
+    stakeholders = _eligible_vea_recipients(vea)
+    preview_url = url_for("vea.detail", id=uuid, _external=True)
+    markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
+
+    sent_ok = False
     try:
         from notifier import mattermost
 
-        stakeholders = misp_store.stakeholders_subscribed_to("Vulnerability exploitation advisory")
-        preview_url = url_for("vea.detail", id=uuid, _external=True)
-        markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
-        return bool(mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders))
+        sent_ok = bool(mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders))
     except Exception as exc:
         logger.warning("mattermost notify failed for VEA %s: %s", uuid, exc)
-        return False
+
+    try:
+        from core import flowintel_client
+
+        def send_fn(instance):
+            return flowintel_client.send_vea_to_flowintel(instance, vea, markdown, preview_url=preview_url)
+
+        for instance, result in flowintel_client.send_to_eligible_instances(
+            stakeholders, "Vulnerability exploitation advisory", send_fn
+        ):
+            instance_name = instance.get("name") or instance.get("id")
+            if result["ok"]:
+                sent_ok = True
+                audit.record(
+                    "notify", "vea", entity_id=uuid, entity_label=vea.vea_id,
+                    details=f"Flowintel case {result['case_id']} created on {instance_name}",
+                )
+                flash(f"{vea.vea_id} sent to Flowintel ({instance_name}): case {result['case_id']} created.", "success")
+            else:
+                audit.record(
+                    "notify", "vea", entity_id=uuid, entity_label=vea.vea_id,
+                    details=f"Flowintel case creation on {instance_name} failed: {result.get('error', 'unknown error')}",
+                )
+                flash(f"Could not create Flowintel case on {instance_name}: {result.get('error', 'unknown error')}", "warning")
+    except Exception as exc:
+        logger.warning("flowintel notify failed for VEA %s: %s", uuid, exc)
+
+    return sent_ok
 
 
 @bp.route("/")
@@ -475,11 +505,11 @@ def resend(id):
 
     preview_url = url_for("vea.detail", id=id, _external=True)
     markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
+    stakeholders = _eligible_vea_recipients(vea)
 
     try:
         from notifier import mattermost
 
-        stakeholders = _eligible_vea_recipients(vea)
         sent_ok = mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders)
         audit.record(
             "notify",
@@ -501,14 +531,13 @@ def resend(id):
     try:
         from core import flowintel_client
 
-        for instance in flowintel_client.get_instances():
-            if not instance.get("enabled"):
-                continue
-            product = (instance.get("case_templates") or {}).get("Vulnerability exploitation advisory") or {}
-            if not product.get("enabled"):
-                continue
+        def send_fn(instance):
+            return flowintel_client.send_vea_to_flowintel(instance, vea, markdown, preview_url=preview_url)
+
+        for instance, result in flowintel_client.send_to_eligible_instances(
+            stakeholders, "Vulnerability exploitation advisory", send_fn
+        ):
             instance_name = instance.get("name") or instance.get("id")
-            result = flowintel_client.send_vea_to_flowintel(instance, vea, markdown, preview_url=preview_url)
             if result["ok"]:
                 audit.record(
                     "notify", "vea", entity_id=id, entity_label=vea.vea_id,
