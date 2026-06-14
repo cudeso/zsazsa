@@ -3,7 +3,7 @@
   "meta-category": "intelligence",
   "description": "CTI program stakeholder managed by the zsazsa CTI program",
   "uuid": "7f8e9d0c-1b2a-4d4c-8e6f-7a8b9c0d1e2f",
-  "version": 4,
+  "version": 5,
   "attributes": {
     "name": {
       "misp-attribute": "text",
@@ -75,6 +75,24 @@
       "misp-attribute": "text",
       "ui-priority": 11,
       "description": "Free-text notes about this stakeholder",
+      "disable_correlation": true
+    },
+    "influence": {
+      "misp-attribute": "text",
+      "ui-priority": 12,
+      "description": "Influence score (1-10) for the stakeholder matrix",
+      "disable_correlation": true
+    },
+    "interest": {
+      "misp-attribute": "text",
+      "ui-priority": 13,
+      "description": "Interest score (1-10) for the stakeholder matrix",
+      "disable_correlation": true
+    },
+    "engagement-strategy": {
+      "misp-attribute": "text",
+      "ui-priority": 14,
+      "description": "Notes on how to engage this stakeholder",
       "disable_correlation": true
     }
   }

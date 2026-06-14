@@ -4,7 +4,10 @@
 {% block page_title %}Stakeholders{% endblock %}
 
 {% block topbar_actions %}
-<a href="{{ url_for('stakeholders.new') }}" class="btn btn-sm btn-primary">
+<a href="{{ url_for('stakeholders.matrix') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-table-cells me-1"></i> Stakeholder matrix
+</a>
+<a href="{{ url_for('stakeholders.new') }}" class="btn btn-sm btn-primary ms-2">
   <i class="fas fa-plus me-1"></i> Add stakeholder
 </a>
 <a href="{{ url_for('export.stakeholders') }}" class="btn btn-sm btn-outline-secondary ms-2" title="Export as Markdown">

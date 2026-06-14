@@ -4,7 +4,11 @@
 {% block page_title %}{{ stakeholder.name }}{% endblock %}
 
 {% block misp_object_url %}{{ stakeholder.misp_url }}{% endblock %}
-{% block topbar_actions %}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('stakeholders.list') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
 
 {% block content %}
 <div class="row g-4">
@@ -79,10 +83,31 @@
         <div class="fw-semibold mt-3 mb-2 text-muted small text-uppercase tracking-wide">Notification channels</div>
         <div class="d-flex flex-wrap gap-2">
           {% for cid in stakeholder.notification_channels %}
-          <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">{{ cid }}</span>
+          <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">{{ notification_channel_names.get(cid, cid) }}</span>
           {% endfor %}
         </div>
         {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-chart-simple me-2"></i>Stakeholder positioning</div>
+      <div class="card-body">
+        <dl class="detail-list mb-3">
+          <dt>Influence</dt>
+          <dd>{{ stakeholder.influence }}/10</dd>
+          <dt>Interest</dt>
+          <dd>{{ stakeholder.interest }}/10</dd>
+          <dt>Quadrant</dt>
+          <dd><span class="badge quadrant-badge quadrant-{{ stakeholder.quadrant_key }}">{{ stakeholder.quadrant_label }}</span></dd>
+        </dl>
+        {% if stakeholder.engagement_strategy %}
+        <div class="fw-semibold mb-1 text-muted small text-uppercase tracking-wide">Engagement strategy</div>
+        <p class="mb-0">{{ stakeholder.engagement_strategy }}</p>
+        {% endif %}
+        <a href="{{ url_for('stakeholders.matrix') }}" class="d-inline-block mt-2 small">
+          <i class="fas fa-table-cells me-1"></i>View on stakeholder matrix
+        </a>
       </div>
     </div>
 

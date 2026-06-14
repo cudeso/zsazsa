@@ -535,6 +535,13 @@ def _obj_attr(obj, relation):
     return attrs[0].value if attrs else None
 
 
+def _obj_int(obj, relation, default):
+    try:
+        return int(_obj_attr(obj, relation))
+    except (TypeError, ValueError):
+        return default
+
+
 def _get_obj(event, name):
     for o in event.objects:
         if o.name == name:
@@ -697,6 +704,9 @@ def _stakeholder_ns(event):
         product_modes=_json_dict(_obj_attr(obj, "product-modes")),
         notification_channels=_json_list(_obj_attr(obj, "notification-channels")),
         notes=_obj_attr(obj, "notes") or "",
+        influence=_obj_int(obj, "influence", 5),
+        interest=_obj_int(obj, "interest", 5),
+        engagement_strategy=_obj_attr(obj, "engagement-strategy") or "",
         created_at=created_at,
     )
 
@@ -840,6 +850,9 @@ def _stakeholder_obj(data):
     _oa_json(obj, "product-modes", data.get("product_modes", {}))
     _oa_json(obj, "notification-channels", data.get("notification_channels", []))
     _oa(obj, "notes", data.get("notes"))
+    _oa(obj, "influence", data.get("influence", 5))
+    _oa(obj, "interest", data.get("interest", 5))
+    _oa(obj, "engagement-strategy", data.get("engagement_strategy"))
     return obj
 
 

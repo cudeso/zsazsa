@@ -5,7 +5,11 @@
 {% block page_title %}{{ 'Edit' if is_edit else 'New' }} stakeholder{% endblock %}
 
 {% block misp_object_url %}{% if is_edit %}{{ stakeholder.misp_url }}{% else %}{{ misp_webapp_url }}{% endif %}{% endblock %}
-{% block topbar_actions %}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('stakeholders.list') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
 
 {% block content %}
 <form method="post" class="row g-4">
@@ -118,6 +122,45 @@
           <div class="form-text">Mark one contact as preferred. It will be used for notifications and display.</div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- Stakeholder positioning -->
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-chart-simple me-2"></i>Stakeholder positioning</div>
+      <div class="card-body">
+        <p class="text-muted small">
+          Used to place this stakeholder on the <a href="{{ url_for('stakeholders.matrix') }}">stakeholder matrix</a>
+          and to tailor how they are engaged.
+        </p>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label d-flex justify-content-between align-items-center">
+              <span>Influence</span>
+              <span class="badge text-bg-light">{{ stakeholder.influence if is_edit else 5 }}/10</span>
+            </label>
+            <input type="range" class="form-range" name="influence" min="1" max="10"
+                   value="{{ stakeholder.influence if is_edit else 5 }}"
+                   oninput="this.parentNode.querySelector('.badge').textContent = this.value + '/10'">
+            <div class="form-text">How much power this stakeholder has over the CTI program's priorities and resources.</div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label d-flex justify-content-between align-items-center">
+              <span>Interest</span>
+              <span class="badge text-bg-light">{{ stakeholder.interest if is_edit else 5 }}/10</span>
+            </label>
+            <input type="range" class="form-range" name="interest" min="1" max="10"
+                   value="{{ stakeholder.interest if is_edit else 5 }}"
+                   oninput="this.parentNode.querySelector('.badge').textContent = this.value + '/10'">
+            <div class="form-text">How closely this stakeholder follows and acts on the intelligence they receive.</div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="form-label">Engagement strategy</label>
+          <textarea name="engagement_strategy" class="form-control" rows="3"
+                    placeholder="e.g. Monthly briefing call, prioritise flash alerts, invite to the quarterly review...">{{ stakeholder.engagement_strategy if is_edit else '' }}</textarea>
+          <div class="form-text">Specific notes on how to keep this stakeholder engaged, on top of the general guidance for their quadrant.</div>
+        </div>
       </div>
     </div>
 

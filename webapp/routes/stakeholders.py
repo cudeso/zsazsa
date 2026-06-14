@@ -7,14 +7,23 @@ from webapp.models import CTI_PRODUCTS, STAKEHOLDER_ROLES, TLP_LEVELS
 from webapp.utils import normalize_notification_channels, product_detail_url
 
 
-def _active_notification_channels() -> list[dict]:
-    """Return enabled notification channels from config, migrating legacy single-webhook if needed."""
-    channels = normalize_notification_channels(
+def _notification_channels() -> list[dict]:
+    """Return all configured notification channels, migrating legacy single-webhook if needed."""
+    return normalize_notification_channels(
         getattr(_config, "NOTIFICATION_CHANNELS", []),
         legacy_url=getattr(_config, "MATTERMOST_WEBHOOK_URL", ""),
         legacy_enabled=getattr(_config, "MATTERMOST_ENABLED", False),
     )
-    return [c for c in channels if c.get("enabled")]
+
+
+def _active_notification_channels() -> list[dict]:
+    """Return enabled notification channels from config."""
+    return [c for c in _notification_channels() if c.get("enabled")]
+
+
+def _notification_channel_names() -> dict[str, str]:
+    """Return a mapping of notification channel id to display name."""
+    return {c["id"]: c["name"] for c in _notification_channels() if c.get("id")}
 
 bp = Blueprint("stakeholders", __name__)
 
@@ -60,10 +69,73 @@ def _parse_notification_channels(form) -> list[str]:
     return [channel_id for channel_id in form.getlist("notification_channels") if channel_id in allowed]
 
 
+def _parse_scale(form, name, default=5):
+    """Parse a 1-10 matrix scale value from the form, falling back to ``default``."""
+    try:
+        value = int(form.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(10, value))
+
+
+QUADRANTS = {
+    "manage-closely": "Manage Closely",
+    "keep-satisfied": "Keep Satisfied",
+    "keep-informed": "Keep Informed",
+    "monitor": "Monitor",
+}
+
+
+def _quadrant_for(influence, interest):
+    """Return the (key, label) of the power/interest quadrant for the given scores."""
+    high_influence = influence > 5
+    high_interest = interest > 5
+    if high_influence and high_interest:
+        return "manage-closely", QUADRANTS["manage-closely"]
+    if high_influence:
+        return "keep-satisfied", QUADRANTS["keep-satisfied"]
+    if high_interest:
+        return "keep-informed", QUADRANTS["keep-informed"]
+    return "monitor", QUADRANTS["monitor"]
+
+
+def _place_on_matrix(stakeholder):
+    """Annotate a stakeholder namespace with its matrix quadrant and plot position."""
+    stakeholder.quadrant_key, stakeholder.quadrant_label = _quadrant_for(stakeholder.influence, stakeholder.interest)
+    # Inset from the 0/100 edges so dots for scores of 1 or 10 still sit fully inside the grid.
+    stakeholder.interest_pct = 5 + (stakeholder.interest - 1) / 9 * 90
+    stakeholder.influence_pct = 5 + (stakeholder.influence - 1) / 9 * 90
+    return stakeholder
+
+
+def _spread_overlapping(stakeholders):
+    """Nudge stakeholders that plot to the same spot so all of them stay visible."""
+    groups = {}
+    for s in stakeholders:
+        groups.setdefault((s.interest_pct, s.influence_pct), []).append(s)
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        for i, s in enumerate(group):
+            offset = (i - (len(group) - 1) / 2) * 5
+            s.interest_pct = min(95, max(5, s.interest_pct + offset))
+            s.influence_pct = min(95, max(5, s.influence_pct + offset))
+
+
 @bp.route("/", endpoint="list")
 def list_stakeholders():
     stakeholders = misp_store.list_stakeholders()
     return render_template("stakeholders/list.html", stakeholders=stakeholders, org_map=org_store.org_map())
+
+
+@bp.route("/matrix")
+def matrix():
+    stakeholders = [_place_on_matrix(s) for s in misp_store.list_stakeholders()]
+    _spread_overlapping(stakeholders)
+    by_quadrant = {key: [] for key in QUADRANTS}
+    for s in stakeholders:
+        by_quadrant[s.quadrant_key].append(s)
+    return render_template("stakeholders/matrix.html", stakeholders=stakeholders, by_quadrant=by_quadrant, quadrants=QUADRANTS)
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -81,6 +153,9 @@ def new():
             "products": products,
             "product_modes": product_modes,
             "notification_channels": _parse_notification_channels(request.form),
+            "influence": _parse_scale(request.form, "influence"),
+            "interest": _parse_scale(request.form, "interest"),
+            "engagement_strategy": request.form.get("engagement_strategy"),
         }
         try:
             uuid = misp_store.create_stakeholder(data)
@@ -108,6 +183,7 @@ def detail(id):
     stakeholder = misp_store.get_stakeholder(id)
     if stakeholder is None:
         return "Stakeholder not found", 404
+    _place_on_matrix(stakeholder)
     owned_pirs = misp_store.pirs_for_stakeholder(id)
     distributed_pirs = misp_store.pirs_distributed_to_stakeholder(
         id,
@@ -136,6 +212,7 @@ def detail(id):
         distributed_girs=distributed_girs,
         recent_products=recent_products,
         org_map=org_store.org_map(),
+        notification_channel_names=_notification_channel_names(),
     )
 
 
@@ -157,6 +234,9 @@ def edit(id):
             "products": products,
             "product_modes": product_modes,
             "notification_channels": _parse_notification_channels(request.form),
+            "influence": _parse_scale(request.form, "influence"),
+            "interest": _parse_scale(request.form, "interest"),
+            "engagement_strategy": request.form.get("engagement_strategy"),
         }
         try:
             new_id = misp_store.update_stakeholder(id, data)

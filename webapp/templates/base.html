@@ -13,10 +13,10 @@
 </head>
 <body>
 
-{% set stakeholders_section_active = request.blueprint in ('stakeholders', 'community') %}
+{% set stakeholders_section_active = request.blueprint in ('stakeholders', 'community') and request.endpoint != 'stakeholders.matrix' %}
 {% set requirements_section_active = (request.endpoint and request.endpoint.startswith('requirements.')) or request.blueprint == 'rfi' %}
 {% set products_section_active = request.blueprint in ('data_collection', 'daily_briefing', 'threat_landscape', 'flash_intel', 'vea', 'products') %}
-{% set reporting_section_active = request.blueprint == 'pipeline' or request.endpoint in ('stats.index', 'logs.index') %}
+{% set reporting_section_active = request.blueprint == 'pipeline' or request.endpoint in ('stats.index', 'logs.index', 'stakeholders.matrix') %}
 {% set settings_section_active = request.endpoint == 'config_page.index' or request.blueprint == 'collection_sources' %}
 
 <!-- Top navigation (UiBeta theme) -->
@@ -48,7 +48,7 @@
           <i class="fas fa-people-group fa-fw"></i> Stakeholders
         </a>
         <ul class="dropdown-menu topnav-dropdown-menu">
-          <li><a href="{{ url_for('stakeholders.list') }}" class="dropdown-item {{ 'active' if request.blueprint == 'stakeholders' }}"><i class="fas fa-people-group fa-fw"></i> Stakeholders</a></li>
+          <li><a href="{{ url_for('stakeholders.list') }}" class="dropdown-item {{ 'active' if request.blueprint == 'stakeholders' and request.endpoint != 'stakeholders.matrix' }}"><i class="fas fa-people-group fa-fw"></i> Stakeholders</a></li>
           <li><a href="{{ url_for('community.organisations') }}" class="dropdown-item {{ 'active' if request.endpoint == 'community.organisations' }}"><i class="fas fa-building fa-fw"></i> Organisations</a></li>
           <li><a href="{{ url_for('community.users') }}" class="dropdown-item {{ 'active' if request.endpoint == 'community.users' }}"><i class="fas fa-user fa-fw"></i> Users</a></li>
           <li><a href="{{ url_for('community.roles') }}" class="dropdown-item {{ 'active' if request.endpoint == 'community.roles' }}"><i class="fas fa-shield-halved fa-fw"></i> Roles</a></li>
@@ -92,6 +92,7 @@
           <li><a href="{{ url_for('stats.index') }}" class="dropdown-item {{ 'active' if request.endpoint == 'stats.index' }}"><i class="fas fa-chart-bar fa-fw"></i> Statistics</a></li>
           <li><a href="{{ url_for('pipeline.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'pipeline' }}"><i class="fas fa-satellite-dish fa-fw"></i> Pipeline</a></li>
           <li><a href="{{ url_for('logs.index') }}" class="dropdown-item {{ 'active' if request.endpoint == 'logs.index' }}"><i class="fas fa-scroll fa-fw"></i> Logs</a></li>
+          <li><a href="{{ url_for('stakeholders.matrix') }}" class="dropdown-item {{ 'active' if request.endpoint == 'stakeholders.matrix' }}"><i class="fas fa-table-cells fa-fw"></i> Stakeholder matrix</a></li>
         </ul>
       </li>
 
@@ -150,7 +151,7 @@
     <div class="sidebar-section-label">Stakeholders</div>
     <ul class="sidebar-nav">
       <li>
-        <a href="{{ url_for('stakeholders.list') }}" class="{{ 'active' if request.blueprint == 'stakeholders' }}">
+        <a href="{{ url_for('stakeholders.list') }}" class="{{ 'active' if request.blueprint == 'stakeholders' and request.endpoint != 'stakeholders.matrix' }}">
           <span class="misp-nav-icon"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M8 8.25A4.25 4.25 0 0 1 12.25 4h15.5A4.25 4.25 0 0 1 32 8.25V19h3.75A4.25 4.25 0 0 1 40 23.25v19.5c0 .69-.56 1.25-1.25 1.25H34v-6.75A2.25 2.25 0 0 0 31.75 35h-15.5A2.25 2.25 0 0 0 14 37.25V44H9.25C8.56 44 8 43.44 8 42.75zM16.5 44h6.25v-6.5H16.5zm8.75 0h6.25v-6.5h-6.25zM18 14a2 2 0 1 0-4 0a2 2 0 0 0 4 0m-2 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4m2 5a2 2 0 1 0-4 0a2 2 0 0 0 4 0m6-12a2 2 0 1 0 0-4a2 2 0 0 0 0 4m2 5a2 2 0 1 0-4 0a2 2 0 0 0 4 0m-2 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4m10-2a2 2 0 1 0-4 0a2 2 0 0 0 4 0"/></svg></span> Stakeholders
         </a>
       </li>
@@ -246,6 +247,11 @@
       <li>
         <a href="{{ url_for('logs.index') }}" class="{{ 'active' if request.endpoint == 'logs.index' }}">
           <i class="fas fa-scroll fa-fw"></i> Logs
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('stakeholders.matrix') }}" class="{{ 'active' if request.endpoint == 'stakeholders.matrix' }}">
+          <i class="fas fa-table-cells fa-fw"></i> Stakeholder matrix
         </a>
       </li>
     </ul>
