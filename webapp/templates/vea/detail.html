@@ -281,6 +281,18 @@
       </form>
       {% endif %}
     </div>
+
+    {% if vea.published %}
+    <div class="mb-2">
+      <form method="post" action="{{ url_for('vea.resend', id=vea.uuid) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="detail">
+        <button class="btn btn-sm btn-outline-primary w-100" title="Resend to stakeholders">
+          <i class="fas fa-paper-plane me-1"></i> Resend
+        </button>
+      </form>
+    </div>
+    {% endif %}
   </div>
 </div>
 

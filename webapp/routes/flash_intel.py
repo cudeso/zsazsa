@@ -360,14 +360,20 @@ def resend(id):
     fia = misp_store.get_fia(id)
     if fia is None:
         return "FIA not found", 404
+    if request.form.get("next") == "detail":
+        redirect_target = url_for("flash_intel.detail", id=id)
+    else:
+        redirect_target = url_for("flash_intel.review")
     if getattr(fia, "review_state", "") != misp_store.FIA_REVIEW_APPROVED:
         flash("Only published alerts can be resent.", "warning")
-        return redirect(url_for("flash_intel.review"))
+        return redirect(redirect_target)
+
+    content = misp_store.render_fia_markdown(fia, fia.fia_id)
+
     try:
         from notifier import mattermost
 
         stakeholders = _eligible_flash_recipients(fia)
-        content = misp_store.render_fia_markdown(fia, fia.fia_id)
         shim = SimpleNamespace(id=id)
         sent_ok = mattermost.send_flash_intel_alert(shim, fia.fia_id, content)
         audit.record(
@@ -386,7 +392,35 @@ def resend(id):
             flash(f"{fia.fia_id} resend failed. Check notification channels/logs.", "warning")
     except Exception as exc:
         flash(f"Could not resend {fia.fia_id}: {exc}", "warning")
-    return redirect(url_for("flash_intel.review"))
+
+    try:
+        from core import flowintel_client
+
+        preview_url = url_for("flash_intel.detail", id=id, _external=True)
+        for instance in flowintel_client.get_instances():
+            if not instance.get("enabled"):
+                continue
+            product = (instance.get("case_templates") or {}).get("Flash intel alert") or {}
+            if not product.get("enabled"):
+                continue
+            instance_name = instance.get("name") or instance.get("id")
+            result = flowintel_client.send_flash_intel_to_flowintel(instance, fia, content, preview_url=preview_url)
+            if result["ok"]:
+                audit.record(
+                    "notify", "fia", entity_id=id, entity_label=fia.fia_id,
+                    details=f"Flowintel case {result['case_id']} created on {instance_name}",
+                )
+                flash(f"{fia.fia_id} sent to Flowintel ({instance_name}): case {result['case_id']} created.", "success")
+            else:
+                audit.record(
+                    "notify", "fia", entity_id=id, entity_label=fia.fia_id,
+                    details=f"Flowintel case creation on {instance_name} failed: {result.get('error', 'unknown error')}",
+                )
+                flash(f"Could not create Flowintel case on {instance_name}: {result.get('error', 'unknown error')}", "warning")
+    except Exception as exc:
+        flash(f"Could not send {fia.fia_id} to Flowintel: {exc}", "warning")
+
+    return redirect(redirect_target)
 
 
 @bp.route("/<string:id>/feedback", methods=["POST"])

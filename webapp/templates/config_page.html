@@ -783,12 +783,17 @@
         </button>
       </div>
 
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="fas fa-comment-dots" style="color:#1c58d9;"></i>
+        <span class="fw-semibold">Mattermost</span>
+      </div>
+
       <!-- Channel list -->
       <div id="notification-channel-list">
         {% for ch in cfg.NOTIFICATION_CHANNELS %}
         <div class="notification-channel-row card content-card mb-3" data-original-id="{{ ch.id }}">
           <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
-            <i class="fas fa-comment-dots text-muted"></i>
+            <i class="fas fa-comment-dots" style="color:#1c58d9;"></i>
             <span class="fw-semibold channel-display-name">{{ ch.name }}</span>
             <span class="badge {{ 'bg-success' if ch.enabled else 'bg-secondary' }} ms-1 channel-display-enabled">
               {{ 'Enabled' if ch.enabled else 'Disabled' }}
@@ -876,6 +881,167 @@
             <span class="small align-self-center" id="add-channel-result"></span>
           </div>
           <div class="form-text mt-2"><strong>Triggers:</strong> product published (flash intel, VEA, briefing), PIR/GIR shared, PIR intake status change.</div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <img src="{{ url_for('static', filename='flowintel-icon.png') }}" alt="Flowintel" style="height:18px;width:auto;">
+        <span class="fw-semibold">Flowintel</span>
+      </div>
+
+      <!-- Flowintel instance list -->
+      <div id="flowintel-instance-list">
+        {% for fi in cfg.FLOWINTEL_INSTANCES %}
+        <div class="flowintel-instance-row card content-card mb-3" data-original-id="{{ fi.id }}">
+          <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
+            <img src="{{ url_for('static', filename='flowintel-icon.png') }}" alt="Flowintel" style="height:16px;width:auto;">
+            <span class="fw-semibold fi-display-name">{{ fi.name }}</span>
+            <span class="badge {{ 'bg-success' if fi.enabled else 'bg-secondary' }} ms-1 fi-display-enabled">
+              {{ 'Enabled' if fi.enabled else 'Disabled' }}
+            </span>
+            <div class="ms-auto d-flex gap-2 align-items-center">
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-fi-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary test-fi-connection-btn" title="Check connectivity to this Flowintel instance">
+                <i class="fas fa-plug"></i>
+              </button>
+              <span class="test-fi-connection-result small"></span>
+              <button type="button" class="btn btn-sm btn-outline-danger delete-fi-btn">Delete</button>
+            </div>
+          </div>
+          <div class="card-body fi-form" style="display:none;">
+            <div class="row g-3">
+              <div class="col-sm-5">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control fi-name" value="{{ fi.name }}" placeholder="e.g. Flowintel">
+              </div>
+              <div class="col-sm-7">
+                <label class="form-label">URL</label>
+                <input type="text" class="form-control fi-url" value="{{ fi.url }}" placeholder="https://flowintel.example.com">
+              </div>
+              <div class="col-sm-7">
+                <label class="form-label">API key</label>
+                <div class="input-group">
+                  <input type="password" class="form-control font-monospace api-key-input fi-api-key" value="{{ fi.api_key }}">
+                  <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide">
+                    <i class="fas fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="col-sm-5">
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input fi-enabled" type="checkbox" {{ 'checked' if fi.enabled }}>
+                  <label class="form-check-label">Enabled</label>
+                </div>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input fi-verify-tls" type="checkbox" {{ 'checked' if fi.verify_tls is not defined or fi.verify_tls }}>
+                  <label class="form-check-label">Verify TLS certificate</label>
+                </div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="form-label d-block mb-1">Case templates for CTI products</label>
+              <table class="table table-sm align-middle mb-1 fi-case-template-table">
+                <thead>
+                  <tr><th style="width:90px;">Status</th><th>CTI product</th><th>Case template</th><th>Initial task</th></tr>
+                </thead>
+                <tbody>
+                  {% for p in cfg.FLOWINTEL_CASE_TEMPLATE_PRODUCTS %}
+                  {% set ct = (fi.case_templates or {}).get(p.key, {}) %}
+                  <tr data-product="{{ p.key }}" data-template-id="{{ ct.get('template_id', '') }}"
+                      data-initial-task-set="{{ 'true' if 'initial_task' in ct else 'false' }}"
+                      data-initial-task="{{ ct.get('initial_task', '') }}">
+                    <td>
+                      <div class="form-check form-switch mb-0">
+                        <input class="form-check-input fi-ct-enabled" type="checkbox" {{ 'checked' if ct.get('enabled') }}>
+                      </div>
+                    </td>
+                    <td>{{ p.label }}</td>
+                    <td><select class="form-select form-select-sm fi-ct-template"><option value="">Loading templates...</option></select></td>
+                    <td><select class="form-select form-select-sm fi-ct-initial-task"><option value="">Loading tasks...</option></select></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <div class="form-text">Enable to create a Flowintel case from the selected template when this product is published.</div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-primary save-fi-btn">Save</button>
+              <span class="save-fi-result small align-self-center"></span>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted small" id="no-flowintel-msg">No Flowintel instances configured yet.</p>
+        {% endfor %}
+        {% if cfg.FLOWINTEL_INSTANCES %}<p class="text-muted small d-none" id="no-flowintel-msg">No Flowintel instances configured yet.</p>{% endif %}
+      </div>
+
+      <!-- Add new Flowintel instance -->
+      <div class="card content-card mb-4 border-dashed">
+        <div class="card-header"><i class="fas fa-plus me-2"></i>Add Flowintel case management instance</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-5">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control" id="new-fi-name" placeholder="e.g. Flowintel">
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label">URL</label>
+              <input type="text" class="form-control" id="new-fi-url" placeholder="https://flowintel.example.com">
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label">API key</label>
+              <div class="input-group">
+                <input type="password" class="form-control font-monospace api-key-input" id="new-fi-api-key">
+                <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-sm-5">
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="new-fi-enabled" checked>
+                <label class="form-check-label" for="new-fi-enabled">Enabled</label>
+              </div>
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="new-fi-verify-tls" checked>
+                <label class="form-check-label" for="new-fi-verify-tls">Verify TLS certificate</label>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="form-label d-block mb-1">Case templates for CTI products</label>
+            <table class="table table-sm align-middle mb-1 fi-case-template-table" id="new-fi-case-template-table">
+              <thead>
+                <tr><th style="width:90px;">Status</th><th>CTI product</th><th>Case template</th><th>Initial task</th></tr>
+              </thead>
+              <tbody>
+                {% for p in cfg.FLOWINTEL_CASE_TEMPLATE_PRODUCTS %}
+                <tr data-product="{{ p.key }}" data-template-id="" data-initial-task-set="false" data-initial-task="">
+                  <td>
+                    <div class="form-check form-switch mb-0">
+                      <input class="form-check-input fi-ct-enabled" type="checkbox">
+                    </div>
+                  </td>
+                  <td>{{ p.label }}</td>
+                  <td><select class="form-select form-select-sm fi-ct-template"><option value="">Test connection to load templates</option></select></td>
+                  <td><select class="form-select form-select-sm fi-ct-initial-task"><option value="">Test connection to load templates</option></select></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <div class="form-text">Enable to create a Flowintel case from the selected template when this product is published.</div>
+          </div>
+          <div class="d-flex gap-2 mt-3 align-items-center">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="test-new-fi-btn">
+              <i class="fas fa-plug me-1"></i>Test connection
+            </button>
+            <span class="small" id="test-new-fi-result"></span>
+            <button type="button" class="btn btn-sm btn-primary" id="add-fi-btn">Add instance</button>
+            <span class="small" id="add-fi-result"></span>
+          </div>
         </div>
       </div>
 
@@ -1010,6 +1176,7 @@
   // API key toggles for non-server fields (scraper, webapp, openai, mattermost)
   document.querySelectorAll('.api-key-toggle').forEach((btn) => {
     if (btn.closest('.misp-server-row')) return; // handled per-row above
+    if (btn.closest('.flowintel-instance-row')) return; // handled per-row above
     btn.addEventListener('click', () => {
       const input = btn.closest('.input-group').querySelector('.api-key-input');
       const icon = btn.querySelector('i');
@@ -1265,7 +1432,7 @@
         tpl.dataset.originalId = data.new_id;
         tpl.innerHTML = `
           <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
-            <i class="fas fa-comment-dots text-muted"></i>
+            <i class="fas fa-comment-dots" style="color:#1c58d9;"></i>
             <span class="fw-semibold channel-display-name">${name}</span>
             <span class="badge ${enabled ? 'bg-success' : 'bg-secondary'} ms-1 channel-display-enabled">${enabled ? 'Enabled' : 'Disabled'}</span>
             <div class="ms-auto d-flex gap-2 align-items-center">
@@ -1292,6 +1459,410 @@
         nameEl.value = ''; urlEl.value = ''; enabledEl.checked = true;
         if (verifyTlsEl) verifyTlsEl.checked = true;
         resultEl.textContent = 'Channel added';
+        resultEl.className = 'small text-success';
+        setTimeout(() => { resultEl.textContent = ''; }, 3000);
+      } else {
+        resultEl.textContent = data.error || 'Failed';
+        resultEl.className = 'small text-danger';
+      }
+    });
+  }
+})();
+
+// ── Flowintel instances ──────────────────────────────────────────────────────
+(function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const list = document.getElementById('flowintel-instance-list');
+  if (!list) return;
+
+  const FI_PRODUCTS = {{ cfg.FLOWINTEL_CASE_TEMPLATE_PRODUCTS | tojson }};
+
+  async function parseJsonResponse(resp) {
+    try {
+      return await resp.json();
+    } catch (_) {
+      return {ok: false, error: 'Unexpected server response (HTTP ' + resp.status + ').'};
+    }
+  }
+
+  function caseTemplateTableRowsHtml(placeholderText) {
+    return FI_PRODUCTS.map((p) => `
+      <tr data-product="${p.key}" data-template-id="" data-initial-task-set="false" data-initial-task="">
+        <td><div class="form-check form-switch mb-0"><input class="form-check-input fi-ct-enabled" type="checkbox"></div></td>
+        <td>${p.label}</td>
+        <td><select class="form-select form-select-sm fi-ct-template"><option value="">${placeholderText}</option></select></td>
+        <td><select class="form-select form-select-sm fi-ct-initial-task"><option value="">${placeholderText}</option></select></td>
+      </tr>`).join('');
+  }
+
+  function caseTemplateOptionsHtml(templates) {
+    let html = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select a template…';
+    html += placeholder.outerHTML;
+    (templates || []).forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = String(t.id);
+      opt.textContent = t.title;
+      html += opt.outerHTML;
+    });
+    return html;
+  }
+
+  // Defaults to a product-specific preset task if initial_task was never saved before.
+  function initialTaskOptionsHtml(tasks, productKey, savedSet, savedValue) {
+    const titles = (tasks || []).map((t) => t.title);
+    let value = '';
+    if (savedSet && (savedValue === '' || titles.includes(savedValue))) {
+      value = savedValue;
+    } else if (productKey === 'Vulnerability exploitation advisory' && titles.includes('Check CVE and vulnerability intelligence')) {
+      value = 'Check CVE and vulnerability intelligence';
+    } else if (productKey === 'Flash intel alert' && titles.length) {
+      value = titles[0];
+    }
+    let html = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = 'None (skip initial task)';
+    if (value === '') noneOpt.selected = true;
+    html += noneOpt.outerHTML;
+    titles.forEach((title) => {
+      const opt = document.createElement('option');
+      opt.value = title;
+      opt.textContent = title;
+      if (title === value) opt.selected = true;
+      html += opt.outerHTML;
+    });
+    return html;
+  }
+
+  async function loadInitialTaskOptionsForRow(tr, urlVal, apiKeyVal, verifyTls) {
+    const sel = tr.querySelector('.fi-ct-initial-task');
+    const templateId = tr.querySelector('.fi-ct-template').value;
+    const savedSet = tr.dataset.initialTaskSet === 'true';
+    const savedValue = tr.dataset.initialTask || '';
+    if (!templateId) {
+      sel.innerHTML = initialTaskOptionsHtml([], tr.dataset.product, savedSet, savedValue);
+      return;
+    }
+    sel.innerHTML = '<option value="">Loading tasks...</option>';
+    let data;
+    try {
+      const resp = await fetch(SCRIPT_ROOT + '/config/flowintel-case-template-tasks', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({url: urlVal, api_key: apiKeyVal, verify_tls: verifyTls, template_id: templateId}),
+      });
+      data = await parseJsonResponse(resp);
+    } catch (_) {
+      data = {ok: false, error: 'Request failed'};
+    }
+    if (data.ok) {
+      sel.innerHTML = initialTaskOptionsHtml(data.tasks, tr.dataset.product, savedSet, savedValue);
+    } else {
+      sel.innerHTML = '<option value="">' + (data.error || 'Could not load tasks') + '</option>';
+    }
+  }
+
+  async function loadCaseTemplatesForRow(tableEl, urlVal, apiKeyVal, verifyTls) {
+    if (!tableEl || !urlVal || !apiKeyVal) return;
+    const rows = tableEl.querySelectorAll('tbody tr[data-product]');
+    rows.forEach((tr) => {
+      tr.querySelector('.fi-ct-template').innerHTML = '<option value="">Loading templates...</option>';
+      tr.querySelector('.fi-ct-initial-task').innerHTML = '<option value="">Loading tasks...</option>';
+    });
+    let data;
+    try {
+      const resp = await fetch(SCRIPT_ROOT + '/config/flowintel-case-templates', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({url: urlVal, api_key: apiKeyVal, verify_tls: verifyTls}),
+      });
+      data = await parseJsonResponse(resp);
+    } catch (_) {
+      data = {ok: false, error: 'Request failed'};
+    }
+    for (const tr of rows) {
+      const sel = tr.querySelector('.fi-ct-template');
+      const selectedId = tr.dataset.templateId || '';
+      if (data.ok) {
+        sel.innerHTML = caseTemplateOptionsHtml(data.templates);
+        if (selectedId) sel.value = selectedId;
+      } else {
+        sel.innerHTML = '<option value="">' + (data.error || 'Could not load templates') + '</option>';
+      }
+      await loadInitialTaskOptionsForRow(tr, urlVal, apiKeyVal, verifyTls);
+    }
+  }
+
+  function collectCaseTemplates(tableEl) {
+    const result = {};
+    if (!tableEl) return result;
+    tableEl.querySelectorAll('tbody tr[data-product]').forEach((tr) => {
+      result[tr.dataset.product] = {
+        enabled: tr.querySelector('.fi-ct-enabled').checked,
+        template_id: tr.querySelector('.fi-ct-template').value,
+        initial_task: tr.querySelector('.fi-ct-initial-task').value,
+      };
+    });
+    return result;
+  }
+
+  function bindCaseTemplateTable(table, getConnDetails) {
+    if (!table) return;
+    table.querySelectorAll('tbody tr[data-product]').forEach((tr) => {
+      tr.querySelector('.fi-ct-template').addEventListener('change', () => {
+        const {url, apiKey, verifyTls} = getConnDetails();
+        if (!url || !apiKey) return;
+        tr.dataset.templateId = tr.querySelector('.fi-ct-template').value;
+        loadInitialTaskOptionsForRow(tr, url, apiKey, verifyTls);
+      });
+    });
+  }
+
+  function resetNewCaseTemplateTable() {
+    const table = document.getElementById('new-fi-case-template-table');
+    table.querySelector('tbody').innerHTML = caseTemplateTableRowsHtml('Test connection to load templates');
+    bindNewCaseTemplateTable();
+  }
+
+  function bindNewCaseTemplateTable() {
+    bindCaseTemplateTable(document.getElementById('new-fi-case-template-table'), () => ({
+      url: document.getElementById('new-fi-url').value.trim(),
+      apiKey: document.getElementById('new-fi-api-key').value.trim(),
+      verifyTls: document.getElementById('new-fi-verify-tls').checked,
+    }));
+  }
+
+  function bindApiKeyToggle(row) {
+    row.querySelectorAll('.api-key-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const input = btn.closest('.input-group').querySelector('.api-key-input');
+        const icon = btn.querySelector('i');
+        if (input.type === 'password') {
+          input.type = 'text';
+          icon.classList.replace('fa-eye', 'fa-eye-slash');
+        } else {
+          input.type = 'password';
+          icon.classList.replace('fa-eye-slash', 'fa-eye');
+        }
+      });
+    });
+  }
+
+  async function testConnection(urlVal, apiKeyVal, verifyTls, resultEl, btn, onSuccess) {
+    if (!urlVal || !apiKeyVal) {
+      resultEl.textContent = 'URL and API key required';
+      resultEl.className = 'small text-warning';
+      return;
+    }
+    btn.disabled = true;
+    resultEl.textContent = 'Testing…';
+    resultEl.className = 'small text-muted';
+    try {
+      const resp = await fetch(SCRIPT_ROOT + '/config/test-flowintel-connection', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({url: urlVal, api_key: apiKeyVal, verify_tls: verifyTls}),
+      });
+      const data = await parseJsonResponse(resp);
+      btn.disabled = false;
+      if (data.ok) {
+        resultEl.textContent = 'Connected';
+        resultEl.className = 'small text-success';
+        if (onSuccess) onSuccess();
+      } else {
+        resultEl.textContent = data.error || 'Connection failed';
+        resultEl.className = 'small text-danger';
+      }
+    } catch (_) {
+      btn.disabled = false;
+      resultEl.textContent = 'Request failed';
+      resultEl.className = 'small text-danger';
+    }
+    setTimeout(() => { resultEl.textContent = ''; }, 5000);
+  }
+
+  function bindRow(row) {
+    const toggleBtn = row.querySelector('.toggle-fi-form');
+    const form = row.querySelector('.fi-form');
+    const deleteBtn = row.querySelector('.delete-fi-btn');
+    const testBtn = row.querySelector('.test-fi-connection-btn');
+    const testResult = row.querySelector('.test-fi-connection-result');
+    const saveBtn = row.querySelector('.save-fi-btn');
+    const saveResult = row.querySelector('.save-fi-result');
+
+    bindApiKeyToggle(row);
+    bindCaseTemplateTable(row.querySelector('.fi-case-template-table'), () => ({
+      url: row.querySelector('.fi-url').value.trim(),
+      apiKey: row.querySelector('.fi-api-key').value.trim(),
+      verifyTls: row.querySelector('.fi-verify-tls').checked,
+    }));
+
+    if (toggleBtn && form) {
+      toggleBtn.addEventListener('click', () => {
+        const open = form.style.display !== 'none';
+        form.style.display = open ? 'none' : '';
+        toggleBtn.textContent = open ? 'Edit' : 'Close';
+      });
+    }
+
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        const originalId = row.dataset.originalId;
+        if (!confirm('Delete this Flowintel instance?')) return;
+        const resp = await fetch(SCRIPT_ROOT + '/config/delete-flowintel-instance', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({instance_id: originalId}),
+        });
+        const data = await parseJsonResponse(resp);
+        if (data.ok) {
+          row.remove();
+          const noMsg = document.getElementById('no-flowintel-msg');
+          if (noMsg && !list.querySelector('.flowintel-instance-row')) noMsg.classList.remove('d-none');
+        } else {
+          alert('Delete failed: ' + (data.error || 'unknown'));
+        }
+      });
+    }
+
+    if (testBtn && testResult) {
+      testBtn.addEventListener('click', () => {
+        const urlVal = row.querySelector('.fi-url').value.trim();
+        const apiKeyVal = row.querySelector('.fi-api-key').value.trim();
+        const verifyTls = row.querySelector('.fi-verify-tls').checked;
+        testConnection(urlVal, apiKeyVal, verifyTls, testResult, testBtn, () => {
+          loadCaseTemplatesForRow(row.querySelector('.fi-case-template-table'), urlVal, apiKeyVal, verifyTls);
+        });
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const originalId = row.dataset.originalId;
+        const name = row.querySelector('.fi-name').value.trim();
+        const url = row.querySelector('.fi-url').value.trim();
+        const apiKey = row.querySelector('.fi-api-key').value.trim();
+        const enabled = row.querySelector('.fi-enabled').checked;
+        const verifyTls = row.querySelector('.fi-verify-tls').checked;
+        if (!name) { saveResult.textContent = 'Name required'; saveResult.className = 'save-fi-result small text-danger'; return; }
+        if (!url) { saveResult.textContent = 'URL required'; saveResult.className = 'save-fi-result small text-danger'; return; }
+        const caseTemplates = collectCaseTemplates(row.querySelector('.fi-case-template-table'));
+        const resp = await fetch(SCRIPT_ROOT + '/config/save-flowintel-instance', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({original_id: originalId, name, url, api_key: apiKey, enabled, verify_tls: verifyTls, case_templates: caseTemplates}),
+        });
+        const data = await parseJsonResponse(resp);
+        if (data.ok) {
+          row.dataset.originalId = data.new_id;
+          row.querySelector('.fi-display-name').textContent = name;
+          const badge = row.querySelector('.fi-display-enabled');
+          badge.textContent = enabled ? 'Enabled' : 'Disabled';
+          badge.className = 'badge ms-1 fi-display-enabled ' + (enabled ? 'bg-success' : 'bg-secondary');
+          saveResult.textContent = 'Saved';
+          saveResult.className = 'save-fi-result small text-success';
+          setTimeout(() => { saveResult.textContent = ''; }, 3000);
+        } else {
+          saveResult.textContent = data.error || 'Save failed';
+          saveResult.className = 'save-fi-result small text-danger';
+        }
+      });
+    }
+  }
+
+  list.querySelectorAll('.flowintel-instance-row').forEach((row) => {
+    bindRow(row);
+    loadCaseTemplatesForRow(
+      row.querySelector('.fi-case-template-table'),
+      row.querySelector('.fi-url').value.trim(),
+      row.querySelector('.fi-api-key').value.trim(),
+      row.querySelector('.fi-verify-tls').checked
+    );
+  });
+
+  bindNewCaseTemplateTable();
+
+  const testNewBtn = document.getElementById('test-new-fi-btn');
+  if (testNewBtn) {
+    testNewBtn.addEventListener('click', () => {
+      const urlVal = document.getElementById('new-fi-url').value.trim();
+      const apiKeyVal = document.getElementById('new-fi-api-key').value.trim();
+      const verifyTls = document.getElementById('new-fi-verify-tls').checked;
+      const resultEl = document.getElementById('test-new-fi-result');
+      testConnection(urlVal, apiKeyVal, verifyTls, resultEl, testNewBtn, () => {
+        loadCaseTemplatesForRow(document.getElementById('new-fi-case-template-table'), urlVal, apiKeyVal, verifyTls);
+      });
+    });
+  }
+
+  const addBtn = document.getElementById('add-fi-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', async () => {
+      const nameEl = document.getElementById('new-fi-name');
+      const urlEl = document.getElementById('new-fi-url');
+      const apiKeyEl = document.getElementById('new-fi-api-key');
+      const enabledEl = document.getElementById('new-fi-enabled');
+      const verifyTlsEl = document.getElementById('new-fi-verify-tls');
+      const resultEl = document.getElementById('add-fi-result');
+      const name = nameEl.value.trim();
+      const url = urlEl.value.trim();
+      const apiKey = apiKeyEl.value.trim();
+      const enabled = enabledEl.checked;
+      const verifyTls = verifyTlsEl.checked;
+      if (!name) { resultEl.textContent = 'Name required'; resultEl.className = 'small text-danger'; return; }
+      if (!url) { resultEl.textContent = 'URL required'; resultEl.className = 'small text-danger'; return; }
+      const newCaseTemplateTable = document.getElementById('new-fi-case-template-table');
+      const caseTemplates = collectCaseTemplates(newCaseTemplateTable);
+      const resp = await fetch(SCRIPT_ROOT + '/config/save-flowintel-instance', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({name, url, api_key: apiKey, enabled, verify_tls: verifyTls, case_templates: caseTemplates}),
+      });
+      const data = await parseJsonResponse(resp);
+      if (data.ok) {
+        const noMsg = document.getElementById('no-flowintel-msg');
+        if (noMsg) noMsg.classList.add('d-none');
+        const tpl = document.createElement('div');
+        tpl.className = 'flowintel-instance-row card content-card mb-3';
+        tpl.dataset.originalId = data.new_id;
+        tpl.innerHTML = `
+          <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
+            <img src="{{ url_for('static', filename='flowintel-icon.png') }}" alt="Flowintel" style="height:16px;width:auto;">
+            <span class="fw-semibold fi-display-name">${name}</span>
+            <span class="badge ${enabled ? 'bg-success' : 'bg-secondary'} ms-1 fi-display-enabled">${enabled ? 'Enabled' : 'Disabled'}</span>
+            <div class="ms-auto d-flex gap-2 align-items-center">
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-fi-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary test-fi-connection-btn" title="Check connectivity to this Flowintel instance"><i class="fas fa-plug"></i></button>
+              <span class="test-fi-connection-result small"></span>
+              <button type="button" class="btn btn-sm btn-outline-danger delete-fi-btn">Delete</button>
+            </div>
+          </div>
+          <div class="card-body fi-form" style="display:none;">
+            <div class="row g-3">
+              <div class="col-sm-5"><label class="form-label">Name</label><input type="text" class="form-control fi-name" value="${name}"></div>
+              <div class="col-sm-7"><label class="form-label">URL</label><input type="text" class="form-control fi-url" value="${url}"></div>
+              <div class="col-sm-7"><label class="form-label">API key</label>
+                <div class="input-group"><input type="password" class="form-control font-monospace api-key-input fi-api-key" value="${apiKey}">
+                <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button></div>
+              </div>
+              <div class="col-sm-5"><div class="form-check form-switch mt-2"><input class="form-check-input fi-enabled" type="checkbox" ${enabled ? 'checked' : ''}><label class="form-check-label">Enabled</label></div></div>
+              <div class="col-sm-5"><div class="form-check form-switch mt-2"><input class="form-check-input fi-verify-tls" type="checkbox" ${verifyTls ? 'checked' : ''}><label class="form-check-label">Verify TLS certificate</label></div></div>
+            </div>
+            <div class="mt-3">
+              <label class="form-label d-block mb-1">Case templates for CTI products</label>
+              <table class="table table-sm align-middle mb-1 fi-case-template-table">
+                <thead>
+                  <tr><th style="width:90px;">Status</th><th>CTI product</th><th>Case template</th><th>Initial task</th></tr>
+                </thead>
+                <tbody>${caseTemplateTableRowsHtml('Loading templates...')}</tbody>
+              </table>
+              <div class="form-text">Enable to create a Flowintel case from the selected template when this product is published.</div>
+            </div>
+            <div class="d-flex gap-2 mt-3"><button type="button" class="btn btn-sm btn-primary save-fi-btn">Save</button><span class="save-fi-result small align-self-center"></span></div>
+          </div>`;
+        list.insertBefore(tpl, list.firstChild);
+        bindRow(tpl);
+        loadCaseTemplatesForRow(tpl.querySelector('.fi-case-template-table'), url, apiKey, verifyTls);
+        resetNewCaseTemplateTable();
+        nameEl.value = ''; urlEl.value = ''; apiKeyEl.value = ''; enabledEl.checked = true; verifyTlsEl.checked = true;
+        resultEl.textContent = 'Instance added';
         resultEl.className = 'small text-success';
         setTimeout(() => { resultEl.textContent = ''; }, 3000);
       } else {

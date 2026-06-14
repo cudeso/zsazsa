@@ -56,15 +56,7 @@ def _parse_subscriptions(form):
 
 
 def _parse_notification_channels(form) -> list[str]:
-    allowed = {
-        (channel.get("id") or "").strip()
-        for channel in normalize_notification_channels(
-            getattr(_config, "NOTIFICATION_CHANNELS", []),
-            legacy_url=getattr(_config, "MATTERMOST_WEBHOOK_URL", ""),
-            legacy_enabled=getattr(_config, "MATTERMOST_ENABLED", False),
-        )
-        if (channel.get("id") or "").strip()
-    }
+    allowed = {channel.get("id") for channel in _active_notification_channels() if channel.get("id")}
     return [channel_id for channel_id in form.getlist("notification_channels") if channel_id in allowed]
 
 

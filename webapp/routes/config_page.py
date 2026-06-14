@@ -12,6 +12,7 @@ import requests
 
 import config as _config
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
+from core import flowintel_client
 from webapp import audit, misp_store
 from webapp.rate_limit import rate_limited
 from webapp.utils import (
@@ -28,6 +29,12 @@ _UPLOADS_DIR = _ROOT / "data" / "uploads"
 _CONFIG_FILE = _ROOT / "config" / "__init__.py"
 _BACKUP_FILE = _ROOT / "config" / "__init__.py.backup"
 _PROMPTS_DIR = _ROOT / "zsazsaprompts"
+
+# CTI products that can be linked to a Flowintel case template per instance.
+FLOWINTEL_CASE_TEMPLATE_PRODUCTS = [
+    {"key": "Flash intel alert", "label": "Flash intel report"},
+    {"key": "Vulnerability exploitation advisory", "label": "Vulnerability advisory"},
+]
 
 
 def _llm_usage_stats() -> dict:
@@ -129,6 +136,8 @@ def _read() -> dict:
         "OPENAI_API_KEY": openai_api_key,
         "OPENAI_MODEL": openai_model,
         "NOTIFICATION_CHANNELS": _read_notification_channels(),
+        "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
+        "FLOWINTEL_CASE_TEMPLATE_PRODUCTS": FLOWINTEL_CASE_TEMPLATE_PRODUCTS,
         "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []),
         "PRODUCT_TYPES": _config.PRODUCT_TYPES,
         "DAILY_BRIEFING_TITLE_EXCLUSIONS": daily_briefing_title_exclusions,
@@ -235,6 +244,19 @@ def _write(values):
         channels_repr = "[\n" + "\n".join(ch_lines) + "\n]"
     else:
         channels_repr = "[]"
+    flowintel_instances = values.get("FLOWINTEL_INSTANCES", [])
+    if flowintel_instances:
+        fi_lines = []
+        for fi in flowintel_instances:
+            fi_lines.append("    {")
+            for k in ("id", "name", "url", "api_key", "enabled", "verify_tls"):
+                fi_lines.append(f"        {k!r}: {fi.get(k)!r},")
+            case_templates_repr = repr(fi.get("case_templates") or {})
+            fi_lines.append(f"        'case_templates': {case_templates_repr},")
+            fi_lines.append("    },")
+        flowintel_instances_repr = "[\n" + "\n".join(fi_lines) + "\n]"
+    else:
+        flowintel_instances_repr = "[]"
     content = f"""SECRET_KEY = {_config.SECRET_KEY!r}
 
 # MISP - scraper / analyser pipeline
@@ -258,6 +280,9 @@ NOTIFICATION_CHANNELS = {channels_repr}
 # Legacy aliases: first active Mattermost channel (used by notifier for fallback)
 MATTERMOST_ENABLED = any(c.get('type') == 'mattermost' and c.get('enabled') for c in NOTIFICATION_CHANNELS)
 MATTERMOST_WEBHOOK_URL = next((c.get('url', '') for c in NOTIFICATION_CHANNELS if c.get('type') == 'mattermost' and c.get('enabled')), '')
+
+# Flowintel case management instances
+FLOWINTEL_INSTANCES = {flowintel_instances_repr}
 
 # Additional MISP servers queried by the data-collection page.
 MISP_SERVERS = {servers_repr}
@@ -737,6 +762,154 @@ def ping_notification_channel():
         return jsonify({"ok": True})
     except requests.RequestException as exc:
         return jsonify({"ok": False, "error": str(exc)})
+
+
+@bp.route("/config/save-flowintel-instance", methods=["POST"])
+@rate_limited("config_save_flowintel_instance", limit=30, window_s=60)
+def save_flowintel_instance():
+    """Add or update a single Flowintel instance entry (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    original_id = (data.get("original_id") or "").strip()
+    name = (data.get("name") or "").strip()
+    url = (data.get("url") or "").strip()
+    api_key = (data.get("api_key") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Name required"}), 400
+    if not url:
+        return jsonify({"ok": False, "error": "URL required"}), 400
+    cid = (data.get("id") or "").strip()
+    if not cid:
+        cid = "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-") or "flowintel"
+    try:
+        enabled = _parse_bool(data.get("enabled", True), default=True)
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    case_templates_raw = data.get("case_templates") or {}
+    case_templates = {}
+    if isinstance(case_templates_raw, dict):
+        for product in FLOWINTEL_CASE_TEMPLATE_PRODUCTS:
+            ct = case_templates_raw.get(product["key"])
+            if isinstance(ct, dict):
+                case_templates[product["key"]] = {
+                    "enabled": bool(ct.get("enabled")),
+                    "template_id": str(ct.get("template_id") or "").strip(),
+                    "initial_task": str(ct.get("initial_task") or "").strip(),
+                }
+
+    entry = {
+        "id": cid,
+        "name": name,
+        "url": url,
+        "api_key": api_key,
+        "enabled": enabled,
+        "verify_tls": verify_tls,
+        "case_templates": case_templates,
+    }
+    current = _read()
+    instances = list(current.get("FLOWINTEL_INSTANCES") or [])
+    action = "create"
+    if original_id:
+        for i, inst in enumerate(instances):
+            if inst.get("id") == original_id:
+                instances[i] = entry
+                action = "update"
+                break
+        if action == "create":
+            instances.append(entry)
+    else:
+        instances.append(entry)
+    current["FLOWINTEL_INSTANCES"] = instances
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record(action, "flowintel_instance", entity_label=name)
+        return jsonify({"ok": True, "new_id": cid})
+    except Exception:
+        logger.exception("save_flowintel_instance failed")
+        return jsonify({"ok": False, "error": "Could not save Flowintel instance."}), 500
+
+
+@bp.route("/config/delete-flowintel-instance", methods=["POST"])
+@rate_limited("config_delete_flowintel_instance", limit=30, window_s=60)
+def delete_flowintel_instance():
+    """Remove a Flowintel instance by ID (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    instance_id = (data.get("instance_id") or "").strip()
+    if not instance_id:
+        return jsonify({"ok": False, "error": "instance_id required"}), 400
+    current = _read()
+    instances = current.get("FLOWINTEL_INSTANCES") or []
+    label = next((i.get("name", instance_id) for i in instances if i.get("id") == instance_id), instance_id)
+    current["FLOWINTEL_INSTANCES"] = [i for i in instances if i.get("id") != instance_id]
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("delete", "flowintel_instance", entity_label=label)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("delete_flowintel_instance failed")
+        return jsonify({"ok": False, "error": "Could not delete Flowintel instance."}), 500
+
+
+@bp.route("/config/test-flowintel-connection", methods=["POST"])
+@rate_limited("config_test_flowintel_connection", limit=20, window_s=60)
+def test_flowintel_connection():
+    """Check connectivity to a Flowintel instance without sending any data."""
+    data, err = _json_object()
+    if err:
+        return err
+    url = (data.get("url") or "").strip().rstrip("/")
+    api_key = (data.get("api_key") or "").strip()
+    try:
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not url or not api_key:
+        return jsonify({"ok": False, "error": "URL and API key are required"}), 400
+    return jsonify(flowintel_client.test_connection(url, api_key, verify_tls))
+
+
+@bp.route("/config/flowintel-case-templates", methods=["POST"])
+@rate_limited("config_flowintel_case_templates", limit=20, window_s=60)
+def flowintel_case_templates():
+    """Return the case templates available on a Flowintel instance, given connection details."""
+    data, err = _json_object()
+    if err:
+        return err
+    url = (data.get("url") or "").strip().rstrip("/")
+    api_key = (data.get("api_key") or "").strip()
+    try:
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not url or not api_key:
+        return jsonify({"ok": False, "error": "URL and API key are required"}), 400
+    return jsonify(flowintel_client.get_case_templates(url, api_key, verify_tls))
+
+
+@bp.route("/config/flowintel-case-template-tasks", methods=["POST"])
+@rate_limited("config_flowintel_case_template_tasks", limit=20, window_s=60)
+def flowintel_case_template_tasks():
+    """Return the tasks defined by a Flowintel case template, in order."""
+    data, err = _json_object()
+    if err:
+        return err
+    url = (data.get("url") or "").strip().rstrip("/")
+    api_key = (data.get("api_key") or "").strip()
+    template_id = (data.get("template_id") or "").strip()
+    try:
+        verify_tls = _parse_bool(data.get("verify_tls", True), default=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not url or not api_key or not template_id:
+        return jsonify({"ok": False, "error": "URL, API key and template_id are required"}), 400
+    return jsonify(flowintel_client.get_case_template_tasks(url, api_key, template_id, verify_tls))
 
 
 @bp.route("/config/upload-logo", methods=["POST"])

@@ -465,15 +465,21 @@ def resend(id):
     vea = misp_store.get_vea(id)
     if vea is None:
         return "VEA not found", 404
+    if request.form.get("next") == "detail":
+        redirect_target = url_for("vea.detail", id=id)
+    else:
+        redirect_target = url_for("vea.review")
     if getattr(vea, "review_state", "") != misp_store.VEA_REVIEW_APPROVED:
         flash("Only published advisories can be resent.", "warning")
-        return redirect(url_for("vea.review"))
+        return redirect(redirect_target)
+
+    preview_url = url_for("vea.detail", id=id, _external=True)
+    markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
+
     try:
         from notifier import mattermost
 
         stakeholders = _eligible_vea_recipients(vea)
-        preview_url = url_for("vea.detail", id=id, _external=True)
-        markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
         sent_ok = mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders)
         audit.record(
             "notify",
@@ -491,7 +497,34 @@ def resend(id):
             flash(f"{vea.vea_id} resend failed. Check notification channels/logs.", "warning")
     except Exception as exc:
         flash(f"Could not resend {vea.vea_id}: {exc}", "warning")
-    return redirect(url_for("vea.review"))
+
+    try:
+        from core import flowintel_client
+
+        for instance in flowintel_client.get_instances():
+            if not instance.get("enabled"):
+                continue
+            product = (instance.get("case_templates") or {}).get("Vulnerability exploitation advisory") or {}
+            if not product.get("enabled"):
+                continue
+            instance_name = instance.get("name") or instance.get("id")
+            result = flowintel_client.send_vea_to_flowintel(instance, vea, markdown, preview_url=preview_url)
+            if result["ok"]:
+                audit.record(
+                    "notify", "vea", entity_id=id, entity_label=vea.vea_id,
+                    details=f"Flowintel case {result['case_id']} created on {instance_name}",
+                )
+                flash(f"{vea.vea_id} sent to Flowintel ({instance_name}): case {result['case_id']} created.", "success")
+            else:
+                audit.record(
+                    "notify", "vea", entity_id=id, entity_label=vea.vea_id,
+                    details=f"Flowintel case creation on {instance_name} failed: {result.get('error', 'unknown error')}",
+                )
+                flash(f"Could not create Flowintel case on {instance_name}: {result.get('error', 'unknown error')}", "warning")
+    except Exception as exc:
+        flash(f"Could not send {vea.vea_id} to Flowintel: {exc}", "warning")
+
+    return redirect(redirect_target)
 
 
 @bp.route("/<string:id>/feedback", methods=["POST"])
