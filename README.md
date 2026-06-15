@@ -50,6 +50,24 @@ Focus points are first-class data. They can be added, removed, synchronised and 
 
 Community pages provide a local registry of organisations validated against MISP UUIDs and reusable across stakeholder records.
 
+## Notification and distribution flow
+
+Distribution is built around stakeholders, roles, product subscriptions, audiences and notification channels. The intended flow is the following.
+
+A stakeholder is created and takes on exactly one role (SOC, Incident Response, Cyber Threat Intelligence, and so on). Each stakeholder indicates which notification channels they want to receive products on, chosen from the channels configured under Settings (Mattermost webhooks and Flowintel instances). A stakeholder also subscribes to one or more product types. The subscription is what the stakeholder wants to receive; the draft or after-approval subscription mode is recorded but currently makes no difference to delivery.
+
+A product is created with one or more audiences. An audience is a stakeholder role, so selecting an audience selects the set of stakeholders holding that role. When a product is published, every selected audience is resolved to its matching stakeholders, and a stakeholder receives the product only if all of the following hold: the stakeholder's role is in the product's audience, the stakeholder is subscribed to that product type, and the stakeholder's TLP clearance is high enough for the product's TLP. Eligible stakeholders then receive the product over the notification channels they configured. A channel can accept every product, or it can be restricted to specific product types. Flowintel is an example of a restricted channel: a case is created only on the Flowintel instances those recipients subscribed to, and only for products that are enabled for that instance in its `case_templates` configuration.
+
+Eligibility is computed centrally by `recipient_preview()` in `webapp/misp_store.py`, which classifies every stakeholder as green (will receive the product), yellow (subscribed but blocked by TLP or audience) or grey (not subscribed). The product detail and review pages show this preview before publishing.
+
+Current per-product coverage:
+
+- **Flash Intel Alert** and **Vulnerability Exploitation Advisory** implement the full flow above, including audience, subscription, TLP gating, and delivery to both Mattermost and Flowintel.
+- **Daily threat briefing** is delivered to all stakeholders subscribed to it, over each recipient's configured notification channels. It has no audience and applies no TLP gating. Mattermost is delivered today; Teams and email are planned and plug into the same per-channel-type dispatch.
+- **Threat landscape report** records an audience but does not yet push notifications on publish.
+- **PIR**, **GIR** and **RFI** are requirements rather than products. They notify an explicitly selected distribution list of stakeholders over Mattermost, independent of product subscriptions and audiences.
+- The remaining product types listed under `PRODUCT_TYPES` can be subscribed to but do not yet have a publish-and-notify flow.
+
 ## MISP model and tagging approach
 
 The platform stores each business entity as one MISP event, with data held inside a custom MISP object. Custom object templates live in `webapp/misp_objects/`.

@@ -214,12 +214,12 @@ def _parse_stories_from_form(form):
 
 
 def _notify_briefing_stakeholders(briefing, preview_url: str = "") -> tuple[int, bool]:
-    from notifier import mattermost
+    from notifier import dispatcher
 
     stakeholders = misp_store.stakeholders_subscribed_to("Daily threat briefing")
     markdown = misp_store.render_briefing_markdown(briefing, preview_url=preview_url)
-    sent_ok = mattermost.send_daily_briefing_notification(briefing, markdown, stakeholders=stakeholders)
-    return len(stakeholders), bool(sent_ok)
+    result = dispatcher.send_daily_briefing(briefing, markdown, stakeholders)
+    return len(stakeholders), bool(result["sent_types"])
 
 
 def _latest_notify_status(entity_id: str):
@@ -579,7 +579,7 @@ def publish(id):
                 ),
             )
         except Exception as exc:
-            logger.warning("mattermost notify failed for briefing %s: %s", id, exc)
+            logger.warning("notify failed for briefing %s: %s", id, exc)
             notification_sent = False
             audit.record(
                 "notify",

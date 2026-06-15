@@ -437,6 +437,13 @@ body {
   font-weight: 500;
 }
 
+.sidebar-divider-line {
+  border: 0;
+  border-top: 1px solid var(--sidebar-divider);
+  margin: 0.35rem 0.75rem;
+  opacity: 1;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: 1rem 1.25rem;

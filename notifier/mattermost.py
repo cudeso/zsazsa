@@ -200,10 +200,15 @@ def send_gir_notification(
     return send_text(text, f"GIR {gir.gir_id}", channel_ids=channel_ids)
 
 
-def send_daily_briefing_notification(briefing, markdown: str, stakeholders: list | None = None) -> bool:
-    """Send the full Daily Briefing content to subscribed stakeholders."""
-    channel_ids = None
-    if stakeholders:
+def send_daily_briefing_notification(briefing, markdown: str, stakeholders: list | None = None,
+                                     channel_ids: list[str] | None = None) -> bool:
+    """Send the full Daily Briefing content to the given Mattermost channels.
+
+    `channel_ids` selects the channels directly (used by the dispatcher, which
+    owns channel-type routing). When omitted, the Mattermost channels are
+    derived from the stakeholders' channel preferences for backwards compatibility.
+    """
+    if channel_ids is None and stakeholders:
         ids: set[str] = set()
         for s in stakeholders:
             for cid in (getattr(s, "notification_channels", None) or []):

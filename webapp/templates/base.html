@@ -78,8 +78,8 @@
           <li><hr class="dropdown-divider"></li>
           <li><a href="{{ url_for('daily_briefing.list_briefings') }}" class="dropdown-item {{ 'active' if request.blueprint == 'daily_briefing' }}"><i class="fas fa-newspaper fa-fw"></i> Daily briefing</a></li>
           <li><a href="{{ url_for('threat_landscape.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'threat_landscape' }}"><i class="fas fa-globe fa-fw"></i> Threat landscape</a></li>
-          <li><a href="{{ url_for('flash_intel.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'flash_intel' }}"><i class="fas fa-bolt fa-fw"></i> Flash intel <span class="sidebar-hint">Review queue</span></a></li>
-          <li><a href="{{ url_for('vea.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'vea' }}"><i class="fas fa-bug fa-fw"></i> Vuln advisories <span class="sidebar-hint">VEA</span></a></li>
+          <li><a href="{{ url_for('flash_intel.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'flash_intel' }}"><i class="fas fa-bolt fa-fw"></i> Flash intel alert</a></li>
+          <li><a href="{{ url_for('vea.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'vea' }}"><i class="fas fa-bug fa-fw"></i> Vuln advisories</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><a href="{{ url_for('products.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'products' }}"><i class="fas fa-cubes fa-fw"></i> All products</a></li>
         </ul>
@@ -174,7 +174,7 @@
       </li>
     </ul>
 
-    <div class="sidebar-section-label">Intelligence Requirements</div>
+    <div class="sidebar-section-label">Requirements</div>
     <ul class="sidebar-nav">
       <li>
         <a href="{{ url_for('requirements.pir_list') }}" class="{{ 'active' if request.endpoint and 'pir' in request.endpoint and 'triage' not in request.endpoint }}">
@@ -202,7 +202,7 @@
       </li>
     </ul>
 
-    <div class="sidebar-section-label">Reporting</div>
+    <div class="sidebar-section-label">Products</div>
     <ul class="sidebar-nav">
       <li>
         <a href="{{ url_for('data_collection.index') }}" class="{{ 'active' if request.blueprint == 'data_collection' }}">
@@ -221,14 +221,12 @@
       </li>
       <li>
         <a href="{{ url_for('flash_intel.review') }}" class="{{ 'active' if request.blueprint == 'flash_intel' }}">
-          <i class="fas fa-bolt fa-fw"></i> Flash intel
-          <span class="sidebar-hint">Review queue</span>
+          <i class="fas fa-bolt fa-fw"></i> Flash intel alert
         </a>
       </li>
       <li>
         <a href="{{ url_for('vea.review') }}" class="{{ 'active' if request.blueprint == 'vea' }}">
           <i class="fas fa-bug fa-fw"></i> Vuln advisories
-          <span class="sidebar-hint">VEA</span>
         </a>
       </li>
       <li>
@@ -236,6 +234,10 @@
           <span class="misp-nav-icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g fill="currentColor"><path d="m12 2 .117.007a1 1 0 0 1 .876.876L13 3v4l.005.15a2 2 0 0 0 1.838 1.844L15 9h4l.117.007a1 1 0 0 1 .876.876L20 10v9a3 3 0 0 1-2.824 2.995L17 22H7a3 3 0 0 1-2.995-2.824L4 19V5a3 3 0 0 1 2.824-2.995L7 2zm3 14H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2m0-4H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2m-5-4H9a1 1 0 1 0 0 2h1a1 1 0 0 0 0-2"/><path d="M19 7h-4l-.001-4.001z"/></g></svg></span> All products
         </a>
       </li>
+    </ul>
+
+    <div class="sidebar-section-label">Reporting</div>
+    <ul class="sidebar-nav">
       <li>
         <a href="{{ url_for('stats.index') }}" class="{{ 'active' if request.endpoint == 'stats.index' }}">
           <i class="fas fa-chart-bar fa-fw"></i> Statistics
