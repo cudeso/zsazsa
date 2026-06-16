@@ -1589,11 +1589,14 @@
     return html;
   }
 
-  async function loadInitialTaskOptionsForRow(tr, urlVal, apiKeyVal, verifyTls) {
+  // preferDefault: when the user actively (re)selects a template, ignore any
+  // previously saved (possibly empty) value and apply the product's default task.
+  // On page load preferDefault is false so an intentionally saved value is kept.
+  async function loadInitialTaskOptionsForRow(tr, urlVal, apiKeyVal, verifyTls, preferDefault = false) {
     const sel = tr.querySelector('.fi-ct-initial-task');
     const templateId = tr.querySelector('.fi-ct-template').value;
-    const savedSet = tr.dataset.initialTaskSet === 'true';
-    const savedValue = tr.dataset.initialTask || '';
+    const savedSet = preferDefault ? false : (tr.dataset.initialTaskSet === 'true');
+    const savedValue = preferDefault ? '' : (tr.dataset.initialTask || '');
     if (!templateId) {
       sel.innerHTML = initialTaskOptionsHtml([], tr.dataset.product, savedSet, savedValue);
       return;
@@ -1666,7 +1669,7 @@
         const {url, apiKey, verifyTls} = getConnDetails();
         if (!url || !apiKey) return;
         tr.dataset.templateId = tr.querySelector('.fi-ct-template').value;
-        loadInitialTaskOptionsForRow(tr, url, apiKey, verifyTls);
+        loadInitialTaskOptionsForRow(tr, url, apiKey, verifyTls, true);
       });
     });
   }
