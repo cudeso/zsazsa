@@ -3,7 +3,7 @@ import config as _config
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from webapp import audit, misp_store, org_store
-from webapp.models import CTI_PRODUCTS, STAKEHOLDER_ROLES, TLP_LEVELS
+from webapp.models import cti_products, STAKEHOLDER_ROLES, TLP_LEVELS
 from webapp.utils import normalize_notification_channels, product_detail_url
 
 
@@ -172,7 +172,7 @@ def new():
         "stakeholders/form.html",
         stakeholder=None,
         roles=STAKEHOLDER_ROLES,
-        products=CTI_PRODUCTS,
+        products=cti_products(),
         tlp_levels=TLP_LEVELS,
         subscription_modes=misp_store.SUBSCRIPTION_MODES,
         default_subscription_mode=misp_store.DEFAULT_SUBSCRIPTION_MODE,
@@ -253,7 +253,7 @@ def edit(id):
         "stakeholders/form.html",
         stakeholder=stakeholder,
         roles=STAKEHOLDER_ROLES,
-        products=CTI_PRODUCTS,
+        products=cti_products(),
         tlp_levels=TLP_LEVELS,
         subscription_modes=misp_store.SUBSCRIPTION_MODES,
         default_subscription_mode=misp_store.DEFAULT_SUBSCRIPTION_MODE,

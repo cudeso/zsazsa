@@ -14,7 +14,7 @@ import config
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 
 from webapp import audit, misp_store
-from webapp.models import OUTPUT_FORMATS, TLP_LEVELS
+from webapp.models import cti_products, TLP_LEVELS
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ def rfi_new():
         girs=girs,
         priorities=RFI_PRIORITIES,
         statuses=RFI_STATUSES,
-        output_formats=OUTPUT_FORMATS,
+        output_formats=cti_products(),
         tlp_levels=TLP_LEVELS,
         feedback_requirement=FEEDBACK_REQUIREMENT,
         feedback_on_time=FEEDBACK_ON_TIME,
@@ -261,7 +261,7 @@ def rfi_edit(id):
         girs=girs,
         priorities=RFI_PRIORITIES,
         statuses=RFI_STATUSES,
-        output_formats=OUTPUT_FORMATS,
+        output_formats=cti_products(),
         tlp_levels=TLP_LEVELS,
         feedback_requirement=FEEDBACK_REQUIREMENT,
         feedback_on_time=FEEDBACK_ON_TIME,

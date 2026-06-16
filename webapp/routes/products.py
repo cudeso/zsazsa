@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, request
 
 import config
 from webapp import misp_store
-from webapp.models import CTI_PRODUCTS
+from webapp.models import cti_products
 from webapp.utils import product_detail_url
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ def index():
         events=events,
         grouped=grouped,
         type_counter=type_counter,
-        product_types=CTI_PRODUCTS,
+        product_types=cti_products(),
         pirs=pirs,
         type_filter=type_filter,
         linked_pir=linked_pir,

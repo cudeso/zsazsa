@@ -151,14 +151,18 @@ def _create_misp_object(url: str, api_key: str, case_id: str, template: dict, at
     return {"ok": False, "error": data.get("message") or f"HTTP {r.status_code}"}
 
 
-def add_vulnerability_object(url: str, api_key: str, case_id: str, cvss_score: str = None,
-                              description: str = None, summary: str = None, verify_tls: bool = True) -> dict:
+def add_vulnerability_object(url: str, api_key: str, case_id: str, cve_ids: list[str] = None,
+                              cvss_score: str = None, description: str = None, summary: str = None,
+                              verify_tls: bool = True) -> dict:
     """Add a MISP vulnerability object to a case.
 
-    Any of cvss_score, description or summary may be omitted; only the
-    attributes with a value are added to the object.
+    Any of cve_ids, cvss_score, description or summary may be omitted; only the
+    attributes with a value are added to the object. Each id in cve_ids is added
+    as its own "id" attribute (the relation accepts multiple CVEs).
     """
     attributes = []
+    for cve_id in cve_ids or []:
+        attributes.append({"value": cve_id, "type": "vulnerability", "object_relation": "id"})
     if cvss_score:
         attributes.append({"value": cvss_score, "type": "float", "object_relation": "cvss-score"})
     if description:
@@ -341,7 +345,7 @@ def create_case_from_product(instance: dict, product_key: str, title: str, note:
     `product_key` selects the case template via instance["case_templates"][product_key];
     the product must be enabled and have a template_id configured.
     `tags`, if given, is a list of taxonomy tags (e.g. "tlp:amber") set on the case.
-    `vulnerability`, if given, is a dict with optional cvss_score/description/summary
+    `vulnerability`, if given, is a dict with optional cve_ids/cvss_score/description/summary
     keys added as a MISP vulnerability object.
     `weaknesses`, if given, is a list of dicts with optional cwe_id/name keys, each
     added as its own MISP weakness object.
@@ -385,6 +389,7 @@ def create_case_from_product(instance: dict, product_key: str, title: str, note:
     if vulnerability:
         step = add_vulnerability_object(
             url, api_key, case_id,
+            cve_ids=vulnerability.get("cve_ids"),
             cvss_score=vulnerability.get("cvss_score"),
             description=vulnerability.get("description"),
             summary=vulnerability.get("summary"),
@@ -438,7 +443,9 @@ def send_vea_to_flowintel(instance: dict, vea, markdown: str, preview_url: str =
     case_title = f"{vea.vea_id}: {subject}" if vea.vea_id else subject
 
     cvss_match = _CVSS_SCORE_RE.search(vea.cvss or "")
+    cve_ids = [c.strip() for c in re.split(r"[,\n]", vea.cve_id or "") if c.strip()]
     vulnerability = {
+        "cve_ids": cve_ids,
         "cvss_score": cvss_match.group(0) if cvss_match else None,
         "description": vea.summary,
         "summary": subject,

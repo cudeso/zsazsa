@@ -17,7 +17,7 @@ from webapp.models import (
     FOCUS_CATEGORIES,
     INTEL_LEVELS,
     MOSCOW_PRIORITIES,
-    OUTPUT_FORMATS,
+    cti_products,
     PIR_INTAKE_STATUSES,
     PIR_STATUSES,
     GIR_STATUSES,
@@ -306,7 +306,7 @@ def pir_new():
         statuses=PIR_STATUSES,
         time_sensitivities=TIME_SENSITIVITIES,
         collection_sources=misp_store.get_all_collection_source_labels(),
-        output_formats=OUTPUT_FORMATS,
+        output_formats=cti_products(),
         **_galaxy_context(),
     )
 
@@ -419,7 +419,7 @@ def pir_edit(id):
         statuses=PIR_STATUSES,
         time_sensitivities=TIME_SENSITIVITIES,
         collection_sources=misp_store.get_all_collection_source_labels(),
-        output_formats=OUTPUT_FORMATS,
+        output_formats=cti_products(),
 
         **_galaxy_context(),
     )
@@ -651,7 +651,7 @@ def gir_new():
         statuses=GIR_STATUSES,
         review_cycles=REVIEW_CYCLES,
         collection_sources=misp_store.get_all_collection_source_labels(),
-        output_formats=OUTPUT_FORMATS,
+        output_formats=cti_products(),
         **_galaxy_context(),
     )
 
@@ -732,7 +732,7 @@ def gir_edit(id):
         statuses=GIR_STATUSES,
         review_cycles=REVIEW_CYCLES,
         collection_sources=misp_store.get_all_collection_source_labels(),
-        output_formats=OUTPUT_FORMATS,
+        output_formats=cti_products(),
         **_galaxy_context(),
     )
 

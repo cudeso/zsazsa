@@ -20,7 +20,14 @@ STAKEHOLDER_ROLES = [
     "Other",
 ]
 
-CTI_PRODUCTS = list(config.PRODUCT_TYPES)
+def cti_products():
+    """Current CTI product types, read live from config.
+
+    Read at call time (not captured at import) so edits to PRODUCT_TYPES on the
+    config page take effect immediately, without restarting the application.
+    Also used for output formats, which are the same list.
+    """
+    return list(config.PRODUCT_TYPES)
 
 TLP_LEVELS = ["clear", "green", "amber", "amber+strict", "red"]
 
@@ -57,7 +64,5 @@ TIME_SENSITIVITIES = [
 REVIEW_CYCLES = ["Weekly", "Monthly", "Quarterly", "Continuous"]
 
 FOCUS_CATEGORIES = ["Sector", "Technology", "Geography", "Threat Type", "Threat Actor", "Vendor", "Incident", "Campaign"]
-
-OUTPUT_FORMATS = CTI_PRODUCTS
 
 INTEL_LEVELS = ["Strategic", "Operational", "Tactical"]
