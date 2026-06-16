@@ -1553,7 +1553,7 @@
     const placeholder = document.createElement('option');
     placeholder.value = '';
     placeholder.textContent = 'Select a template…';
-    if (selectedId === '') placeholder.selected = true;
+    if (selectedId === '') placeholder.setAttribute('selected', '');
     html += placeholder.outerHTML;
     const ids = [];
     (templates || []).forEach((t) => {
@@ -1562,7 +1562,7 @@
       const opt = document.createElement('option');
       opt.value = id;
       opt.textContent = t.title;
-      if (id === selectedId) opt.selected = true;
+      if (id === selectedId) opt.setAttribute('selected', '');
       html += opt.outerHTML;
     });
     // Keep the saved template selectable even if the API list is unavailable or
@@ -1571,7 +1571,7 @@
       const opt = document.createElement('option');
       opt.value = selectedId;
       opt.textContent = 'Template ' + selectedId;
-      opt.selected = true;
+      opt.setAttribute('selected', '');
       html += opt.outerHTML;
     }
     return html;
@@ -1598,13 +1598,13 @@
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
     noneOpt.textContent = 'None (skip initial task)';
-    if (value === '') noneOpt.selected = true;
+    if (value === '') noneOpt.setAttribute('selected', '');
     html += noneOpt.outerHTML;
     optionTitles.forEach((title) => {
       const opt = document.createElement('option');
       opt.value = title;
       opt.textContent = title;
-      if (title === value) opt.selected = true;
+      if (title === value) opt.setAttribute('selected', '');
       html += opt.outerHTML;
     });
     return html;

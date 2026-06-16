@@ -183,7 +183,11 @@
         {% endif %}
         {% endif %}
         {% if vea.linked_pir_uuid %}
-        <p class="mb-1"><strong>Linked PIR:</strong> <a href="{{ url_for('requirements.pir_detail', id=vea.linked_pir_uuid) }}">view</a></p>
+        <p class="mb-1"><strong>Linked PIR:</strong>
+          <a href="{{ url_for('requirements.pir_detail', id=vea.linked_pir_uuid) }}">
+            {% if linked_pir %}{{ linked_pir.pir_id }}{% if linked_pir.question %}: {{ linked_pir.question }}{% endif %}{% else %}view{% endif %}
+          </a>
+        </p>
         {% endif %}
         {% if vea.rejection_reason %}
         <hr>

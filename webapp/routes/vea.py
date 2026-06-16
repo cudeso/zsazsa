@@ -278,6 +278,12 @@ def detail(id):
     feedback = misp_store.list_product_feedback(vea.uuid)
     recipients = misp_store.recipient_preview("Vulnerability advisory", vea.tlp, vea.audience)
     notify_status = _latest_notify_status(id)
+    linked_pir = None
+    if getattr(vea, "linked_pir_uuid", ""):
+        try:
+            linked_pir = misp_store.get_pir(vea.linked_pir_uuid)
+        except Exception:
+            linked_pir = None
     return render_template(
         "vea/detail.html",
         vea=vea,
@@ -286,6 +292,7 @@ def detail(id):
         feedback=feedback,
         recipients=recipients,
         notify_status=notify_status,
+        linked_pir=linked_pir,
     )
 
 
