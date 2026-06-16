@@ -487,6 +487,7 @@ def index():
             "OPENAI_API_KEY": request.form.get("OPENAI_API_KEY", ""),
             "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", "")),
             "NOTIFICATION_CHANNELS": _read_notification_channels(),
+            "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
             "PRODUCT_TYPES": products,
             "DAILY_BRIEFING_TITLE_EXCLUSIONS": exclusions,
             "FOCUS_POINTS_GEOGRAPHIES": fp_geographies,

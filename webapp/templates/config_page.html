@@ -1547,18 +1547,33 @@
       </tr>`).join('');
   }
 
-  function caseTemplateOptionsHtml(templates) {
+  function caseTemplateOptionsHtml(templates, selectedId) {
+    selectedId = selectedId ? String(selectedId) : '';
     let html = '';
     const placeholder = document.createElement('option');
     placeholder.value = '';
     placeholder.textContent = 'Select a template…';
+    if (selectedId === '') placeholder.selected = true;
     html += placeholder.outerHTML;
+    const ids = [];
     (templates || []).forEach((t) => {
+      const id = String(t.id);
+      ids.push(id);
       const opt = document.createElement('option');
-      opt.value = String(t.id);
+      opt.value = id;
       opt.textContent = t.title;
+      if (id === selectedId) opt.selected = true;
       html += opt.outerHTML;
     });
+    // Keep the saved template selectable even if the API list is unavailable or
+    // no longer contains it, so the configured value is still shown.
+    if (selectedId && !ids.includes(selectedId)) {
+      const opt = document.createElement('option');
+      opt.value = selectedId;
+      opt.textContent = 'Template ' + selectedId;
+      opt.selected = true;
+      html += opt.outerHTML;
+    }
     return html;
   }
 
@@ -1566,20 +1581,26 @@
   function initialTaskOptionsHtml(tasks, productKey, savedSet, savedValue) {
     const titles = (tasks || []).map((t) => t.title);
     let value = '';
-    if (savedSet && (savedValue === '' || titles.includes(savedValue))) {
+    if (savedSet) {
+      // A saved choice is authoritative, even an empty one (intentional None)
+      // or one not in the fetched list (API slow/unreachable, or task renamed).
       value = savedValue;
     } else if (productKey === 'Vulnerability advisory' && titles.includes('Check CVE and vulnerability intelligence')) {
       value = 'Check CVE and vulnerability intelligence';
     } else if (productKey === 'Flash intel alert' && titles.length) {
       value = titles[0];
     }
+    // Always include the selected value as an option so it is shown even when it
+    // is not part of the fetched task list.
+    const optionTitles = titles.slice();
+    if (value && !optionTitles.includes(value)) optionTitles.unshift(value);
     let html = '';
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
     noneOpt.textContent = 'None (skip initial task)';
     if (value === '') noneOpt.selected = true;
     html += noneOpt.outerHTML;
-    titles.forEach((title) => {
+    optionTitles.forEach((title) => {
       const opt = document.createElement('option');
       opt.value = title;
       opt.textContent = title;
@@ -1612,11 +1633,9 @@
     } catch (_) {
       data = {ok: false, error: 'Request failed'};
     }
-    if (data.ok) {
-      sel.innerHTML = initialTaskOptionsHtml(data.tasks, tr.dataset.product, savedSet, savedValue);
-    } else {
-      sel.innerHTML = '<option value="">' + (data.error || 'Could not load tasks') + '</option>';
-    }
+    // On failure still render the saved value (initialTaskOptionsHtml keeps it),
+    // so an unreachable Flowintel never makes a configured task look like "None".
+    sel.innerHTML = initialTaskOptionsHtml(data.ok ? data.tasks : [], tr.dataset.product, savedSet, savedValue);
   }
 
   async function loadCaseTemplatesForRow(tableEl, urlVal, apiKeyVal, verifyTls) {
@@ -1636,16 +1655,35 @@
     } catch (_) {
       data = {ok: false, error: 'Request failed'};
     }
-    for (const tr of rows) {
+    // Populate every template select first, synchronously, so the user can
+    // pick a template the moment the options appear without a later row's async
+    // task fetch clobbering that selection.
+    rows.forEach((tr) => {
       const sel = tr.querySelector('.fi-ct-template');
       const selectedId = tr.dataset.templateId || '';
-      if (data.ok) {
-        sel.innerHTML = caseTemplateOptionsHtml(data.templates);
-        if (selectedId) sel.value = selectedId;
+      // Pass the saved id so it stays selected, and so it is still shown as an
+      // option when the API list is unavailable or no longer contains it.
+      sel.innerHTML = caseTemplateOptionsHtml(data.ok ? data.templates : [], selectedId);
+    });
+    if (!data.ok) {
+      // Templates could not be loaded: still reflect any saved task per row
+      // instead of wiping it, so the configured values remain visible.
+      rows.forEach((tr) => {
+        tr.querySelector('.fi-ct-initial-task').innerHTML = initialTaskOptionsHtml(
+          [], tr.dataset.product, tr.dataset.initialTaskSet === 'true', tr.dataset.initialTask || '');
+      });
+      return;
+    }
+    // Load tasks only for rows that already have a template selected (saved
+    // instances). Rows without a template get their tasks when the user picks
+    // one, so this loader never overwrites an in-progress selection.
+    for (const tr of rows) {
+      if (tr.querySelector('.fi-ct-template').value) {
+        await loadInitialTaskOptionsForRow(tr, urlVal, apiKeyVal, verifyTls);
       } else {
-        sel.innerHTML = '<option value="">' + (data.error || 'Could not load templates') + '</option>';
+        tr.querySelector('.fi-ct-initial-task').innerHTML = initialTaskOptionsHtml(
+          [], tr.dataset.product, tr.dataset.initialTaskSet === 'true', tr.dataset.initialTask || '');
       }
-      await loadInitialTaskOptionsForRow(tr, urlVal, apiKeyVal, verifyTls);
     }
   }
 
@@ -1914,6 +1952,16 @@
           </div>`;
         list.insertBefore(tpl, list.firstChild);
         bindRow(tpl);
+        // Carry the just-saved case-template selections onto the new row so it
+        // reflects them (and a later Save on that row keeps them).
+        tpl.querySelectorAll('.fi-case-template-table tbody tr[data-product]').forEach((tr) => {
+          const ct = caseTemplates[tr.dataset.product];
+          if (!ct) return;
+          tr.dataset.templateId = ct.template_id || '';
+          tr.dataset.initialTask = ct.initial_task || '';
+          tr.dataset.initialTaskSet = 'true';
+          tr.querySelector('.fi-ct-enabled').checked = !!ct.enabled;
+        });
         loadCaseTemplatesForRow(tpl.querySelector('.fi-case-template-table'), url, apiKey, verifyTls);
         resetNewCaseTemplateTable();
         nameEl.value = ''; urlEl.value = ''; apiKeyEl.value = ''; enabledEl.checked = true; verifyTlsEl.checked = true;
