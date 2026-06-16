@@ -4,6 +4,8 @@ import logging
 import mimetypes
 import os
 import shutil
+import subprocess
+import sys
 import ast
 import tempfile
 from pathlib import Path
@@ -13,7 +15,7 @@ import requests
 import config as _config
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 from core import flowintel_client
-from webapp import audit, misp_store
+from webapp import audit, misp_session, misp_store
 from webapp.rate_limit import rate_limited
 from webapp.utils import (
     json_body as _json_object,
@@ -33,8 +35,39 @@ _PROMPTS_DIR = _ROOT / "zsazsaprompts"
 # CTI products that can be linked to a Flowintel case template per instance.
 FLOWINTEL_CASE_TEMPLATE_PRODUCTS = [
     {"key": "Flash intel alert", "label": "Flash intel report"},
-    {"key": "Vulnerability exploitation advisory", "label": "Vulnerability advisory"},
+    {"key": "Vulnerability advisory", "label": "Vulnerability advisory"},
 ]
+
+# Maintenance migration scripts that can be run from the System tab. Each entry's
+# "script" is resolved relative to the repository root and is the only path that
+# may be executed; the client only ever sends the migration "id". Scripts that
+# support a dry-run run without --apply first, then with --apply to commit.
+MIGRATIONS = [
+    {
+        "id": "make_zsazsa_tags_local",
+        "name": "Make zsazsa tags local",
+        "script": "scripts/make_zsazsa_tags_local.py",
+        "description": (
+            "Convert existing zsazsa-namespace tag attachments (zsazsa:type, "
+            "zsazsa:ctiproduct, zsazsa:source, ...) from global to local so they "
+            "never sync to connected MISP instances."
+        ),
+        "supports_apply": True,
+    },
+    {
+        "id": "rename_vea_subscription_product",
+        "name": "Rename VEA product in subscriptions",
+        "script": "scripts/rename_vea_subscription_product.py",
+        "description": (
+            "Rewrite the old \"Vulnerability exploitation advisory\" product name to "
+            "\"Vulnerability advisory\" in existing stakeholder subscriptions stored "
+            "in MISP, so they keep matching the renamed product."
+        ),
+        "supports_apply": True,
+    },
+]
+
+_MIGRATIONS_BY_ID = {m["id"]: m for m in MIGRATIONS}
 
 
 def _llm_usage_stats() -> dict:
@@ -363,6 +396,9 @@ SSL_KEY = {values['SSL_KEY']!r}
 # MISP - shared session SSO. zsazsa runs as a subpath behind MISP and
 # identifies the logged-in user from MISP's own PHP session cookie, read
 # directly from the Redis instance MISP stores its sessions in.
+# MISP names its session cookie 'MISP-<instance uuid>', which is unique per
+# install. Leave MISP_SESSION_COOKIE_NAME empty to derive it automatically from
+# the MISP server's instance UUID; set it explicitly only to override.
 MISP_SESSION_COOKIE_NAME = {values['MISP_SESSION_COOKIE_NAME']!r}
 MISP_SESSION_REDIS_HOST = {values['MISP_SESSION_REDIS_HOST']!r}
 MISP_SESSION_REDIS_PORT = {int(values['MISP_SESSION_REDIS_PORT'])}
@@ -428,6 +464,17 @@ def index():
             threat_actor_types = []
         tag_strip_prefixes = [p.strip() for p in request.form.get("COLLECTION_TAG_STRIP_PREFIXES", "").splitlines() if p.strip()]
         tag_hide_prefixes = [p.strip() for p in request.form.get("COLLECTION_TAG_HIDE_PREFIXES", "").splitlines() if p.strip()]
+        # When single sign-on is enabled, derive the MISP session cookie name from
+        # the connected MISP server (it is 'MISP-<instance uuid>', unique per install)
+        # and store it. Keep the existing value if derivation fails.
+        sso_enabled = request.form.get("MISP_SESSION_REDIRECT_TO_LOGIN") == "true"
+        session_cookie_name = getattr(_config, "MISP_SESSION_COOKIE_NAME", "")
+        cookie_autodetected = False
+        if sso_enabled:
+            derived = misp_session.derive_cookie_name()
+            if derived and derived != session_cookie_name:
+                session_cookie_name = derived
+                cookie_autodetected = True
         values = {
             "MISP_URL": getattr(_config, "MISP_URL", ""),
             "MISP_KEY": getattr(_config, "MISP_KEY", ""),
@@ -471,7 +518,7 @@ def index():
             "SSL_ENABLED": request.form.get("SSL_ENABLED") == "true",
             "SSL_CERT": request.form.get("SSL_CERT", "certs/zsazsa.crt").strip(),
             "SSL_KEY": request.form.get("SSL_KEY", "certs/zsazsa.key").strip(),
-            "MISP_SESSION_COOKIE_NAME": getattr(_config, "MISP_SESSION_COOKIE_NAME", ""),
+            "MISP_SESSION_COOKIE_NAME": session_cookie_name,
             "MISP_SESSION_REDIS_HOST": request.form.get("MISP_SESSION_REDIS_HOST", "127.0.0.1").strip(),
             "MISP_SESSION_REDIS_PORT": int(request.form.get("MISP_SESSION_REDIS_PORT", 6379) or 6379),
             "MISP_SESSION_REDIS_DB": int(request.form.get("MISP_SESSION_REDIS_DB", 0) or 0),
@@ -496,6 +543,10 @@ def index():
             importlib.reload(_config)
             audit.record("update", "config", details="full configuration saved")
             flash("Configuration saved. A backup was written to config/__init__.py.backup.", "success")
+            if cookie_autodetected:
+                flash(f"Single sign-on enabled: detected MISP session cookie '{session_cookie_name}' and stored it.", "info")
+            elif sso_enabled and not session_cookie_name:
+                flash("Single sign-on is enabled but the MISP session cookie name could not be detected. Check the MISP connection on the Connections tab.", "warning")
         except Exception as exc:
             logger.exception("config save failed")
             audit.record("update", "config", details="save failed")
@@ -506,7 +557,44 @@ def index():
     active_tab = request.args.get("tab", "tab-connections")
     if active_tab not in _CONFIG_TABS:
         active_tab = "tab-connections"
-    return render_template("config_page.html", cfg=cfg, active_tab=active_tab)
+    return render_template("config_page.html", cfg=cfg, active_tab=active_tab, migrations=MIGRATIONS)
+
+
+@bp.route("/config/run-migration", methods=["POST"])
+@rate_limited("config_run_migration", limit=10, window_s=60)
+def run_migration():
+    """Run a registered maintenance migration script and return its output."""
+    data, err = _json_object()
+    if err:
+        return err
+    migration = _MIGRATIONS_BY_ID.get((data.get("id") or "").strip())
+    if not migration:
+        return jsonify({"ok": False, "error": "Unknown migration"}), 404
+    apply = bool(data.get("apply")) and migration.get("supports_apply", False)
+
+    cmd = [sys.executable, str(_ROOT / migration["script"])]
+    if apply:
+        cmd.append("--apply")
+
+    mode = "apply" if apply else "dry-run"
+    try:
+        proc = subprocess.run(
+            cmd, cwd=str(_ROOT), capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        audit.record("run", "migration", entity_label=migration["id"], details=f"{mode}: timed out")
+        return jsonify({"ok": False, "error": "Migration timed out after 600s"}), 504
+    except Exception:
+        logger.exception("run_migration failed: %s", migration["id"])
+        return jsonify({"ok": False, "error": "Could not run migration."}), 500
+
+    output = (proc.stdout or "") + (proc.stderr or "")
+    ok = proc.returncode == 0
+    audit.record(
+        "run", "migration", entity_label=migration["id"],
+        details=f"{mode}: {'ok' if ok else f'exit {proc.returncode}'}",
+    )
+    return jsonify({"ok": ok, "mode": mode, "output": output, "returncode": proc.returncode})
 
 
 @bp.route("/config/sources/save-scraper", methods=["POST"])

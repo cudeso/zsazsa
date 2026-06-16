@@ -228,7 +228,7 @@ def _payloads(batch_id: str, by_name: dict):
             "due_days": 7,
             "requester_name": "OT Vulnerability Lead",
             "requester_team": "Vulnerability management",
-            "output_format_list": [{"format": "Vulnerability exploitation advisory", "tlp": "amber"}],
+            "output_format_list": [{"format": "Vulnerability advisory", "tlp": "amber"}],
         },
         {
             "question": "Summarize Iran-linked collection objectives against EU energy sector entities in the last 30 days.",

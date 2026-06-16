@@ -40,7 +40,7 @@ Focus points are first-class data. They can be added, removed, synchronised and 
 
 **Flash Intel Alert** supports manual drafting, review queue handling, approval and publishing. Drafts can be seeded from one or more source events. Source event accordions in the wizard show reports with rendered Markdown, attributes with one-click append to the observed facts table, and object attributes. Observed facts and exploitation indicators added via the source-event buttons are formatted as Markdown tables. Recommended immediate and near-term actions can be configured as organisation-wide presets and are shown as one-click insert buttons. Context tags from source events can be selected and carried into the product. Publishing can notify Mattermost.
 
-**Vulnerability Exploitation Advisory** has an equivalent draft, review and publish flow, including multi-CVE input, CVE-focused fields, PIR linking, source event accordion, indicator table building, and action presets.
+**Vulnerability advisory** has an equivalent draft, review and publish flow, including multi-CVE input, CVE-focused fields, PIR linking, source event accordion, indicator table building, and action presets.
 
 **Daily threat briefing** includes a triage queue from scraper events, guided story composition, draft save, edit and publish flow, plus notification on publish.
 
@@ -62,7 +62,7 @@ Eligibility is computed centrally by `recipient_preview()` in `webapp/misp_store
 
 Current per-product coverage:
 
-- **Flash Intel Alert** and **Vulnerability Exploitation Advisory** implement the full flow above, including audience, subscription, TLP gating, and delivery to both Mattermost and Flowintel.
+- **Flash Intel Alert** and **Vulnerability advisory** implement the full flow above, including audience, subscription, TLP gating, and delivery to both Mattermost and Flowintel.
 - **Daily threat briefing** is delivered to all stakeholders subscribed to it, over each recipient's configured notification channels. It has no audience and applies no TLP gating. Mattermost is delivered today; Teams and email are planned and plug into the same per-channel-type dispatch.
 - **Threat landscape report** records an audience but does not yet push notifications on publish.
 - **PIR**, **GIR** and **RFI** are requirements rather than products. They notify an explicitly selected distribution list of stakeholders over Mattermost, independent of product subscriptions and audiences.
@@ -86,7 +86,7 @@ Entity type to MISP object mapping:
 | Threat landscape report | zsazsa-threat-landscape-report |
 | Collection source | zsazsa-collection-source |
 
-Every entity event carries a type tag so it can be searched and filtered independently of the object. The default tag values in use are:
+Every entity event carries a type tag so it can be searched and filtered independently of the object. All tags in the `zsazsa:` namespace are applied as local tags, so they never sync to connected MISP instances. Because MISP attaches tags embedded at event creation globally even when the local flag is set, the application applies these tags through the tag endpoint right after the event is created. The default tag values in use are:
 
 ```
 TAG_STAKEHOLDER  = zsazsa:type="stakeholder"

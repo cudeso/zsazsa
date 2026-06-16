@@ -340,6 +340,23 @@
             session fall back to the <code>admin@admin.test</code> identity used throughout zsazsa.
           </div>
 
+          <div class="alert alert-info d-flex align-items-start gap-2 mt-3 mb-0" role="alert">
+            <i class="fas fa-circle-info mt-1"></i>
+            <div>
+              MISP names its session cookie <code>MISP-&lt;instance&nbsp;uuid&gt;</code>, which is unique to each
+              MISP install. You do not need to set this by hand: when you enable single sign-on and save,
+              zsazsa detects it from the connected MISP server and stores it in <code>MISP_SESSION_COOKIE_NAME</code>.
+              <div class="mt-2">
+                Session cookie in use:
+                {% if cfg.MISP_SESSION_COOKIE_NAME %}
+                  <code>{{ cfg.MISP_SESSION_COOKIE_NAME }}</code>
+                {% else %}
+                  <span class="text-muted">not detected yet — enable single sign-on and save to detect it from MISP.</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
           <hr>
 
           <div class="form-text mb-3">
@@ -379,6 +396,41 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ── Migration ──────────────────────────────────────────────────── -->
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-database me-2"></i>Migration</div>
+        <div class="card-body">
+          <div class="form-text mb-3">
+            One-off maintenance scripts that update existing data in MISP. Run a preview
+            (dry-run) first to see what would change, then run the migration to apply it.
+          </div>
+          {% for m in migrations %}
+          <div class="migration-row border rounded p-3 {{ 'mt-3' if not loop.first }}" data-migration-id="{{ m.id }}">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <div class="fw-semibold">{{ m.name }}</div>
+                <div class="form-text mt-1">{{ m.description }}</div>
+                <div class="form-text mt-1">Script: <code>{{ m.script }}</code></div>
+              </div>
+              <div class="btn-group">
+                <button type="button" class="btn btn-outline-secondary btn-sm migration-preview">
+                  <i class="fas fa-eye me-1"></i>Preview (dry-run)
+                </button>
+                {% if m.supports_apply %}
+                <button type="button" class="btn btn-outline-primary btn-sm migration-run">
+                  <i class="fas fa-play me-1"></i>Run migration
+                </button>
+                {% endif %}
+              </div>
+            </div>
+            <pre class="migration-output bg-body-secondary border rounded mt-3 p-2 small mb-0 d-none" style="max-height: 320px; overflow:auto; white-space: pre-wrap;"></pre>
+          </div>
+          {% else %}
+          <div class="form-text">No migrations available.</div>
+          {% endfor %}
         </div>
       </div>
 
@@ -625,7 +677,7 @@
               </div>
             </div>
             <div class="col-md-6">
-              <label class="form-label small mb-1">Vulnerability Exploitation Advisory</label>
+              <label class="form-label small mb-1">Vulnerability advisory</label>
               <div class="input-group input-group-sm">
                 <input type="text" name="TAG_VEA" class="form-control form-control-sm font-monospace" value="{{ cfg.TAG_VEA }}">
                 {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:{{ cfg.TAG_VEA | replace('"', '%22') }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
@@ -701,7 +753,7 @@
               </div>
             </div>
             <div class="col-md-6">
-              <label class="form-label small mb-1">Used for Vulnerability Exploitation Advisory</label>
+              <label class="form-label small mb-1">Used for Vulnerability advisory</label>
               <div class="input-group input-group-sm">
                 <input type="text" class="form-control form-control-sm font-monospace" value='zsazsa:product="vea"' readonly>
                 {% if misp_browse_base %}<a href="{{ misp_browse_base }}/events/index/searchtag:zsazsa:product=%22vea%22" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Browse MISP events"><i class="fas fa-arrow-up-right-from-square fa-xs"></i></a>{% endif %}
@@ -1516,7 +1568,7 @@
     let value = '';
     if (savedSet && (savedValue === '' || titles.includes(savedValue))) {
       value = savedValue;
-    } else if (productKey === 'Vulnerability exploitation advisory' && titles.includes('Check CVE and vulnerability intelligence')) {
+    } else if (productKey === 'Vulnerability advisory' && titles.includes('Check CVE and vulnerability intelligence')) {
       value = 'Check CVE and vulnerability intelligence';
     } else if (productKey === 'Flash intel alert' && titles.length) {
       value = titles[0];
@@ -1995,6 +2047,49 @@
   /* Sync before the enclosing form submits */
   var form = tbody.closest('form');
   if (form) form.addEventListener('submit', syncJson);
+})();
+
+/* ── Migration runner ─────────────────────────────────────────────── */
+(function() {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  async function runMigration(row, apply) {
+    const id = row.dataset.migrationId;
+    const output = row.querySelector('.migration-output');
+    const buttons = row.querySelectorAll('button');
+    buttons.forEach(b => b.disabled = true);
+    output.classList.remove('d-none', 'text-danger', 'text-success');
+    output.textContent = apply ? 'Running migration…' : 'Running dry-run…';
+    try {
+      const resp = await fetch(SCRIPT_ROOT + '/config/run-migration', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({id: id, apply: apply}),
+      });
+      const data = await resp.json();
+      if (data.ok || typeof data.output === 'string') {
+        output.textContent = (data.output || '').trim() || '(no output)';
+        output.classList.add(data.ok ? 'text-success' : 'text-danger');
+      } else {
+        output.textContent = data.error || 'Migration failed';
+        output.classList.add('text-danger');
+      }
+    } catch (e) {
+      output.textContent = 'Migration failed: ' + e;
+      output.classList.add('text-danger');
+    } finally {
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+
+  document.querySelectorAll('.migration-row').forEach(function(row) {
+    const preview = row.querySelector('.migration-preview');
+    const run = row.querySelector('.migration-run');
+    if (preview) preview.addEventListener('click', () => runMigration(row, false));
+    if (run) run.addEventListener('click', function() {
+      if (confirm('Run this migration? It will modify data in MISP.')) runMigration(row, true);
+    });
+  });
 })();
 
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));

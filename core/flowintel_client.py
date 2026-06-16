@@ -432,7 +432,7 @@ def send_vea_to_flowintel(instance: dict, vea, markdown: str, preview_url: str =
     references on the configured initial task for the advisory preview URL and
     any links listed under the advisory's References section.
     """
-    subject = vea.title or vea.cve_id or "Vulnerability exploitation advisory"
+    subject = vea.title or vea.cve_id or "Vulnerability advisory"
     # Prefix with the advisory ID so multiple advisories about the same
     # vulnerability (and thus the same subject) each get their own case.
     case_title = f"{vea.vea_id}: {subject}" if vea.vea_id else subject
@@ -450,7 +450,7 @@ def send_vea_to_flowintel(instance: dict, vea, markdown: str, preview_url: str =
 
     return create_case_from_product(
         instance,
-        "Vulnerability exploitation advisory",
+        "Vulnerability advisory",
         case_title,
         note=markdown,
         tags=[f"tlp:{vea.tlp or 'amber'}"],

@@ -241,7 +241,7 @@ def send_vea_notification(vea, markdown: str, stakeholders: list | None = None) 
         if ids:
             channel_ids = sorted(ids)
 
-    headline = f"### :shield: {getattr(vea, 'vea_id', '')}: Vulnerability exploitation advisory"
+    headline = f"### :shield: {getattr(vea, 'vea_id', '')}: Vulnerability advisory"
     subtitle = f"**{getattr(vea, 'cve_id', '')}: {getattr(vea, 'title', '')}**".strip()
     body = f"{headline}\n"
     if subtitle and subtitle != "**: **":

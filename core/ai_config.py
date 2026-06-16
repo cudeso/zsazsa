@@ -55,7 +55,7 @@ FEATURES = {
     },
     "draft_vea_sections": {
         "label": "Draft VEA sections",
-        "description": "Drafts sections of a Vulnerability Exploitation Advisory from CVE information and optional article content.",
+        "description": "Drafts sections of a Vulnerability advisory from CVE information and optional article content.",
         "default_prompt": "vea_draft.md",
     },
 }

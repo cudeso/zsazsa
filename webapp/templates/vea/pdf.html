@@ -10,7 +10,7 @@
 <span class="vea-id-anchor" style="display:none;">{{ vea.vea_id }}</span>
 <span class="tlp-label-anchor" style="display:none;">TLP:{{ vea.tlp | upper }}</span>
 
-<h1>Vulnerability Exploitation Advisory{% if vea.cve_id %}: {{ vea.cve_id }}{% endif %}</h1>
+<h1>Vulnerability advisory{% if vea.cve_id %}: {{ vea.cve_id }}{% endif %}</h1>
 {% if vea.title %}<p style="font-size:11pt;color:#334155;margin-bottom:10pt;">{{ vea.title }}</p>{% endif %}
 
 <div class="meta-block">

@@ -85,10 +85,8 @@ def process(misp, misp_webapp, event, focus_points: dict) -> dict:
     product_event.threat_level_id = 2
     product_event.analysis = 2
     product_event.extends_uuid = event.uuid
-    product_event.add_tag(config.TAG_FLASH_INTEL)
     product_event.add_tag("tlp:amber")
     product_event.add_tag("curation:source:OSINT")
-    product_event.add_tag('workflow:state="ongoing"', local=True)
 
     product_event = misp_webapp.add_event(product_event, pythonify=True)
     if isinstance(product_event, dict):
@@ -100,6 +98,11 @@ def process(misp, misp_webapp, event, focus_points: dict) -> dict:
     if not event_id:
         logger.error("Created product event has no id")
         return {"outcome": "error", "source_feed": source_feed, "detail": "missing event id"}
+
+    # zsazsa-namespace and workflow tags are applied locally via the tag endpoint;
+    # tags embedded in add_event are attached globally even when flagged local.
+    misp_webapp.tag(product_event.uuid, config.TAG_FLASH_INTEL, local=True)
+    misp_webapp.tag(product_event.uuid, 'workflow:state="ongoing"', local=True)
     fia_id = f"FIA-{int(event_id):05d}"
     if "FIA-#####" in fia_content:
         fia_content = fia_content.replace("FIA-#####", fia_id)

@@ -94,7 +94,7 @@ def _eligible_vea_recipients(vea):
     allowed = {
         r.get("uuid")
         for r in misp_store.recipient_preview(
-            "Vulnerability exploitation advisory",
+            "Vulnerability advisory",
             vea.tlp,
             vea.audience,
         )
@@ -196,7 +196,7 @@ def _publish_and_notify(uuid):
             return flowintel_client.send_vea_to_flowintel(instance, vea, markdown, preview_url=preview_url)
 
         for instance, result in flowintel_client.send_to_eligible_instances(
-            stakeholders, "Vulnerability exploitation advisory", send_fn
+            stakeholders, "Vulnerability advisory", send_fn
         ):
             instance_name = instance.get("name") or instance.get("id")
             if result["ok"]:
@@ -276,7 +276,7 @@ def detail(id):
     if vea is None:
         return "VEA not found", 404
     feedback = misp_store.list_product_feedback(vea.uuid)
-    recipients = misp_store.recipient_preview("Vulnerability exploitation advisory", vea.tlp, vea.audience)
+    recipients = misp_store.recipient_preview("Vulnerability advisory", vea.tlp, vea.audience)
     notify_status = _latest_notify_status(id)
     return render_template(
         "vea/detail.html",
@@ -535,7 +535,7 @@ def resend(id):
             return flowintel_client.send_vea_to_flowintel(instance, vea, markdown, preview_url=preview_url)
 
         for instance, result in flowintel_client.send_to_eligible_instances(
-            stakeholders, "Vulnerability exploitation advisory", send_fn
+            stakeholders, "Vulnerability advisory", send_fn
         ):
             instance_name = instance.get("name") or instance.get("id")
             if result["ok"]:

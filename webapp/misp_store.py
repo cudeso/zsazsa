@@ -433,19 +433,46 @@ def test_webapp_misp():
 
 # ── Low-level helpers ─────────────────────────────────────────────────────────
 
-def _make_event(info, tag=None, extra_tags=None):
+def _make_event(info, extra_tags=None):
     e = MISPEvent()
     e.info = info
     e.distribution = 0
     e.threat_level_id = 4
     e.analysis = 2
-    if tag:
-        e.add_tag(tag, local=True)
     for t in extra_tags or []:
         # extra_tags are TLP, admiralty-scale, and similar federation metadata -
         # intentionally not local so they sync to connected MISP instances.
+        # zsazsa-namespace tags must never be embedded here (they would attach
+        # globally); pass them as local_tags to _add_event instead.
+        if str(t).startswith("zsazsa:"):
+            logger.warning("zsazsa tag %s passed to _make_event; skipping (apply via _add_event)", t)
+            continue
         e.add_tag(t)
     return e
+
+
+def _tag_local(misp, event_uuid, tag_name):
+    """Attach a tag to an event as a local tag, creating it first if needed.
+
+    MISP attaches tags embedded in add_event globally even when the local flag
+    is set on the MISPTag, so every zsazsa-namespace tag is applied here via the
+    tag endpoint, which honours local correctly.
+    """
+    if not (event_uuid and tag_name):
+        return
+    r = misp.tag(event_uuid, tag_name, local=True)
+    if isinstance(r, dict) and "errors" in r:
+        _ensure_tag(misp, tag_name)
+        misp.tag(event_uuid, tag_name, local=True)
+
+
+def _add_event(misp, event, local_tags=None, label="create event"):
+    """Create an event, then attach its zsazsa-namespace tags as local tags."""
+    result = _check(misp.add_event(event, pythonify=True), label)
+    uuid = _event_uuid(result)
+    for name in local_tags or []:
+        _tag_local(misp, uuid, name)
+    return result
 
 
 def source_slug(name: str) -> str:
@@ -992,8 +1019,8 @@ def get_stakeholder(uuid):
 
 def create_stakeholder(data):
     misp = _misp()
-    event = _make_event(f"[zsazsa:stakeholder] {data['name']}", config.TAG_STAKEHOLDER)
-    result = _check(misp.add_event(event, pythonify=True), "create stakeholder")
+    event = _make_event(f"[zsazsa:stakeholder] {data['name']}")
+    result = _add_event(misp, event, [config.TAG_STAKEHOLDER], "create stakeholder")
     _check(misp.add_object(_event_ref(result), _stakeholder_obj(data)), "add stakeholder object")
     uuid = _event_uuid(result)
     if not uuid:
@@ -1028,6 +1055,46 @@ def delete_stakeholder(uuid):
     misp.delete_event(uuid)
 
 
+def rename_subscription_product(old_name: str, new_name: str, apply: bool = False) -> list[str]:
+    """Rename a product across every stakeholder's subscriptions.
+
+    Rewrites the product in both the ``products`` list and the ``product-modes``
+    keys stored on the stakeholder object. Returns the names of affected
+    stakeholders. Only writes to MISP when ``apply`` is True (dry-run otherwise).
+    """
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_STAKEHOLDER], limit=1000, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    affected = []
+    for event in events:
+        obj = _get_obj(event, "zsazsa-stakeholder")
+        if obj is None:
+            continue
+        touched = False
+        for attr in (getattr(obj, "attributes", []) or []):
+            relation = getattr(attr, "object_relation", "")
+            attr_changed = False
+            if relation == "products":
+                products = _json_list(attr.value)
+                if old_name in products:
+                    attr.value = json.dumps([new_name if p == old_name else p for p in products])
+                    attr_changed = True
+            elif relation == "product-modes":
+                modes = _json_dict(attr.value)
+                if old_name in modes:
+                    modes[new_name] = modes.pop(old_name)
+                    attr.value = json.dumps(modes)
+                    attr_changed = True
+            if attr_changed:
+                touched = True
+                if apply:
+                    misp.update_attribute(attr)
+        if touched:
+            affected.append(_obj_attr(obj, "name") or _event_uuid(event) or "?")
+    return affected
+
+
 # ── PIR CRUD ──────────────────────────────────────────────────────────────────
 
 def list_pirs():
@@ -1054,10 +1121,10 @@ def create_pir(data):
     if "intake_status" not in data:
         data = dict(data, intake_status="submitted")
     data["creator"] = misp_session.current_user_email()
-    event = _make_event(f"[zsazsa:pir] {pir_id}", config.TAG_PIR)
+    event = _make_event(f"[zsazsa:pir] {pir_id}")
     for t in _build_scope_tags(data):
         event.add_tag(t)
-    result = _check(misp.add_event(event, pythonify=True), "create PIR")
+    result = _add_event(misp, event, [config.TAG_PIR], "create PIR")
     _check(misp.add_object(_event_ref(result), _pir_obj(data)), "add PIR object")
     req_uuid = _event_uuid(result)
     if not req_uuid:
@@ -1158,10 +1225,10 @@ def create_gir(data):
     misp = _misp()
     gir_id = data["gir_id"]
     data["creator"] = misp_session.current_user_email()
-    event = _make_event(f"[zsazsa:gir] {gir_id}: {data.get('topic', '')}", config.TAG_GIR)
+    event = _make_event(f"[zsazsa:gir] {gir_id}: {data.get('topic', '')}")
     for t in _build_scope_tags(data):
         event.add_tag(t)
-    result = _check(misp.add_event(event, pythonify=True), "create GIR")
+    result = _add_event(misp, event, [config.TAG_GIR], "create GIR")
     _check(misp.add_object(_event_ref(result), _gir_obj(data)), "add GIR object")
     uuid = _event_uuid(result)
     if not uuid:
@@ -1567,8 +1634,8 @@ def create_rfi(data):
     rfi_id = data["rfi_id"]
     data["creator"] = misp_session.current_user_email()
     info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
-    event = _make_event(info, config.TAG_RFI)
-    result = _check(misp.add_event(event, pythonify=True), "create RFI")
+    event = _make_event(info)
+    result = _add_event(misp, event, [config.TAG_RFI], "create RFI")
     _check(misp.add_object(_event_ref(result), _rfi_obj(data)), "add RFI object")
     uuid = _event_uuid(result)
     if not uuid:
@@ -1831,7 +1898,7 @@ def products_for_stakeholder(stakeholder_uuid, stakeholder_name="", stakeholder_
                 misp_url=fia.misp_url,
             ))
 
-    if "Vulnerability exploitation advisory" in subscribed_products:
+    if "Vulnerability advisory" in subscribed_products:
         for vea in list_veas(review_state=VEA_REVIEW_APPROVED):
             title = (getattr(vea, "title", "") or "").strip()
             info = f"[zsazsa:vea] {title}" if title else f"[zsazsa:vea] {vea.vea_id}"
@@ -2294,10 +2361,9 @@ def create_collection_source(data: dict) -> str:
         extra_tags.append(_ADMIRALTY_SOURCE_TAGS[reliability])
     event = _make_event(
         f"Collection source: {name}",
-        TAG_COLLECTION_SOURCE,
         extra_tags=extra_tags,
     )
-    event = _check(misp.add_event(event, pythonify=True), "create collection source")
+    event = _add_event(misp, event, [TAG_COLLECTION_SOURCE], "create collection source")
     _check(misp.add_object(event.uuid, _collection_source_obj(data), pythonify=True),
            "add collection source object")
     return event.uuid
@@ -2384,10 +2450,8 @@ def create_manual_collection_event(data: dict) -> str:
     info = (data.get("title") or "").strip()
     event = _make_event(
         info,
-        extra_tags=[f"tlp:{tlp}", 'zsazsa:source-type="manual"'],
+        extra_tags=[f"tlp:{tlp}"],
     )
-    if source_slug:
-        event.add_tag(f'zsazsa:source="{source_slug}"', local=True)
     if data.get("date"):
         event.date = data["date"]
 
@@ -2396,6 +2460,10 @@ def create_manual_collection_event(data: dict) -> str:
         raise RuntimeError(f"MISP error: {created.get('errors') or created}")
 
     uuid = created.uuid
+
+    _tag_local(misp, uuid, 'zsazsa:source-type="manual"')
+    if source_slug:
+        _tag_local(misp, uuid, f'zsazsa:source="{source_slug}"')
 
     for t in _build_scope_tags(data):
         try:
@@ -2803,7 +2871,7 @@ def create_fia(data):
     if data.get("information_credibility"):
         extra.append(f'admiralty-scale:information-credibility="{data["information_credibility"]}"')
 
-    event = _make_event(info, config.TAG_FLASH_INTEL, extra_tags=extra)
+    event = _make_event(info, extra_tags=extra)
     src_uuids, src_hints = _normalise_source_uuids_and_hints(
         data.get("source_event_uuids") or [],
         data.get("source_event_uuid"),
@@ -2812,7 +2880,7 @@ def create_fia(data):
     if src_uuids:
         event.extends_uuid = src_uuids[0]
 
-    result = _check(misp.add_event(event, pythonify=True), "create FIA")
+    result = _add_event(misp, event, [config.TAG_FLASH_INTEL], "create FIA")
     uuid = _event_uuid(result)
     if not uuid:
         raise RuntimeError("create FIA: missing UUID in MISP response")
@@ -3233,7 +3301,7 @@ def render_vea_markdown(vea, vea_id=None, preview_url: str = ""):
     ]
 
     lines = [
-        f"# Vulnerability exploitation advisory: {vea.cve_id or vid}",
+        f"# Vulnerability advisory: {vea.cve_id or vid}",
         "",
         f"**ID:** {vid}",
         f"**Classification:** tlp:{vea.tlp}",
@@ -3377,7 +3445,7 @@ def create_vea(data):
     if data.get("source_reliability"):
         extra.append(f'admiralty-scale:source-reliability="{data["source_reliability"].lower()}"')
 
-    event = _make_event(info, config.TAG_VEA, extra_tags=extra)
+    event = _make_event(info, extra_tags=extra)
     src_uuids, src_hints = _normalise_source_uuids_and_hints(
         data.get("source_event_uuids") or [],
         data.get("source_event_uuid"),
@@ -3386,7 +3454,7 @@ def create_vea(data):
     if src_uuids:
         event.extends_uuid = src_uuids[0]
 
-    result = _check(misp.add_event(event, pythonify=True), "create VEA")
+    result = _add_event(misp, event, [config.TAG_VEA], "create VEA")
     uuid = _event_uuid(result)
     if not uuid:
         raise RuntimeError("create VEA: missing UUID in MISP response")
@@ -3898,8 +3966,8 @@ def create_briefing(data):
     bdate = data.get("date") or datetime.utcnow().strftime("%Y-%m-%d")
     info = f"[zsazsa:briefing] Daily threat briefing {bdate}"
     extra = [f'tlp:{data.get("tlp", "clear")}', 'workflow:state="draft"']
-    event = _make_event(info, config.TAG_BRIEFING, extra_tags=extra)
-    result = _check(misp.add_event(event, pythonify=True), "create briefing")
+    event = _make_event(info, extra_tags=extra)
+    result = _add_event(misp, event, [config.TAG_BRIEFING], "create briefing")
     uuid = _event_uuid(result)
     if not uuid:
         raise RuntimeError("create briefing: missing UUID in MISP response")
@@ -4264,8 +4332,8 @@ def create_tlr(data):
     title = data.get("title", "")
     info = f"[zsazsa:tlr] {tlr_id}: {title}"
     extra = [f'tlp:{data.get("tlp", "amber")}', 'workflow:state="draft"']
-    event = _make_event(info, config.TAG_TLR, extra_tags=extra)
-    result = _check(misp.add_event(event, pythonify=True), "create TLR")
+    event = _make_event(info, extra_tags=extra)
+    result = _add_event(misp, event, [config.TAG_TLR], "create TLR")
     uuid = _event_uuid(result)
     if not uuid:
         raise RuntimeError("create TLR: missing UUID in MISP response")

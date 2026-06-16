@@ -173,10 +173,48 @@ def get_misp_user(session_id):
     return user
 
 
+_cookie_name_cache = {"value": ""}
+
+
+def derive_cookie_name():
+    """Return MISP's session cookie name derived from the server's instance UUID.
+
+    MISP names its session cookie ``MISP-<instance uuid>``, unique per install.
+    Returns ``MISP-<uuid>`` on success, or "" if the MISP server could not be
+    reached or did not report a UUID.
+    """
+    try:
+        from pymisp import PyMISP
+        misp = PyMISP(config.MISP_URL, config.MISP_KEY, config.MISP_VERIFYCERT)
+        uuid = (misp.misp_instance_version or {}).get("uuid", "")
+        if uuid:
+            return f"MISP-{uuid}"
+    except Exception as e:
+        logger.warning("could not derive MISP session cookie name from %s: %s",
+                       getattr(config, "MISP_URL", ""), e)
+    return ""
+
+
+def _session_cookie_name():
+    """Return the name of MISP's session cookie.
+
+    When MISP_SESSION_COOKIE_NAME is set in config it is used as-is (it is stored
+    there automatically when single sign-on is enabled). Otherwise the name is
+    derived once from the MISP server's instance UUID and cached, so SSO still
+    works before the value has been persisted.
+    """
+    configured = (getattr(config, "MISP_SESSION_COOKIE_NAME", "") or "").strip()
+    if configured:
+        return configured
+    if not _cookie_name_cache["value"]:
+        _cookie_name_cache["value"] = derive_cookie_name()
+    return _cookie_name_cache["value"]
+
+
 def load_request_user():
     """Look up the MISP user for the current request and cache it on flask.g."""
-    cookie_name = getattr(config, "MISP_SESSION_COOKIE_NAME", "")
-    session_id = request.cookies.get(cookie_name)
+    cookie_name = _session_cookie_name()
+    session_id = request.cookies.get(cookie_name) if cookie_name else None
     g.misp_user = get_misp_user(session_id)
 
 
