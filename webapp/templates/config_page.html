@@ -534,6 +534,16 @@
             <div class="form-text">Used by any feature whose model field is left empty.</div>
           </div>
         </div>
+        <div class="card-body pt-0">
+          <div class="alert alert-info small py-2 mb-0">
+            <i class="fas fa-circle-info me-1"></i>
+            Reasoning models (the <code>o</code>-series, e.g. <code>o4-mini</code>) are supported, but they
+            spend part of their token budget on internal reasoning before producing output. The per-feature
+            token limits in this app are tuned for standard chat models, so a reasoning model may exhaust its
+            budget and return empty or truncated output. Use them only where you know the limit is generous
+            enough; otherwise prefer a <code>gpt-4o</code>-family model.
+          </div>
+        </div>
       </div>
 
       <div class="card content-card mb-4">

@@ -36,15 +36,22 @@ def _resolve_prompt(filename: str) -> str:
     return str(Path("zsazsaprompts") / filename)
 
 
+def _is_reasoning_model(model: str) -> bool:
+    """OpenAI reasoning models (o1, o3, o4-mini, ...) use a different token parameter."""
+    return bool(re.match(r"^o\d", model.strip()))
+
+
 def _call(system: str, user: str, max_tokens: int, feature: str = "unknown", model: str = None) -> str:
     effective_model = (model or "").strip() or _default_model()
+    # Reasoning models reject max_tokens and require max_completion_tokens instead.
+    token_param = "max_completion_tokens" if _is_reasoning_model(effective_model) else "max_tokens"
     response = _get_client().chat.completions.create(
         model=effective_model,
-        max_tokens=max_tokens,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        **{token_param: max_tokens},
     )
     usage = response.usage
     if usage:

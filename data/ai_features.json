@@ -6,12 +6,12 @@
   },
   "generate_flash_intel": {
     "provider": "openai",
-    "model": "o4-mini",
+    "model": "gpt-4o-mini",
     "prompt": "flash_intel_generate.md"
   },
   "generate_fia_draft": {
     "provider": "openai",
-    "model": "o4-mini",
+    "model": "gpt-4o-mini",
     "prompt": "flash_intel_generate.md"
   },
   "draft_briefing_story": {
@@ -36,7 +36,7 @@
   },
   "draft_vea_sections": {
     "provider": "openai",
-    "model": "o4-mini",
+    "model": "gpt-4o-mini",
     "prompt": "vea_draft.md"
   }
 }
