@@ -250,11 +250,11 @@ def pir_new():
                 "distribution": [owner.uuid],
             }
     if request.method == "POST":
-        pir_id = misp_store.next_pir_id()
         output_format = [v.strip() for v in request.form.getlist("output_format") if v.strip()]
         owner_uuid, owner_name, owner_role = _owner_fields(request.form, stakeholders)
         data = {
-            "pir_id": pir_id,
+            # Placeholder; create_pir allocates the authoritative pir_id atomically.
+            "pir_id": "",
             "question": request.form["question"],
             "context": request.form.get("context"),
             "intel_level": [v for v in request.form.getlist("intel_level") if v.strip()],
@@ -289,6 +289,7 @@ def pir_new():
         }
         try:
             uuid = misp_store.create_pir(data)
+            pir_id = data["pir_id"]
             audit.record("create", "pir", entity_id=uuid, entity_label=pir_id)
             _matching.invalidate_cache()
             _sync_focus_points()
@@ -603,11 +604,11 @@ def gir_list():
 def gir_new():
     stakeholders = misp_store.list_stakeholders()
     if request.method == "POST":
-        gir_id = misp_store.next_gir_id()
         owner_uuid, owner_name, owner_role = _owner_fields(request.form, stakeholders)
         output_format = [v.strip() for v in request.form.getlist("output_format") if v.strip()]
         data = {
-            "gir_id": gir_id,
+            # Placeholder; create_gir allocates the authoritative gir_id atomically.
+            "gir_id": "",
             "topic": request.form["topic"],
             "description": request.form.get("description"),
             "owner_uuid": owner_uuid,
@@ -636,6 +637,7 @@ def gir_new():
         }
         try:
             uuid = misp_store.create_gir(data)
+            gir_id = data["gir_id"]
             audit.record("create", "gir", entity_id=uuid, entity_label=gir_id)
             _matching.invalidate_cache()
             _sync_focus_points()

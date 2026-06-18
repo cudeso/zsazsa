@@ -1,3 +1,4 @@
+import hmac
 import logging
 import logging.handlers
 import os
@@ -60,7 +61,8 @@ def create_app():
     def _validate_csrf():
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
             token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
-            if not token or token != session.get("_csrf_token"):
+            expected = session.get("_csrf_token")
+            if not token or not expected or not hmac.compare_digest(token, expected):
                 abort(403)
 
     @app.before_request

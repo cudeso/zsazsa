@@ -52,40 +52,54 @@ def describe_pir_delivery(stakeholders: list) -> dict:
     return describe_delivery(stakeholders)
 
 
-def _send_preview(entity, preview_url: str, markdown: str, stakeholders: list,
-                  send_fn, entity_label: str, entity_id_attr: str) -> dict:
-    names = [getattr(s, "name", "") for s in stakeholders or [] if getattr(s, "name", "")]
+def _dispatch(stakeholders: list, senders: dict, entity_label: str, entity_id: str) -> dict:
+    """Deliver to stakeholder channels grouped by type, using a type->sender map.
+
+    `senders` maps a channel type to a callable(channel_ids) -> bool. Channel
+    types present on stakeholders but without a sender here are reported as
+    skipped, never silently dropped. This is the single dispatch model shared by
+    the preview and full-content paths.
+
+    Note on flowintel: a flowintel case is created per product from the template
+    configured for that product on the instance, so it is driven by the
+    VEA/flash-intel publish flows via flowintel_client.send_to_eligible_instances,
+    not from here. RFI/PIR/GIR have no flowintel sender, so a stakeholder's
+    flowintel channel is reported as skipped on those paths by design.
+    """
     channels = _channels_by_type(stakeholders)
     summary = describe_delivery(stakeholders)
     summary.update({"attempted_types": sorted(channels.keys()), "sent_types": [], "skipped_types": []})
 
-    mm_ids = sorted(channels.get("mattermost", set()))
-    if mm_ids:
-        if send_fn(
-            entity,
-            markdown,
-            preview_url=preview_url,
-            channel_ids=mm_ids,
-            stakeholder_names=names,
-        ):
-            summary["sent_types"].append("mattermost")
+    for ctype, ids in channels.items():
+        sender = senders.get(ctype)
+        if sender is None:
+            summary["skipped_types"].append(ctype)
+            logger.info("No sender for channel type %s (%s %s)", ctype, entity_label, entity_id)
+            continue
+        if sender(sorted(ids)):
+            summary["sent_types"].append(ctype)
         else:
-            summary["skipped_types"].append("mattermost")
-
-    # Channel types without a sender here (e.g. flowintel, future Teams/email)
-    # are reported as skipped rather than silently dropped.
-    for ctype in summary["attempted_types"]:
-        if ctype != "mattermost":
             summary["skipped_types"].append(ctype)
 
     if not summary["attempted_types"]:
-        logger.info(
-            "No notification channels configured for %s %s recipients",
-            entity_label,
-            getattr(entity, entity_id_attr, ""),
-        )
+        logger.info("No notification channels configured for %s %s recipients", entity_label, entity_id)
 
     return summary
+
+
+def _send_preview(entity, preview_url: str, markdown: str, stakeholders: list,
+                  send_fn, entity_label: str, entity_id_attr: str) -> dict:
+    names = [getattr(s, "name", "") for s in stakeholders or [] if getattr(s, "name", "")]
+    senders = {
+        "mattermost": lambda channel_ids: bool(send_fn(
+            entity,
+            markdown,
+            preview_url=preview_url,
+            channel_ids=channel_ids,
+            stakeholder_names=names,
+        )),
+    }
+    return _dispatch(stakeholders, senders, entity_label, getattr(entity, entity_id_attr, ""))
 
 
 def send_pir_preview(pir, preview_url: str, markdown: str, stakeholders: list) -> dict:
@@ -130,34 +144,6 @@ def send_gir_preview(gir, preview_url: str, markdown: str, stakeholders: list) -
     )
 
 
-def _send_full_content(stakeholders: list, senders: dict, entity_label: str, entity_id: str) -> dict:
-    """Deliver full product content to stakeholder channels, grouped by channel type.
-
-    `senders` maps a channel type to a callable(channel_ids) -> bool. Channel
-    types without a sender are reported as skipped; that is where additional
-    channels (Teams, email) plug in without touching the calling route.
-    """
-    channels = _channels_by_type(stakeholders)
-    summary = describe_delivery(stakeholders)
-    summary.update({"attempted_types": sorted(channels.keys()), "sent_types": [], "skipped_types": []})
-
-    for ctype, ids in channels.items():
-        sender = senders.get(ctype)
-        if sender is None:
-            summary["skipped_types"].append(ctype)
-            logger.info("No sender for channel type %s (%s %s)", ctype, entity_label, entity_id)
-            continue
-        if sender(sorted(ids)):
-            summary["sent_types"].append(ctype)
-        else:
-            summary["skipped_types"].append(ctype)
-
-    if not summary["attempted_types"]:
-        logger.info("No notification channels configured for %s %s recipients", entity_label, entity_id)
-
-    return summary
-
-
 def send_daily_briefing(briefing, markdown: str, stakeholders: list) -> dict:
     """Deliver a full daily briefing to stakeholder channels across all channel types.
 
@@ -168,4 +154,4 @@ def send_daily_briefing(briefing, markdown: str, stakeholders: list) -> dict:
             mattermost.send_daily_briefing_notification(briefing, markdown, channel_ids=channel_ids)
         ),
     }
-    return _send_full_content(stakeholders, senders, "daily briefing", getattr(briefing, "date", ""))
+    return _dispatch(stakeholders, senders, "daily briefing", getattr(briefing, "date", ""))

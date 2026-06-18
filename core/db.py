@@ -1,6 +1,7 @@
 import json
 import logging
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -9,8 +10,19 @@ import config
 logger = logging.getLogger(__name__)
 
 
+@contextmanager
 def _connect():
-    return sqlite3.connect(config.DB_FILE)
+    """Yield a SQLite connection that commits on success and always closes.
+
+    The inner ``with conn`` handles the transaction (commit/rollback); the
+    ``finally`` guarantees the connection and its file handle are released.
+    """
+    conn = sqlite3.connect(config.DB_FILE)
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def _ensure_columns(conn, table: str, columns: list[tuple[str, str]]) -> None:

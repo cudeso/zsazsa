@@ -4,9 +4,12 @@ All endpoints require the CSRF token (POST methods are covered by the global
 before_request hook). Results are returned as JSON.
 """
 
+import ipaddress
 import json
 import logging
 import re
+import socket
+from urllib.parse import urlsplit
 
 import config
 from flask import Blueprint, jsonify, request
@@ -316,6 +319,42 @@ def correlate():
         return jsonify({"matches": [], "error": "Search failed."}), 502
 
 
+def _is_safe_public_url(url: str) -> bool:
+    """Return True only for http(s) URLs whose host resolves to public IPs.
+
+    Guards the server-side fetch against SSRF: rejects non-web schemes and any
+    host that resolves to a loopback, link-local, private, reserved or
+    multicast address (e.g. cloud metadata at 169.254.169.254, internal
+    services on 127.0.0.1 or RFC1918 ranges). Every resolved address must be
+    global, so a hostname with a mix of public and private records is rejected.
+
+    Note: this validates the host at check time. DNS rebinding between this
+    check and the actual fetch remains a residual risk; authentication and
+    authorization on this endpoint are the primary control.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        return False
+    host = parts.hostname
+    if not host:
+        return False
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, ValueError):
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if not ip.is_global or ip.is_multicast:
+            return False
+    return True
+
+
 @bp.route("/fetch-url", methods=["POST"])
 @rate_limited("api_fetch_url", limit=20, window_s=60)
 def fetch_url():
@@ -330,12 +369,20 @@ def fetch_url():
     url = (body.get("url") or "").strip()
     if not url:
         return jsonify({"title": "", "content": "", "error": "URL required."})
+    if not _is_safe_public_url(url):
+        logger.warning("fetch_url rejected non-public or invalid URL: %s", url)
+        return jsonify({
+            "title": "", "content": "",
+            "error": "URL must be a public http(s) address.",
+        }), 400
     try:
         from curl_cffi import requests as cf_requests
         from bs4 import BeautifulSoup
         from markdownify import markdownify as md
 
-        response = cf_requests.get(url, impersonate="chrome124", timeout=20)
+        # allow_redirects=False so a public URL cannot 30x-redirect the fetch
+        # to an internal target that bypasses the pre-fetch validation above.
+        response = cf_requests.get(url, impersonate="chrome124", timeout=20, allow_redirects=False)
         rawhtml = response.text
 
         soup = BeautifulSoup(rawhtml, "html.parser")

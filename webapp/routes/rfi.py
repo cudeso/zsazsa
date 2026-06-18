@@ -133,8 +133,9 @@ def rfi_new():
     pirs = misp_store.list_pirs()
     girs = misp_store.list_girs()
     if request.method == "POST":
-        rfi_id = misp_store.next_rfi_id()
-        data = _form_data(request.form, rfi_id)
+        # The id is a placeholder; create_rfi allocates the authoritative
+        # rfi_id atomically and writes it back into data.
+        data = _form_data(request.form, "")
         # Resolve owner_name from selected stakeholder
         if data["owner_uuid"]:
             owner = next((s for s in stakeholders if s.id == data["owner_uuid"]), None)
@@ -144,6 +145,7 @@ def rfi_new():
             data["due_date"] = _suggested_due_date(data["priority"])
         try:
             uuid = misp_store.create_rfi(data)
+            rfi_id = data["rfi_id"]
             audit.record("create", "rfi", entity_id=uuid, entity_label=rfi_id)
             flash(f"{rfi_id} created.", "success")
             return redirect(url_for("rfi.rfi_detail", id=uuid))

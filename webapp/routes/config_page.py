@@ -76,11 +76,12 @@ def _llm_usage_stats() -> dict:
              "today_calls": 0, "today_tokens": 0,
              "week_calls": 0, "week_tokens": 0, "by_feature": []}
     import sqlite3 as _sq
+    from contextlib import closing
     db_path = getattr(_config, "DB_FILE", "data/analyser.db")
     if not os.path.exists(db_path):
         return empty
     try:
-        with _sq.connect(db_path) as conn:
+        with closing(_sq.connect(db_path)) as conn:
             conn.row_factory = _sq.Row
             r = conn.execute(
                 "SELECT COUNT(*) AS calls, COALESCE(SUM(total_tokens),0) AS tokens FROM llm_usage"
@@ -107,6 +108,7 @@ def _llm_usage_stats() -> dict:
             "by_feature": [dict(f) for f in features],
         }
     except Exception:
+        logger.warning("could not read LLM usage stats from %s", db_path, exc_info=True)
         return empty
 
 
