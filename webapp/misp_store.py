@@ -2037,14 +2037,16 @@ def _all_source_clients():
             try:
                 clients.append((sid, _PyMISP(url, api_key, s.get("verify_tls", True), False),
                                 s.get("label") or url))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("skipping MISP server %r (%s): could not connect: %s",
+                               sid, url, exc)
     if (config.MISP_WEBAPP_URL != config.MISP_URL
             and config.MISP_WEBAPP_KEY != config.MISP_KEY):
         try:
             clients.append(("webapp", _misp(), "MISP webapp"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("skipping MISP webapp store (%s): could not connect: %s",
+                           config.MISP_WEBAPP_URL, exc)
     return clients
 
 
@@ -2074,18 +2076,20 @@ def _try_fetch_event(misp_client, uuid):
     Some MISP instances allow bulk search but reject direct UUID lookups due
     to distribution restrictions, so search(uuid=...) is a useful fallback.
     """
+    # get_event failing is an expected case (distribution restrictions), so this
+    # falls through to the search() path below rather than treating it as an error.
     try:
         fetched = misp_client.get_event(uuid, pythonify=True)
         if fetched and not isinstance(fetched, dict):
             return fetched
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("get_event(%s) failed, trying search fallback: %s", uuid, exc)
     try:
         results = misp_client.search(uuid=uuid, pythonify=True, metadata=False)
         if results and not isinstance(results, dict) and len(results) > 0:
             return results[0]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("search(uuid=%s) fallback failed: %s", uuid, exc)
     return None
 
 
