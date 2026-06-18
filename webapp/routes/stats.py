@@ -328,60 +328,6 @@ def _maturity_signals(program, pirs, girs, stakeholder_count, source_health):
     return results
 
 
-def _product_counts_by_threat_actor_type():
-    briefing_counter = Counter()
-    fia_counter = Counter()
-
-    try:
-        briefings = misp_store.list_briefings()
-    except Exception:
-        briefings = []
-    try:
-        fias = misp_store.list_fias()
-    except Exception:
-        fias = []
-
-    for briefing in briefings or []:
-        types = set()
-        for story in getattr(briefing, "stories", []) or []:
-            for actor_type in getattr(story, "threat_actor_types", []) or []:
-                cleaned = (actor_type or "").strip()
-                if cleaned:
-                    types.add(cleaned)
-        if not types:
-            types = {"Unspecified"}
-        for actor_type in types:
-            briefing_counter[actor_type] += 1
-
-    for fia in fias or []:
-        types = {
-            (actor_type or "").strip()
-            for actor_type in (getattr(fia, "actor_types", []) or [])
-            if (actor_type or "").strip()
-        }
-        if not types:
-            types = {"Unspecified"}
-        for actor_type in types:
-            fia_counter[actor_type] += 1
-
-    all_types = sorted(
-        set(briefing_counter.keys()) | set(fia_counter.keys()),
-        key=lambda x: (x.lower() == "unspecified", x.lower()),
-    )
-
-    rows = []
-    for actor_type in all_types:
-        briefing_n = briefing_counter.get(actor_type, 0)
-        fia_n = fia_counter.get(actor_type, 0)
-        rows.append({
-            "actor_type": actor_type,
-            "daily_briefings": briefing_n,
-            "flash_intel_alerts": fia_n,
-            "total": briefing_n + fia_n,
-        })
-    return rows
-
-
 @bp.route("/stats")
 def index():
     try:
@@ -403,7 +349,7 @@ def index():
         pirs, girs = [], []
 
     program = _program_metrics(pirs, girs)
-    actor_type_product_counts = _product_counts_by_threat_actor_type()
+    actor_type_product_counts = misp_store.product_counts_by_threat_actor_type()
 
     from webapp.routes.pipeline import _source_health
     source_health = []

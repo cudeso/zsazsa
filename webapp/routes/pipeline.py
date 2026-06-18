@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from flask import Blueprint, flash, redirect, render_template, url_for
 
 import config
-from core.db import get_recent_pipeline_runs
+from core.db import get_recent_pipeline_runs, event_counts_by_source
 from webapp import misp_store
 
 logger = logging.getLogger(__name__)
@@ -23,12 +23,7 @@ def _pipeline_stats():
 
         total = cur.execute("SELECT COUNT(*) FROM event_log").fetchone()[0]
 
-        by_source = [
-            dict(r) for r in cur.execute(
-                "SELECT source_feed, COUNT(*) AS n FROM event_log"
-                " GROUP BY source_feed ORDER BY n DESC"
-            ).fetchall()
-        ]
+        by_source = event_counts_by_source()
 
         by_outcome = [
             dict(r) for r in cur.execute(

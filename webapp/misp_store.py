@@ -3104,6 +3104,60 @@ def counts():
     }
 
 
+def product_counts_by_threat_actor_type() -> list[dict]:
+    """Count daily briefings and flash intel alerts per threat actor type.
+
+    Each row is {"actor_type", "daily_briefings", "flash_intel_alerts", "total"}.
+    A briefing/alert with no actor type counts under "Unspecified", which sorts
+    last. Used by the statistics page and the dashboard.
+    """
+    try:
+        briefings = list_briefings()
+    except Exception:
+        briefings = []
+    try:
+        fias = list_fias()
+    except Exception:
+        fias = []
+
+    briefing_counter = Counter()
+    for briefing in briefings or []:
+        types = {
+            (t or "").strip()
+            for story in (getattr(briefing, "stories", []) or [])
+            for t in (getattr(story, "threat_actor_types", []) or [])
+            if (t or "").strip()
+        }
+        for actor_type in (types or {"Unspecified"}):
+            briefing_counter[actor_type] += 1
+
+    fia_counter = Counter()
+    for fia in fias or []:
+        types = {
+            (t or "").strip()
+            for t in (getattr(fia, "actor_types", []) or [])
+            if (t or "").strip()
+        }
+        for actor_type in (types or {"Unspecified"}):
+            fia_counter[actor_type] += 1
+
+    all_types = sorted(
+        set(briefing_counter) | set(fia_counter),
+        key=lambda x: (x.lower() == "unspecified", x.lower()),
+    )
+    rows = []
+    for actor_type in all_types:
+        briefing_n = briefing_counter.get(actor_type, 0)
+        fia_n = fia_counter.get(actor_type, 0)
+        rows.append({
+            "actor_type": actor_type,
+            "daily_briefings": briefing_n,
+            "flash_intel_alerts": fia_n,
+            "total": briefing_n + fia_n,
+        })
+    return rows
+
+
 # ── Stakeholder subscription helpers ────────────────────────────────────────
 
 def stakeholders_subscribed_to(product_type: str) -> list:

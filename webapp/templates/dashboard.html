@@ -3,7 +3,11 @@
 {% block title %}Dashboard | zsazsa CTI{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
-{% block topbar_actions %}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('data_collection.manual_new') }}" class="btn btn-sm btn-outline-primary">
+  <i class="fas fa-newspaper me-1"></i> Add news story
+</a>
+{% endblock %}
 
 {% block content %}
 
@@ -118,56 +122,34 @@
       {% endif %}
     </div>
   </div>
-  <div class="card-body">
-    <div id="pipeline-action-status" class="alert alert-info py-2 px-3 mb-3 d-none" role="status"></div>
-    <div class="row g-3">
-      <div class="col-md-3">
-        <div class="text-muted small">Last automation run</div>
-        <div class="h5 mb-0">
-          {% if pipeline.last_run %}
-            {{ pipeline.minutes_since }} min ago
-          {% else %}
-            -
-          {% endif %}
-        </div>
-        <div class="text-muted small">
-          {{ pipeline.last_run.strftime('%d-%m-%Y %H:%M UTC') if pipeline.last_run else 'never' }}
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted small">
-          Pending scraper events
-          <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
-             title="Scraper events still tagged workflow:state=&quot;incomplete&quot;, i.e. not yet picked up by the analyser. Counted live from MISP (first 500 matching events)."></i>
-        </div>
-        <div class="h5 mb-0">{{ pipeline.pending if pipeline.pending is not none else '-' }}</div>
-        <div class="text-muted small">workflow:state="incomplete"</div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted small">
-          Processed (24h)
-          <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
-             title="Outcomes logged in the last 24 hours by the scheduled analyser and by manual dashboard actions (daily briefing, flash intel, vuln advisory). Product = a draft was created; skipped = event judged not relevant; errors = HTTP, content or processing errors. An event processed by more than one action is counted once per action."></i>
-        </div>
-        <div class="h5 mb-0">{{ pipeline.total_24h }}</div>
-        <div class="text-muted small">
-          {% set p = pipeline.processed_24h %}
-          {{ p.get('product_created', 0) }} product,
+  <div class="card-body py-2">
+    <div id="pipeline-action-status" class="alert alert-info py-2 px-3 mb-2 d-none" role="status"></div>
+    <div class="d-flex flex-wrap align-items-center gap-2 gap-md-4 small">
+      <span>
+        <span class="text-muted">Last run</span>
+        <span class="fw-semibold ms-1"
+              title="{{ pipeline.last_run.strftime('%d-%m-%Y %H:%M UTC') if pipeline.last_run else 'never' }}">
+          {{ (pipeline.minutes_since ~ ' min ago') if pipeline.last_run else 'never' }}
+        </span>
+      </span>
+      <span class="text-muted">|</span>
+      <span>
+        <span class="text-muted">Pending</span>
+        <span class="fw-semibold ms-1">{{ pipeline.pending if pipeline.pending is not none else '-' }}</span>
+        <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
+           title="Scraper events still tagged workflow:state=&quot;incomplete&quot;, i.e. not yet picked up by the analyser. Counted live from MISP (first 500 matching events)."></i>
+      </span>
+      <span class="text-muted">|</span>
+      <span>
+        <span class="text-muted">Processed 24h</span>
+        <span class="fw-semibold ms-1">{{ pipeline.total_24h }}</span>
+        {% set p = pipeline.processed_24h %}
+        <span class="text-muted">({{ p.get('product_created', 0) }} product,
           {{ p.get('not_relevant', 0) }} skipped,
-          {{ (p.get('http_error', 0) + p.get('no_content', 0) + p.get('error', 0)) }} errors
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted small">Quick links</div>
-        <div class="d-flex gap-2 mt-1">
-          <a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary" title="Browse collection">
-            <i class="fas fa-database"></i>
-          </a>
-          <a href="{{ url_for('logs.index') }}" class="btn btn-sm btn-outline-secondary" title="View logs">
-            <i class="fas fa-scroll"></i>
-          </a>
-        </div>
-      </div>
+          {{ (p.get('http_error', 0) + p.get('no_content', 0) + p.get('error', 0)) }} errors)</span>
+        <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
+           title="Outcomes logged in the last 24 hours by the scheduled analyser and by manual dashboard actions (daily briefing, flash intel, vuln advisory). Product = a draft was created; skipped = event judged not relevant; errors = HTTP, content or processing errors. An event processed by more than one action is counted once per action."></i>
+      </span>
     </div>
   </div>
 </div>
@@ -205,12 +187,6 @@
   </div>
 </div>
 
-<div class="d-flex align-items-center justify-content-between rounded border px-3 py-2 mb-4">
-  <span class="text-muted small"><i class="fas fa-newspaper me-2"></i>Found an interesting news story?</span>
-  <a href="{{ url_for('data_collection.manual_new') }}" class="btn btn-sm btn-outline-primary">
-    <i class="fas fa-plus me-1"></i>Add it to the data collection
-  </a>
-</div>
 <div class="row g-3 mb-4">
   <div class="col-sm-4">
     <div class="stat-card">
@@ -324,26 +300,79 @@
 
 </div>
 
-{% if misp_servers %}
-<div class="row g-3 mt-2">
-  <div class="col-12">
-    <div class="card content-card">
-      <div class="card-header">
-        <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:16px;width:auto;vertical-align:middle;margin-right:6px;opacity:.8;">Other MISP servers
+<div class="row g-4 mt-0">
+
+  <!-- Products by threat actor type -->
+  <div class="col-lg-6">
+    <div class="card content-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-user-shield me-2 text-primary"></i>Products by threat actor type</span>
+        <a href="{{ url_for('stats.index') }}" class="btn btn-xs btn-outline-secondary">Stats</a>
       </div>
       <div class="card-body">
-        <div class="d-flex flex-wrap gap-2">
-          {% for srv in misp_servers %}
-          <a href="{{ srv.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
-            <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:13px;width:auto;vertical-align:middle;margin-right:5px;opacity:.75;">{{ srv.label }}
-          </a>
-          {% endfor %}
+        {% if actor_type_products %}
+        {% set max_total = actor_type_products[0].total %}
+        {% set swatch = "display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle;" %}
+        <div class="d-flex gap-3 mb-3 small text-muted">
+          <span><span style="{{ swatch }}background:var(--accent-blue);"></span>Daily briefings</span>
+          <span><span style="{{ swatch }}background:var(--accent-orange);"></span>Flash intel</span>
         </div>
+        {% for row in actor_type_products %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="fw-semibold">{{ row.actor_type }}</span>
+            <span class="text-muted">{{ row.total }}</span>
+          </div>
+          <div class="progress" style="height:8px;border-radius:4px;">
+            <div class="progress-bar" style="width:{{ (row.daily_briefings / max_total * 100) | round(1) }}%;background:var(--accent-blue);"
+                 title="{{ row.daily_briefings }} daily briefing(s)"></div>
+            <div class="progress-bar" style="width:{{ (row.flash_intel_alerts / max_total * 100) | round(1) }}%;background:var(--accent-orange);"
+                 title="{{ row.flash_intel_alerts }} flash intel alert(s)"></div>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state p-4">
+          <i class="fas fa-user-shield text-muted"></i>
+          <p class="text-muted mb-0">No products published yet.</p>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
+
+  <!-- Throughput by collection source -->
+  <div class="col-lg-6">
+    <div class="card content-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-satellite-dish me-2 text-success"></i>Throughput by collection source</span>
+        <a href="{{ url_for('pipeline.index') }}" class="btn btn-xs btn-outline-secondary">Details</a>
+      </div>
+      <div class="card-body">
+        {% if throughput_by_source %}
+        {% set max_n = throughput_by_source[0].n %}
+        {% for row in throughput_by_source %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="fw-semibold">{{ row.source_feed or 'Unknown' }}</span>
+            <span class="text-muted">{{ row.n }}</span>
+          </div>
+          <div class="progress" style="height:8px;border-radius:4px;">
+            <div class="progress-bar" style="width:{{ (row.n / max_n * 100) | round(1) }}%;background:var(--accent-green);"></div>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state p-4">
+          <i class="fas fa-satellite-dish text-muted"></i>
+          <p class="text-muted mb-0">No events processed yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
 </div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}

@@ -49,6 +49,17 @@ class ConnectContextManager(unittest.TestCase):
         with self.assertRaises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
 
+    def test_event_counts_by_source(self):
+        db.init_db()
+        db.log_event("u1", "i", "scraper", "product_created")
+        db.log_event("u2", "i", "scraper", "not_relevant")
+        db.log_event("u3", "i", "isac", "product_created")
+        self.assertEqual(
+            db.event_counts_by_source(),
+            [{"source_feed": "scraper", "n": 2}, {"source_feed": "isac", "n": 1}],
+        )
+        self.assertEqual(db.event_counts_by_source(limit=1), [{"source_feed": "scraper", "n": 2}])
+
 
 if __name__ == "__main__":
     unittest.main()

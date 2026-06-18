@@ -11,7 +11,7 @@ from flask import Blueprint, jsonify, render_template
 
 import config
 from analyser.reader import save_last_run
-from core.db import log_pipeline_run_start, log_pipeline_run_end
+from core.db import log_pipeline_run_start, log_pipeline_run_end, event_counts_by_source
 from webapp import analyser_pipeline, audit
 from webapp import misp_store
 from webapp.utils import json_body as _json_object
@@ -252,13 +252,12 @@ def index():
 
     pipeline = _pipeline_status()
 
-    misp_servers = []
-    for s in getattr(config, "MISP_SERVERS", []) or []:
-        if s.get("enabled", True) and s.get("url"):
-            misp_servers.append({
-                "label": s.get("label") or s.get("id") or "MISP",
-                "url": s["url"],
-            })
+    # Both summary charts show the eight busiest entries, most active first.
+    actor_type_products = sorted(
+        misp_store.product_counts_by_threat_actor_type(),
+        key=lambda r: r["total"], reverse=True,
+    )[:8]
+    throughput_by_source = event_counts_by_source(limit=8)
 
     return render_template(
         "dashboard.html",
@@ -268,7 +267,8 @@ def index():
         active_pirs=active_pirs,
         active_girs=active_girs,
         pipeline=pipeline,
-        misp_servers=misp_servers,
+        actor_type_products=actor_type_products,
+        throughput_by_source=throughput_by_source,
     )
 
 
