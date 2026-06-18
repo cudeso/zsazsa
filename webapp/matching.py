@@ -130,6 +130,25 @@ def _tag_texts(tags: list) -> list:
     return [_norm(t) for t in tags if t]
 
 
+def _matches_term(item_n: str, item_c: str, haystack: str) -> bool:
+    """True if a normalized scope term matches a normalized haystack string.
+
+    Long terms (compact form >= _COMPACT_MIN chars) match as substrings, in both
+    raw and separator-stripped form, so "Agent Tesla" matches "AgentTesla". Short
+    terms match only as whole words, so "ai" matches the token "ai" but not the
+    "ai" inside "maintain". The length guard is applied to every comparison path,
+    not just the compact one.
+    """
+    if not item_n or not haystack:
+        return False
+    if len(item_c) >= _COMPACT_MIN:
+        return item_n in haystack or item_c in _compact(haystack)
+    # Short term: match only when not flanked by word characters, so "ai" hits
+    # the token "ai" but not the "ai" inside "maintain". Lookarounds (rather than
+    # \b) keep this working for terms with trailing punctuation such as "c++".
+    return re.search(r'(?<!\w)' + re.escape(item_n) + r'(?!\w)', haystack) is not None
+
+
 # ── Core matching ─────────────────────────────────────────────────────────────
 
 def match_event_to_requirement(
@@ -152,20 +171,18 @@ def match_event_to_requirement(
     title = _norm(event.get("info") or "")
 
     # Exclusion: if any out_of_scope term matches anywhere, skip this req.
-    # Both regular and compact forms are checked.
     for excl in (getattr(req, "out_of_scope", None) or []):
         excl_n = _norm(excl)
         if not excl_n:
             continue
         excl_c = _compact(excl_n)
-        use_c = len(excl_c) >= _COMPACT_MIN
-        if excl_n in title or (use_c and excl_c in _compact(title)):
+        if _matches_term(excl_n, excl_c, title):
             return None
-        if any(excl_n in g or (use_c and excl_c in _compact(g)) for g in galaxy_names):
+        if any(_matches_term(excl_n, excl_c, g) for g in galaxy_names):
             return None
-        if any(excl_n in tv or (use_c and excl_c in _compact(tv)) for tv in tag_vals):
+        if any(_matches_term(excl_n, excl_c, tv) for tv in tag_vals):
             return None
-        if any(excl_n in tt or (use_c and excl_c in _compact(tt)) for tt in tag_texts):
+        if any(_matches_term(excl_n, excl_c, tt) for tt in tag_texts):
             return None
 
     cats = categories if categories is not None else _SCOPE_CATEGORIES
@@ -179,32 +196,21 @@ def match_event_to_requirement(
             if not item_n:
                 continue
             item_c = _compact(item_n)
-            use_c = len(item_c) >= _COMPACT_MIN
             matched_source = None
 
-            if "galaxy" in methods:
-                if any(item_n in g for g in galaxy_names):
-                    matched_source = "galaxy"
-                elif use_c and any(item_c in _compact(g) for g in galaxy_names):
-                    matched_source = "galaxy"
+            if "galaxy" in methods and any(_matches_term(item_n, item_c, g) for g in galaxy_names):
+                matched_source = "galaxy"
 
-            if matched_source is None and "tag_value" in methods:
-                if any(item_n in tv for tv in tag_vals):
-                    matched_source = "tag_value"
-                elif use_c and any(item_c in _compact(tv) for tv in tag_vals):
-                    matched_source = "tag_value"
+            if matched_source is None and "tag_value" in methods and any(
+                    _matches_term(item_n, item_c, tv) for tv in tag_vals):
+                matched_source = "tag_value"
 
-            if matched_source is None and "tag_name" in methods:
-                if any(item_n in tt for tt in tag_texts):
-                    matched_source = "tag_name"
-                elif use_c and any(item_c in _compact(tt) for tt in tag_texts):
-                    matched_source = "tag_name"
+            if matched_source is None and "tag_name" in methods and any(
+                    _matches_term(item_n, item_c, tt) for tt in tag_texts):
+                matched_source = "tag_name"
 
-            if matched_source is None and "title" in methods:
-                if item_n in title:
-                    matched_source = "title"
-                elif use_c and item_c in _compact(title):
-                    matched_source = "title"
+            if matched_source is None and "title" in methods and _matches_term(item_n, item_c, title):
+                matched_source = "title"
 
             if matched_source:
                 evidence.append(MatchEvidence(

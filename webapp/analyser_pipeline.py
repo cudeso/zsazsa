@@ -316,8 +316,8 @@ def _ensure_ai_summary(misp, event, reports, galaxy_lookup: dict) -> tuple[str, 
     misp.add_event_report(event.id, report)
     try:
         collection_cache.mark_ai_summary(event.uuid, "scraper")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("mark_ai_summary failed for %s: %s", event.uuid, exc)
 
     if galaxy_lookup:
         context = _parse_misp_context(summary)

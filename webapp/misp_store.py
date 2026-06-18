@@ -969,25 +969,50 @@ def _gir_obj(data):
 _id_lock = threading.Lock()
 
 
+def _scan_max_sequence(misp, tag, prefix):
+    """Return the highest existing {prefix}-NNN sequence number, scanning event titles.
+
+    Known limitation: the sequence is derived from event info titles. If a title
+    is manually edited or the prefix format changes, the scan may produce a
+    duplicate or restart from 0.
+    """
+    events = misp.search(tags=[tag], metadata=True, pythonify=True)
+    if not events or isinstance(events, dict):
+        return 0
+    max_n = 0
+    for e in events:
+        for token in (e.info or "").split():
+            clean = token.rstrip(":")
+            if clean.startswith(prefix + "-"):
+                try:
+                    max_n = max(max_n, int(clean[len(prefix) + 1:]))
+                except ValueError:
+                    pass
+    return max_n
+
+
 def _next_id(tag, prefix):
-    # Known limitation: the sequence is derived by scanning event info titles for
-    # the highest existing number. If a title is manually edited or the prefix
-    # format changes, the scan may produce a duplicate or restart from 001.
+    """Return the next {prefix}-NNN id as a non-authoritative suggestion.
+
+    Callers that pass the result back in as an explicit id (e.g. the demo seed
+    script) get exactly this value; callers that leave the id blank get one
+    allocated atomically at create time under _id_lock. Either way the persisted
+    id is unique, so this suggestion can safely go stale.
+    """
     with _id_lock:
-        misp = _misp()
-        events = misp.search(tags=[tag], metadata=True, pythonify=True)
-        if not events or isinstance(events, dict):
-            return f"{prefix}-001"
-        max_n = 0
-        for e in events:
-            for token in (e.info or "").split():
-                clean = token.rstrip(":")
-                if clean.startswith(prefix + "-"):
-                    try:
-                        max_n = max(max_n, int(clean[len(prefix) + 1:]))
-                    except ValueError:
-                        pass
-        return f"{prefix}-{max_n + 1:03d}"
+        return f"{prefix}-{_scan_max_sequence(_misp(), tag, prefix) + 1:03d}"
+
+
+def _sequence_id(misp, tag, prefix, existing):
+    """Return `existing` if it is set, else the next {prefix}-NNN id.
+
+    Must be called while still holding _id_lock for the event write that follows,
+    so two near-simultaneous creates cannot allocate the same id. An `existing`
+    id (e.g. recreating a deleted event) is reused as-is. This guards a single
+    process only; a multi-process deployment would need a counter in MISP.
+    """
+    existing = (existing or "").strip()
+    return existing or f"{prefix}-{_scan_max_sequence(misp, tag, prefix) + 1:03d}"
 
 
 def next_pir_id():
@@ -1116,15 +1141,16 @@ def get_pir(uuid):
 
 
 def create_pir(data):
-    misp = _misp()
-    pir_id = data["pir_id"]
     if "intake_status" not in data:
         data = dict(data, intake_status="submitted")
     data["creator"] = misp_session.current_user_email()
-    event = _make_event(f"[zsazsa:pir] {pir_id}")
-    for t in _build_scope_tags(data):
-        event.add_tag(t)
-    result = _add_event(misp, event, [config.TAG_PIR], "create PIR")
+    misp = _misp()
+    with _id_lock:
+        data["pir_id"] = _sequence_id(misp, config.TAG_PIR, "PIR", data.get("pir_id"))
+        event = _make_event(f"[zsazsa:pir] {data['pir_id']}")
+        for t in _build_scope_tags(data):
+            event.add_tag(t)
+        result = _add_event(misp, event, [config.TAG_PIR], "create PIR")
     _check(misp.add_object(_event_ref(result), _pir_obj(data)), "add PIR object")
     req_uuid = _event_uuid(result)
     if not req_uuid:
@@ -1222,13 +1248,14 @@ def get_gir(uuid):
 
 
 def create_gir(data):
-    misp = _misp()
-    gir_id = data["gir_id"]
     data["creator"] = misp_session.current_user_email()
-    event = _make_event(f"[zsazsa:gir] {gir_id}: {data.get('topic', '')}")
-    for t in _build_scope_tags(data):
-        event.add_tag(t)
-    result = _add_event(misp, event, [config.TAG_GIR], "create GIR")
+    misp = _misp()
+    with _id_lock:
+        data["gir_id"] = _sequence_id(misp, config.TAG_GIR, "GIR", data.get("gir_id"))
+        event = _make_event(f"[zsazsa:gir] {data['gir_id']}: {data.get('topic', '')}")
+        for t in _build_scope_tags(data):
+            event.add_tag(t)
+        result = _add_event(misp, event, [config.TAG_GIR], "create GIR")
     _check(misp.add_object(_event_ref(result), _gir_obj(data)), "add GIR object")
     uuid = _event_uuid(result)
     if not uuid:
@@ -1630,12 +1657,13 @@ def get_rfi(uuid):
 
 
 def create_rfi(data):
-    misp = _misp()
-    rfi_id = data["rfi_id"]
     data["creator"] = misp_session.current_user_email()
-    info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
-    event = _make_event(info)
-    result = _add_event(misp, event, [config.TAG_RFI], "create RFI")
+    misp = _misp()
+    with _id_lock:
+        data["rfi_id"] = _sequence_id(misp, config.TAG_RFI, "RFI", data.get("rfi_id"))
+        info = f"[zsazsa:rfi] {data['rfi_id']}: {data.get('question', '')[:80]}"
+        event = _make_event(info)
+        result = _add_event(misp, event, [config.TAG_RFI], "create RFI")
     _check(misp.add_object(_event_ref(result), _rfi_obj(data)), "add RFI object")
     uuid = _event_uuid(result)
     if not uuid:

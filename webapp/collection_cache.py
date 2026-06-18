@@ -84,15 +84,18 @@ def init_db():
                 flagged_at REAL NOT NULL
             );
         """)
-        # Migrations: add columns to existing databases that lack them
+        # Migrations: add columns to existing databases that lack them. Only a
+        # "duplicate column" error (column already present) is expected and
+        # ignored; anything else (locked DB, disk error, bad DDL) is surfaced.
         for _col_ddl in [
             "ALTER TABLE events ADD COLUMN has_ai_summary INTEGER DEFAULT 0",
             "ALTER TABLE events ADD COLUMN vulnerability_ids TEXT DEFAULT ''",
         ]:
             try:
                 conn.execute(_col_ddl)
-            except Exception:
-                pass  # column already exists
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
 
 
 def get_source_status() -> dict:
@@ -113,26 +116,38 @@ def get_source_status() -> dict:
             d["event_count"] = counts.get(r["source_id"], 0)
             result[r["source_id"]] = d
         return result
-    except Exception:
+    except Exception as exc:
+        logger.warning("get_source_status failed: %s", exc)
         return {}
 
 
 def get_events(source_ids: list, tag_filters: list, limit: int) -> list:
-    """Return cached events for the given source IDs, applying tag filters."""
+    """Return cached events for the given source IDs, applying tag filters.
+
+    Tags are stored as a JSON array per row, so the tag filter is applied in
+    Python. When filtering, all candidate rows are scanned in date order rather
+    than a pre-capped slice: capping the SQL result first would silently drop
+    matching events that happen to be older than the cap.
+    """
     if not source_ids:
         return []
     placeholders = ",".join("?" for _ in source_ids)
+    required = set(tag_filters)
+    base_sql = (
+        f"SELECT * FROM events WHERE source_id IN ({placeholders})"
+        f" ORDER BY date DESC, fetched_at DESC"
+    )
     try:
         with _db() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM events WHERE source_id IN ({placeholders})"
-                f" ORDER BY date DESC, fetched_at DESC LIMIT ?",
-                source_ids + [limit * 3],
-            ).fetchall()
+            if required:
+                # Filtering in Python: scan everything, stop once `limit` match.
+                rows = conn.execute(base_sql, source_ids).fetchall()
+            else:
+                # No filter: the SQL LIMIT is exact, so cap in the query.
+                rows = conn.execute(base_sql + " LIMIT ?", source_ids + [limit]).fetchall()
     except Exception as exc:
         logger.warning("cache read error: %s", exc)
         return []
-    required = set(tag_filters)
     result = []
     for r in rows:
         tags = json.loads(r["tags"] or "[]")
@@ -384,10 +399,15 @@ def refresh_source(src: dict):
                       json.dumps(r.get("vulnerability_ids") or []), now)
                      for r in rows],
                 )
+        # event_count is intentionally not written: get_source_status computes
+        # it live from the events table, so persisting a copy here would only
+        # create a value that can disagree with reality (e.g. on a fetch error
+        # the events rows are kept but len(rows) is 0). The column stays in the
+        # schema for backwards compatibility and keeps its default.
         conn.execute(
-            """INSERT OR REPLACE INTO source_status (source_id, last_fetch, error, event_count)
-               VALUES (?, ?, ?, ?)""",
-            (source_id, now, error, len(rows)),
+            """INSERT OR REPLACE INTO source_status (source_id, last_fetch, error)
+               VALUES (?, ?, ?)""",
+            (source_id, now, error),
         )
     logger.info("collection cache: %s done - %d events in %.1fs", source_id, len(rows), time.time() - t0)
 
@@ -569,7 +589,8 @@ def is_flagged(uuid: str) -> bool:
         with _db() as conn:
             row = conn.execute("SELECT 1 FROM flagged_events WHERE uuid = ?", (uuid,)).fetchone()
         return row is not None
-    except Exception:
+    except Exception as exc:
+        logger.warning("is_flagged failed for %s: %s", uuid, exc)
         return False
 
 
