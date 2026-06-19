@@ -12,7 +12,7 @@ import config as _cfg
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for, Response
 
-from webapp import audit, misp_store
+from webapp import audit, misp_store, product_log
 from webapp.utils import md_to_html
 from webapp.routes.source_event_utils import (
     lookup_source_event_meta,
@@ -223,6 +223,7 @@ def wizard_new():
                                 if action == "submit" else misp_store.FIA_REVIEW_DRAFT)
         try:
             uuid, fia_id = misp_store.create_fia(data)
+            product_log.log_product_sources(data.get("source_event_uuids") or [], "flash-intel")
             audit.record("create", "fia", entity_id=uuid, entity_label=fia_id)
             flash(f"{fia_id} {'submitted for review' if action == 'submit' else 'saved as draft'}.",
                   "success")

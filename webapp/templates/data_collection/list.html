@@ -368,6 +368,14 @@
   border-bottom: 1px solid var(--alt4-divider);
   margin-bottom: .5rem;
 }
+/* Creation actions (pull / add / import) pushed to the right so they stand out. */
+.alt4-actions-right {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+}
 .action-pill {
   display: inline-flex;
   align-items: center;
@@ -581,30 +589,6 @@
      data-bs-title="How cache refresh works"
      data-bs-content="The cache is refreshed automatically every <strong>{{ (cache_interval_s // 60) }} minutes</strong> by a background worker that polls every configured source. Clicking <strong>Refresh cache</strong> wakes the worker early without changing the schedule."></i>
 
-  <span class="text-muted" style="font-size:.7rem;user-select:none;">·</span>
-
-  <!-- Pull event from MISP -->
-  <button class="action-pill" id="pull-event-btn"
-          data-bs-toggle="modal" data-bs-target="#pull-event-modal"
-          title="Pull a specific event from a MISP source into the cache">
-    <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP"
-         style="height:12px;width:auto;vertical-align:middle;opacity:.65;">
-    Pull event
-  </button>
-
-  <!-- Add manual entry -->
-  {% if has_manual_sources %}
-  <a href="{{ url_for('data_collection.manual_new') }}" class="action-pill"
-     title="Manually add intelligence from a configured source">
-    <i class="fas fa-file-import" style="font-size:.75rem;"></i> Add manual entry
-  </a>
-  {% else %}
-  <button class="action-pill disabled" disabled
-          title="No enabled manual sources configured. Add them under Configuration › Collection sources › Manual sources">
-    <i class="fas fa-file-import" style="font-size:.75rem;"></i> Add manual entry
-  </button>
-  {% endif %}
-
   {% if briefing_pending_reject_uuids %}
   <span class="text-muted" style="font-size:.7rem;user-select:none;">·</span>
   <span class="exclusion-actions">
@@ -622,6 +606,37 @@
   </span>
   <span id="bulk-reject-result" class="small d-none"></span>
   {% endif %}
+
+  <!-- Creation actions, right-aligned -->
+  <div class="alt4-actions-right">
+    <!-- Pull event from MISP -->
+    <button class="action-pill" id="pull-event-btn"
+            data-bs-toggle="modal" data-bs-target="#pull-event-modal"
+            title="Pull a specific event from a MISP source into the cache">
+      <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP"
+           style="height:12px;width:auto;vertical-align:middle;opacity:.65;">
+      Pull event
+    </button>
+
+    <!-- Add manual entry -->
+    {% if has_manual_sources %}
+    <a href="{{ url_for('data_collection.manual_new') }}" class="action-pill"
+       title="Manually add intelligence from a configured source">
+      <i class="fas fa-file-import" style="font-size:.75rem;"></i> Add manual entry
+    </a>
+    {% else %}
+    <button class="action-pill disabled" disabled
+            title="No enabled manual sources configured. Add them under Configuration › Collection sources › Manual sources">
+      <i class="fas fa-file-import" style="font-size:.75rem;"></i> Add manual entry
+    </button>
+    {% endif %}
+
+    <!-- Import from newsletter -->
+    <a href="{{ url_for('data_collection.newsletter_new') }}" class="action-pill"
+       title="Paste a security newsletter and pick which articles to collect">
+      <i class="fas fa-envelope-open-text" style="font-size:.75rem;"></i> Import from newsletter
+    </a>
+  </div>
 
 </div>
 

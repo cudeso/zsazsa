@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Import newsletter | zsazsa CTI{% endblock %}
+{% block page_title %}Import from newsletter{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back to collection
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="row g-4">
+  <input type="hidden" name="action" value="parse">
+
+  <div class="col-lg-8">
+    <div class="card content-card">
+      <div class="card-header"><i class="fas fa-envelope-open-text me-2"></i>Paste newsletter e-mail</div>
+      <div class="card-body">
+
+        <div class="mb-3">
+          <label class="form-label required-label">Newsletter</label>
+          <select name="source" class="form-select" required>
+            <option value="">- select newsletter -</option>
+            {% for s in sources %}
+            <option value="{{ s | e }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Each newsletter has its own parser; more can be added later.</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label required-label">E-mail content</label>
+          <textarea name="raw" class="form-control font-monospace" rows="18" required
+                    placeholder="Paste the full newsletter e-mail here..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-list-check me-1"></i> Parse and review
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card content-card">
+      <div class="card-header"><i class="fas fa-circle-info me-2"></i>How it works</div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">
+          Paste the e-mail, review the extracted articles, and choose which ones to collect.
+          Critical and urgent items are pre-selected to keep noise down.
+        </p>
+        <p class="text-muted small mb-0">
+          Selected articles will be sent to the misp-scraper queue, which fetches each article and
+          creates the MISP event. Queue push is not enabled in this preview.
+        </p>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

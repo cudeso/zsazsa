@@ -337,6 +337,26 @@ Vulnerability advisory creation follows the same pattern, with evidence and indi
 
 ![docs/6-vulnadv.png](docs/6-vulnadv.png)
 
+## Importing newsletters
+
+Many teams receive curated security newsletters by e-mail, for example the ETDA Cyber Threat Intelligence (CTI Robot) digest, where each edition lists dozens of articles, each with a short title, an intro, a section and a criticality. Rather than copy these in one by one, the newsletter importer turns a pasted e-mail into a reviewable list of articles.
+
+Open the importer from the Data collection page with "Import from newsletter". Choose the newsletter format, paste the full e-mail, and select "Parse and review". The importer extracts every article with its section (Financial Sector, Vulnerabilities, Malware, and so on), its criticality (Critical, Urgent, Important) and its links, grouped by section.
+
+On the review screen you decide what is worth collecting. Critical and urgent items are pre-selected.
+
+Sending does two things. Each selected article link is handed to the misp-scraper, which fetches the article and creates a MISP event for it, so it flows through the normal collection pipeline. The newsletter e-mail is also archived as its own MISP event, with the raw e-mail kept as a report and the selected links attached.
+
+Before sending, make sure the misp-scraper subscriber is running and its Redis connection is configured (see "Manual sources pushing to scraper" further down). If no subscriber is listening when you send, the importer tells you so nothing is silently lost.
+
+### Technical notes
+
+Each newsletter format has its own parser registered in `webapp/newsletter_parsers.py` (the `PARSERS` map), so supporting a new format means writing one parser and registering it; the import screens themselves are format-agnostic. Parsing is pure text processing and never touches MISP.
+
+The hand-off to the scraper uses Redis publish/subscribe: zsazsa publishes one JSON message per selected article on the configured channel, and the scraper's `subscribe` service consumes it. The connection (`SCRAPER_REDIS_HOST`, `SCRAPER_REDIS_PORT`, `SCRAPER_REDIS_PASSWORD`, `SCRAPER_REDIS_CHANNEL`) is set on the "Manual sources pushing to scraper" card, and is separate from the Redis that zsazsa reads MISP login sessions from.
+
+Each message carries the article link, the title, the newsletter name as the feed title, and `feed_tags` that the scraper applies as local tags on the created event.
+
 ## Statistics
 
 The statistics pages combine operational metrics with CTI maturity signals.
@@ -542,3 +562,16 @@ The "Manual sources" card lists collection sources that are not MISP servers, fo
 | Source reliability | Admiralty scale rating, applied as an `admiralty-scale:source-reliability` tag |
 
 Each manual source is itself stored as a `zsazsa-collection-source` event in the webapp MISP, and can be edited, enabled or disabled, or deleted from the list. As with additional MISP servers, disabling or deleting a manual source that is referenced by a PIR or GIR will prompt for confirmation first, since the reference itself is not removed.
+
+## Manual sources pushing to scraper
+
+Some manual sources do not store events directly but hand article links to the misp-scraper, which fetches and creates them.
+
+| Field | Description |
+|---|---|
+| Redis host | Host of the misp-scraper Redis (`SCRAPER_REDIS_HOST`) |
+| Port | Redis port (`SCRAPER_REDIS_PORT`) |
+| Password | Redis password, if the instance requires one (`SCRAPER_REDIS_PASSWORD`) |
+| Channel | Publish/subscribe channel the scraper subscribes to (`SCRAPER_REDIS_CHANNEL`, default `urls`) |
+
+The scraper's own `subscribe` service must be running.

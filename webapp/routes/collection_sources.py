@@ -31,6 +31,10 @@ def index():
         "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
         "MISP_SERVERS": misp_servers,
         "SCRAPER_MARKER_TAG": getattr(_config, "SCRAPER_MARKER_TAG", ""),
+        "SCRAPER_REDIS_HOST": getattr(_config, "SCRAPER_REDIS_HOST", "127.0.0.1"),
+        "SCRAPER_REDIS_PORT": getattr(_config, "SCRAPER_REDIS_PORT", 6379),
+        "SCRAPER_REDIS_PASSWORD": getattr(_config, "SCRAPER_REDIS_PASSWORD", ""),
+        "SCRAPER_REDIS_CHANNEL": getattr(_config, "SCRAPER_REDIS_CHANNEL", "urls"),
     }
     return render_template("collection_sources/list.html",
                            sources=sources, misp_servers=misp_servers, cfg=cfg)

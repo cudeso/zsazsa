@@ -65,6 +65,18 @@ MIGRATIONS = [
         ),
         "supports_apply": True,
     },
+    {
+        "id": "backfill_product_source_log",
+        "name": "Backfill product source log",
+        "script": "scripts/backfill_product_source_log.py",
+        "description": (
+            "Record the source events of existing products (briefings, flash intel, "
+            "VEAs) in the analyser log, so products created before source logging was "
+            "added show up under the pipeline's By collection source. Already-logged "
+            "entries are skipped, so it is safe to run more than once."
+        ),
+        "supports_apply": True,
+    },
 ]
 
 _MIGRATIONS_BY_ID = {m["id"]: m for m in MIGRATIONS}
@@ -198,6 +210,10 @@ def _read() -> dict:
         "POLL_WINDOW_HOURS": _config.POLL_WINDOW_HOURS,
         "SCRAPER_MARKER_TAG": _config.SCRAPER_MARKER_TAG,
         "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+        "SCRAPER_REDIS_HOST": getattr(_config, "SCRAPER_REDIS_HOST", "127.0.0.1"),
+        "SCRAPER_REDIS_PORT": getattr(_config, "SCRAPER_REDIS_PORT", 6379),
+        "SCRAPER_REDIS_PASSWORD": getattr(_config, "SCRAPER_REDIS_PASSWORD", ""),
+        "SCRAPER_REDIS_CHANNEL": getattr(_config, "SCRAPER_REDIS_CHANNEL", "urls"),
         "EVENT_LOG_RETENTION_DAYS": getattr(_config, "EVENT_LOG_RETENTION_DAYS", 90),
         "PIPELINE_RUN_LOG_RETENTION_DAYS": getattr(_config, "PIPELINE_RUN_LOG_RETENTION_DAYS", 365),
         "LOG_LEVEL": _config.LOG_LEVEL,
@@ -379,6 +395,12 @@ SCRAPER_MARKER_TAG = {values['SCRAPER_MARKER_TAG']!r}
 MISP_SCRAPER_LIMIT = {int(values.get('MISP_SCRAPER_LIMIT') or 500)}
 EVENT_LOG_RETENTION_DAYS = {int(values.get('EVENT_LOG_RETENTION_DAYS') or 90)}
 PIPELINE_RUN_LOG_RETENTION_DAYS = {int(values.get('PIPELINE_RUN_LOG_RETENTION_DAYS') or 365)}
+
+# Manual sources pushing to the misp-scraper queue (Redis pub/sub the scraper subscribes to)
+SCRAPER_REDIS_HOST = {values.get('SCRAPER_REDIS_HOST', '127.0.0.1')!r}
+SCRAPER_REDIS_PORT = {int(values.get('SCRAPER_REDIS_PORT') or 6379)}
+SCRAPER_REDIS_PASSWORD = {values.get('SCRAPER_REDIS_PASSWORD', '')!r}
+SCRAPER_REDIS_CHANNEL = {values.get('SCRAPER_REDIS_CHANNEL') or 'urls'!r}
 
 # Paths
 STATE_FILE = {_config.STATE_FILE!r}
@@ -618,6 +640,28 @@ def save_scraper_config():
         flash("MISP scraper settings saved.", "success")
     except Exception as exc:
         logger.exception("save_scraper_config failed")
+        flash("Could not save configuration.", "warning")
+    return redirect(url_for("collection_sources.index"))
+
+
+@bp.route("/config/sources/save-scraper-redis", methods=["POST"])
+def save_scraper_redis_config():
+    """Save the misp-scraper Redis queue settings used by newsletter imports."""
+    current = _read()
+    current["SCRAPER_REDIS_HOST"] = request.form.get("SCRAPER_REDIS_HOST", "").strip()
+    try:
+        current["SCRAPER_REDIS_PORT"] = int(request.form.get("SCRAPER_REDIS_PORT") or 6379)
+    except (ValueError, TypeError):
+        current["SCRAPER_REDIS_PORT"] = 6379
+    current["SCRAPER_REDIS_PASSWORD"] = request.form.get("SCRAPER_REDIS_PASSWORD", "")
+    current["SCRAPER_REDIS_CHANNEL"] = request.form.get("SCRAPER_REDIS_CHANNEL", "").strip() or "urls"
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("update", "config", entity_label="scraper-redis")
+        flash("Scraper queue settings saved.", "success")
+    except Exception:
+        logger.exception("save_scraper_redis_config failed")
         flash("Could not save configuration.", "warning")
     return redirect(url_for("collection_sources.index"))
 

@@ -20,7 +20,8 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from pymisp import PyMISP, MISPEventReport
 
 import config
-from webapp import audit, collection_cache, matching as _matching, misp_store
+from webapp import audit, collection_cache, matching as _matching, misp_store, newsletter_parsers, scraper_queue
+from webapp.redis_client import RedisError
 from webapp.rate_limit import rate_limited
 from webapp.utils import json_body as _json_object
 
@@ -727,6 +728,137 @@ def manual_new():
         "galaxy_threat_actors": misp_store.galaxy_threat_actors(),
     }
     return render_template("data_collection/manual_entry.html", **ctx)
+
+
+def _group_by_section(articles: list) -> list:
+    """Group articles into [(section, [articles])], preserving first-seen order."""
+    groups = {}
+    for article in articles:
+        groups.setdefault(article.get("section") or "Uncategorised", []).append(article)
+    return list(groups.items())
+
+
+@bp.route("/newsletter/new", methods=["GET", "POST"])
+def newsletter_new():
+    """Paste a newsletter e-mail, then review and select articles to collect."""
+    sources = newsletter_parsers.available_sources()
+
+    if request.method == "POST" and (request.form.get("action") or "") == "push":
+        return _newsletter_push((request.form.get("source") or "").strip())
+
+    if request.method == "POST":
+        source = (request.form.get("source") or "").strip()
+        raw = request.form.get("raw", "")
+        if source not in sources:
+            flash("Please choose a newsletter to parse.", "warning")
+        elif not raw.strip():
+            flash("Paste the newsletter e-mail first.", "warning")
+        else:
+            try:
+                parsed = newsletter_parsers.parse(source, raw)
+            except Exception:
+                logger.exception("newsletter parse failed for %s", source)
+                flash("Could not parse this newsletter.", "warning")
+            else:
+                if not parsed["articles"]:
+                    flash("No articles found in the pasted text.", "warning")
+                else:
+                    for idx, article in enumerate(parsed["articles"]):
+                        article["idx"] = idx
+                    return render_template(
+                        "data_collection/newsletter_review.html",
+                        source=source,
+                        raw=raw,
+                        report_title=parsed.get("report_title", ""),
+                        tlp=parsed.get("tlp") or "",
+                        articles=parsed["articles"],
+                        sections=_group_by_section(parsed["articles"]),
+                    )
+
+    return render_template("data_collection/newsletter_new.html", sources=sources)
+
+
+def _newsletter_message(source: str, idx: str) -> dict | None:
+    """Build the misp-scraper publish payload for one selected article, or None."""
+    url = request.form.get(f"url-{idx}", "").strip()
+    if not url:
+        return None
+    feed_tags = []
+    section = request.form.get(f"section-{idx}", "").strip()
+    if section:
+        feed_tags.append(f'zsazsa:newsletter-section="{misp_store.source_slug(section)}"')
+    priority = request.form.get(f"priority-{idx}", "").strip()
+    if priority:
+        feed_tags.append(f'zsazsa:newsletter-priority="{priority}"')
+    return {
+        "link": url,
+        "title": request.form.get(f"title-{idx}", "").strip(),
+        "feed_title": source,
+        "feed": source,
+        "feed_tags": feed_tags,
+    }
+
+
+def _newsletter_push(source: str):
+    """Publish the selected articles to the misp-scraper Redis channel."""
+    messages = [m for m in (_newsletter_message(source, i) for i in request.form.getlist("selected")) if m]
+    if not messages:
+        flash("No articles were selected.", "warning")
+        return redirect(url_for("data_collection.newsletter_new"))
+
+    # Archive the newsletter itself (raw e-mail as a report), so it can always be
+    # found back and correlates with the scraper events via the article URLs.
+    stored = False
+    try:
+        misp_store.create_newsletter_event(
+            source, request.form.get("raw", ""),
+            report_title=request.form.get("report_title", ""),
+            tlp=request.form.get("tlp", ""),
+            article_urls=[m["link"] for m in messages],
+        )
+        stored = True
+    except Exception:
+        logger.exception("could not archive newsletter source event for %s", source)
+
+    published = failed = no_subscriber = 0
+    for message in messages:
+        try:
+            receivers = scraper_queue.publish(message)
+        except (OSError, RedisError) as exc:
+            failed += 1
+            logger.warning("scraper publish failed for %s: %s", message["link"], exc)
+        else:
+            published += 1
+            if receivers == 0:
+                no_subscriber += 1
+
+    audit.record(
+        "push", "newsletter-import", entity_label=source,
+        details=f"selected={len(messages)} published={published} failed={failed} "
+                f"no_subscriber={no_subscriber} archived={'yes' if stored else 'no'}",
+    )
+
+    archived = " The newsletter itself was archived in MISP." if stored else ""
+    if published == 0:
+        flash(
+            "Could not reach the scraper queue. Check the Redis settings under "
+            "Collection sources > Manual sources pushing to scraper." + archived,
+            "warning",
+        )
+    elif no_subscriber == published:
+        flash(
+            f"Sent {published} article(s) to the scraper channel, but no subscriber is listening. "
+            "Start the misp-scraper 'subscribe' service or the messages are dropped." + archived,
+            "warning",
+        )
+    else:
+        msg = f"Sent {published} article(s) to the scraper queue."
+        if failed:
+            msg += f" {failed} could not be sent."
+        if no_subscriber:
+            msg += f" {no_subscriber} had no subscriber listening."
+        flash(msg + archived, "success")
+    return redirect(url_for("data_collection.index"))
 
 
 @bp.route("/manual/<string:uuid>")
