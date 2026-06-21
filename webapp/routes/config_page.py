@@ -15,7 +15,7 @@ import requests
 import config as _config
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 from core import flowintel_client
-from webapp import audit, misp_session, misp_store
+from webapp import audit, misp_session, misp_store, newsletter_parsers
 from webapp.rate_limit import rate_limited
 from webapp.utils import (
     json_body as _json_object,
@@ -192,6 +192,7 @@ def _read() -> dict:
         "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
         "FLOWINTEL_CASE_TEMPLATE_PRODUCTS": FLOWINTEL_CASE_TEMPLATE_PRODUCTS,
         "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []),
+        "IMAP_SOURCES": getattr(_config, "IMAP_SOURCES", []),
         "PRODUCT_TYPES": _config.PRODUCT_TYPES,
         "DAILY_BRIEFING_TITLE_EXCLUSIONS": daily_briefing_title_exclusions,
         "FOCUS_POINTS_GEOGRAPHIES": focus_points_geographies,
@@ -290,6 +291,18 @@ def _write(values):
         servers_repr = "[\n" + "\n".join(lines) + "\n]"
     else:
         servers_repr = "[]"
+    imap_sources = values.get("IMAP_SOURCES", [])
+    if imap_sources:
+        lines = []
+        for s in imap_sources:
+            lines.append("    {")
+            for k in ("id", "name", "enabled", "host", "port", "ssl", "username",
+                      "password", "folder", "subjects", "senders", "parser", "mode", "reliability"):
+                lines.append(f"        {k!r}: {s.get(k)!r},")
+            lines.append("    },")
+        imap_sources_repr = "[\n" + "\n".join(lines) + "\n]"
+    else:
+        imap_sources_repr = "[]"
     channels = values.get("NOTIFICATION_CHANNELS", [])
     if channels:
         ch_lines = []
@@ -355,6 +368,9 @@ FLOWINTEL_INSTANCES = {flowintel_instances_repr}
 
 # Additional MISP servers queried by the data-collection page.
 MISP_SERVERS = {servers_repr}
+
+# IMAP mailboxes polled by run_imap_collector.py for newsletter e-mails.
+IMAP_SOURCES = {imap_sources_repr}
 
 # Collection sources offered when editing a PIR or GIR.
 # Derived automatically from the MISP scraper and configured MISP servers.
@@ -523,6 +539,7 @@ def index():
             "MISP_VERIFYCERT": getattr(_config, "MISP_VERIFYCERT", True),
             "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
             "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []) or [],
+            "IMAP_SOURCES": getattr(_config, "IMAP_SOURCES", []) or [],
             "MISP_WEBAPP_URL": request.form.get("MISP_WEBAPP_URL", ""),
             "MISP_WEBAPP_KEY": request.form.get("MISP_WEBAPP_KEY", ""),
             "MISP_WEBAPP_VERIFYCERT": request.form.get("MISP_WEBAPP_VERIFYCERT") == "true",
@@ -782,6 +799,137 @@ def delete_server_config():
         logger.exception("delete_server_config failed")
         audit.record("delete", "misp_server", entity_label=label, details="failed")
         return jsonify({"ok": False, "error": "Could not delete server."}), 500
+
+
+def _str_list(value) -> list[str]:
+    """Accept a list or a newline/comma string and return a clean list of strings."""
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, str):
+        items = value.replace(",", "\n").splitlines()
+    else:
+        items = []
+    return [str(i).strip() for i in items if str(i).strip()]
+
+
+@bp.route("/config/sources/save-imap", methods=["POST"])
+@rate_limited("config_save_imap", limit=60, window_s=60)
+def save_imap_mailbox():
+    """Add or update a single IMAP mailbox source (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    original_id = (data.get("original_id") or "").strip()
+    name = (data.get("name") or "").strip()
+    host = (data.get("host") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Name required"}), 400
+    if not host:
+        return jsonify({"ok": False, "error": "IMAP host required"}), 400
+    sid = (data.get("id") or "").strip()
+    if not sid:
+        sid = "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-") or "mailbox"
+    try:
+        ssl_on = _parse_bool(data.get("ssl", True), default=True)
+        enabled = _parse_bool(data.get("enabled", True), default=True)
+        port = int(data.get("port") or (993 if ssl_on else 143))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Port must be a number"}), 400
+    parser = (data.get("parser") or "").strip()
+    if parser not in newsletter_parsers.available_sources():
+        return jsonify({"ok": False, "error": "Unknown newsletter parser"}), 400
+    mode = (data.get("mode") or "auto").strip().lower()
+    if mode not in ("auto", "manual"):
+        mode = "auto"
+
+    entry = {
+        "id": sid,
+        "name": name,
+        "enabled": enabled,
+        "host": host,
+        "port": port,
+        "ssl": ssl_on,
+        "username": (data.get("username") or "").strip(),
+        "password": data.get("password") or "",
+        "folder": (data.get("folder") or "INBOX").strip() or "INBOX",
+        "subjects": _str_list(data.get("subjects")),
+        "senders": _str_list(data.get("senders")),
+        "parser": parser,
+        "mode": mode,
+        "reliability": (data.get("reliability") or "").strip().upper(),
+    }
+    current = _read()
+    sources = list(current.get("IMAP_SOURCES") or [])
+    action = "create"
+    if original_id:
+        for i, s in enumerate(sources):
+            if s.get("id") == original_id:
+                sources[i] = entry
+                action = "update"
+                break
+        if action == "create":
+            sources.append(entry)
+    else:
+        sources.append(entry)
+    current["IMAP_SOURCES"] = sources
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record(action, "imap_mailbox", entity_label=name)
+        return jsonify({"ok": True, "new_id": sid})
+    except Exception:
+        logger.exception("save_imap_mailbox failed")
+        return jsonify({"ok": False, "error": "Could not save mailbox."}), 500
+
+
+@bp.route("/config/sources/delete-imap", methods=["POST"])
+@rate_limited("config_delete_imap", limit=60, window_s=60)
+def delete_imap_mailbox():
+    """Remove a single IMAP mailbox source by ID (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    mailbox_id = (data.get("mailbox_id") or "").strip()
+    if not mailbox_id:
+        return jsonify({"ok": False, "error": "mailbox_id required"}), 400
+    current = _read()
+    sources = current.get("IMAP_SOURCES") or []
+    label = next((s.get("name", mailbox_id) for s in sources if s.get("id") == mailbox_id), mailbox_id)
+    current["IMAP_SOURCES"] = [s for s in sources if s.get("id") != mailbox_id]
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("delete", "imap_mailbox", entity_label=label)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("delete_imap_mailbox failed")
+        return jsonify({"ok": False, "error": "Could not delete mailbox."}), 500
+
+
+@bp.route("/config/sources/test-imap", methods=["POST"])
+@rate_limited("config_test_imap", limit=20, window_s=60)
+def test_imap_mailbox():
+    """Check that an IMAP mailbox can be opened with the supplied settings (AJAX)."""
+    data, err = _json_object()
+    if err:
+        return err
+    from core import imap_collector
+
+    host = (data.get("host") or "").strip()
+    if not host:
+        return jsonify({"ok": False, "error": "IMAP host is required"}), 400
+    try:
+        ssl_on = _parse_bool(data.get("ssl", True), default=True)
+        port = int(data.get("port") or (993 if ssl_on else 143))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Port must be a number"}), 400
+    result = imap_collector.test_connection(
+        host, port, ssl_on,
+        (data.get("username") or "").strip(),
+        data.get("password") or "",
+        (data.get("folder") or "INBOX").strip() or "INBOX",
+    )
+    return jsonify(result)
 
 
 @bp.route("/config/test_misp_connection", methods=["POST"])

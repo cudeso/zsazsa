@@ -78,6 +78,13 @@ _GALAXY_TTL = 600  # seconds
 
 # ── Connection ────────────────────────────────────────────────────────────────
 
+# Per-request timeout (seconds) for MISP calls, so an unreachable or slow server
+# cannot hang a page indefinitely. HEALTH_CHECK_TIMEOUT is shorter, used for the
+# connection probes on the pipeline page where several servers are checked.
+HTTP_TIMEOUT = 30
+HEALTH_CHECK_TIMEOUT = 8
+
+
 def _misp():
     # Cache per Flask request via g; fall back to a fresh connection outside Flask (analyser).
     try:
@@ -88,6 +95,7 @@ def _misp():
                 config.MISP_WEBAPP_KEY,
                 config.MISP_WEBAPP_VERIFYCERT,
                 False,
+                timeout=HTTP_TIMEOUT,
             )
         return g._webapp_misp
     except RuntimeError:
@@ -96,6 +104,7 @@ def _misp():
             config.MISP_WEBAPP_KEY,
             config.MISP_WEBAPP_VERIFYCERT,
             False,
+            timeout=HTTP_TIMEOUT,
         )
 
 
@@ -108,6 +117,7 @@ def _scraper_misp():
                 config.MISP_KEY,
                 config.MISP_VERIFYCERT,
                 False,
+                timeout=HTTP_TIMEOUT,
             )
         return g._scraper_misp
     except RuntimeError:
@@ -116,6 +126,7 @@ def _scraper_misp():
             config.MISP_KEY,
             config.MISP_VERIFYCERT,
             False,
+            timeout=HTTP_TIMEOUT,
         )
 
 
@@ -412,7 +423,7 @@ def galaxy_mitre_attack_patterns() -> list:
 
 def _test_connection(url, key, verify):
     try:
-        m = PyMISP(url, key, verify, False)
+        m = PyMISP(url, key, verify, False, timeout=HEALTH_CHECK_TIMEOUT)
         resp = m.misp_instance_version
         if isinstance(resp, dict) and "version" in resp:
             return {"ok": True, "version": resp["version"], "url": url}
@@ -2557,21 +2568,43 @@ def create_manual_collection_event(data: dict) -> str:
     return uuid
 
 
+NEWSLETTER_PENDING_TAG = 'zsazsa:newsletter-status="pending-review"'
+_NEWSLETTER_REPORT_PREFIX = "Newsletter source: "
+
+
+def _add_scraper_link(misp, event_ref, url: str) -> None:
+    """Add a 'pushed to scraper' link attribute to an event (id or uuid)."""
+    a = MISPAttribute()
+    a.type = "link"
+    a.category = "External analysis"
+    a.value = url
+    a.comment = "Pushed to scraper"
+    a.to_ids = False
+    misp.add_attribute(event_ref, a)
+
+
 def create_newsletter_event(source: str, raw_email: str, report_title: str = "",
-                            tlp: str = "", article_urls: list | None = None) -> str:
-    """Archive a pasted newsletter as an event on the webapp MISP server.
+                            tlp: str = "", reliability: str = "",
+                            article_urls: list | None = None,
+                            status: str = "processed") -> str:
+    """Archive a newsletter as an event on the webapp MISP server.
 
     Stores the raw e-mail as a MISP report and tags the event so the source can
     always be found back. The pushed article URLs are added as link attributes,
     so MISP correlates this event with the scraper events created from them.
-    Returns the new event UUID.
+    With status="pending-review" the event is tagged so it shows up in the
+    pending-newsletters queue for a human to review before the articles are
+    pushed. Returns the new event UUID.
     """
     from pymisp import MISPEventReport
     misp = _misp()
 
     title = (report_title or "").strip() or f"{source} newsletter"
-    event = _make_event(f"[zsazsa:newsletter] {title}",
-                        extra_tags=[f"tlp:{tlp}"] if tlp else [])
+    extra_tags = [f"tlp:{tlp}"] if tlp else []
+    rel = (reliability or "").strip().upper()
+    if rel in _ADMIRALTY_SOURCE_TAGS:
+        extra_tags.append(_ADMIRALTY_SOURCE_TAGS[rel])
+    event = _make_event(f"[zsazsa:newsletter] {title}", extra_tags=extra_tags)
     created = misp.add_event(event, pythonify=True)
     if isinstance(created, dict):
         raise RuntimeError(f"MISP error: {created.get('errors') or created}")
@@ -2579,27 +2612,80 @@ def create_newsletter_event(source: str, raw_email: str, report_title: str = "",
 
     _tag_local(misp, uuid, 'zsazsa:source-type="newsletter"')
     _tag_local(misp, uuid, f'zsazsa:source="{source_slug(source)}"')
+    if status == "pending-review":
+        _tag_local(misp, uuid, NEWSLETTER_PENDING_TAG)
 
     if raw_email.strip():
         report = MISPEventReport()
-        report.name = f"Newsletter source: {source}"
+        report.name = f"{_NEWSLETTER_REPORT_PREFIX}{source}"
         report.content = raw_email
         report.distribution = 5
         misp.add_event_report(created.id, report)
 
     for url in article_urls or []:
-        url = url.strip()
-        if not url:
-            continue
-        a = MISPAttribute()
-        a.type = "link"
-        a.category = "External analysis"
-        a.value = url
-        a.comment = "Pushed to scraper"
-        a.to_ids = False
-        misp.add_attribute(created.id, a)
+        if url.strip():
+            _add_scraper_link(misp, created.id, url.strip())
 
     return uuid
+
+
+def list_pending_newsletters() -> list[dict]:
+    """Newsletter events archived but awaiting manual review before their articles
+    are pushed. Returns lightweight dicts (uuid, info, date)."""
+    misp = _misp()
+    try:
+        events = misp.search(tags=[NEWSLETTER_PENDING_TAG], limit=200,
+                             metadata=True, pythonify=True)
+        if isinstance(events, dict):
+            return []
+    except Exception:
+        return []
+    out = [
+        {"uuid": ev.uuid, "info": getattr(ev, "info", ""), "date": str(getattr(ev, "date", ""))}
+        for ev in events or []
+    ]
+    out.sort(key=lambda n: n["date"], reverse=True)
+    return out
+
+
+def get_newsletter_for_review(uuid: str) -> dict | None:
+    """Return {uuid, source, raw_email} for an archived newsletter, or None.
+
+    The source name and raw e-mail are recovered from the stored report so the
+    review screen can re-parse the newsletter.
+    """
+    misp = _misp()
+    try:
+        event = misp.get_event(uuid, pythonify=True)
+        if not event or isinstance(event, dict):
+            return None
+        reports = misp.get_event_reports(event.id, pythonify=True) or []
+    except Exception:
+        return None
+    for rep in reports:
+        name = getattr(rep, "name", "") or ""
+        if name.startswith(_NEWSLETTER_REPORT_PREFIX):
+            return {"uuid": uuid, "source": name[len(_NEWSLETTER_REPORT_PREFIX):].strip(),
+                    "raw_email": getattr(rep, "content", "") or ""}
+    return None
+
+
+def mark_newsletter_pending(uuid: str) -> None:
+    """Flag an already-archived newsletter for manual review (e.g. when the
+    automatic scraper push found no listener)."""
+    _tag_local(_misp(), uuid, NEWSLETTER_PENDING_TAG)
+
+
+def finalize_newsletter(uuid: str, article_urls: list | None = None) -> None:
+    """Clear the pending-review flag and record the pushed article URLs."""
+    misp = _misp()
+    try:
+        misp.untag(uuid, NEWSLETTER_PENDING_TAG)
+    except Exception:
+        logger.warning("could not clear pending tag on newsletter %s", uuid)
+    for url in article_urls or []:
+        if (url or "").strip():
+            _add_scraper_link(misp, uuid, url.strip())
 
 
 def add_manual_collection_attachment(event_uuid: str, filename: str, file_bytes: bytes) -> str:

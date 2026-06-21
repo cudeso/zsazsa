@@ -1,7 +1,10 @@
-"""Parsers for security newsletters pasted into the collection importer.
+"""Parsers for security newsletters, whether pasted into the importer or
+collected from a mailbox.
 
-Each parser turns a pasted newsletter into a list of article dicts so the
-importer can show them for selection. Parsing is pure text work; nothing here
+Each parser turns a newsletter into a list of article dicts so the importer can
+show them for selection. The text may be a directly delivered edition or a
+forwarded copy (traditional or Apple Mail style), so the ETDA parser tolerates a
+forward preamble and '> ' quoting. Parsing is pure text work; nothing here
 touches MISP or the network. New newsletters are added by writing a parser and
 registering it in PARSERS.
 """
@@ -16,6 +19,34 @@ _OVERVIEW_ROW_RE = re.compile(r'^(.+?)[ \t]+\d+[ \t]+\d+[ \t]+\d+\s*$')
 _TLP_RE = re.compile(r'TLP:\s*(CLEAR|WHITE|GREEN|AMBER\+STRICT|AMBER|RED)', re.IGNORECASE)
 
 _PRIORITY_KEYS = {1: "critical", 2: "urgent", 3: "important"}
+
+_QUOTE_RE = re.compile(r'^> ?')
+# Forwarded-message header lines, so the real newsletter title is not mistaken
+# for the forward's Subject line.
+_FWD_HEADER_RE = re.compile(
+    r'^(From|Date|Subject|To|Sent|Cc|Reply-To|Delivered-To|Return-Path'
+    r'|Begin forwarded message)\b', re.IGNORECASE)
+# Trailing in-mail anchor link on a "Quick overview" section name,
+# e.g. "Industrial Sector <x-msg://3/#ICS>".
+_OVERVIEW_ANCHOR_RE = re.compile(r'\s*<[^>]*>\s*$')
+
+
+def _dequote(text: str) -> str:
+    """Strip one level of '> ' e-mail quoting when the text is a quoted forward.
+
+    Apple Mail and similar clients quote a forwarded newsletter by prefixing
+    every line with '> ', which breaks the line-anchored parsing below. Only
+    strip when most non-blank lines are quoted, so a pasted (unquoted)
+    newsletter is left untouched.
+    """
+    lines = text.split("\n")
+    nonblank = [ln for ln in lines if ln.strip()]
+    if not nonblank:
+        return text
+    quoted = sum(1 for ln in nonblank if ln.startswith(">"))
+    if quoted < len(nonblank) * 0.6:
+        return text
+    return "\n".join(_QUOTE_RE.sub("", ln) for ln in lines)
 
 
 def _clean_url(token: str) -> str:
@@ -37,7 +68,7 @@ def _etda_section_names(lines: list[str]) -> list[str]:
         if in_overview:
             match = _OVERVIEW_ROW_RE.match(line.strip())
             if match:
-                names.append(match.group(1).strip())
+                names.append(_OVERVIEW_ANCHOR_RE.sub("", match.group(1)).strip())
             elif names:
                 break
     return names
@@ -56,7 +87,7 @@ def _etda_body_start(lines: list[str]) -> int:
 
 def parse_etda(text: str) -> dict:
     """Parse an ETDA CTI Robot newsletter into report metadata and articles."""
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = _dequote(text.replace("\r\n", "\n").replace("\r", "\n"))
     lines = text.split("\n")
 
     sections = set(_etda_section_names(lines))
@@ -65,6 +96,8 @@ def parse_etda(text: str) -> dict:
 
     report_title = ""
     for line in lines[:20]:
+        if _FWD_HEADER_RE.match(line.strip()):
+            continue
         if "cyber threat intelligence" in line.lower():
             report_title = line.strip()
             break

@@ -1,0 +1,76 @@
+{% set m = m or {} %}
+<div class="row g-2">
+  <div class="col-md-5">
+    <label class="form-label small mb-1">Name</label>
+    <input type="text" class="form-control form-control-sm im-name" value="{{ m.get('name', '') }}" placeholder="ETDA mailbox">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label small mb-1">Newsletter parser</label>
+    <select class="form-select form-select-sm im-parser">
+      {% for s in newsletter_sources %}
+      <option value="{{ s }}" {{ 'selected' if m.get('parser') == s }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label small mb-1">Mode</label>
+    <select class="form-select form-select-sm im-mode">
+      <option value="auto" {{ 'selected' if m.get('mode', 'auto') == 'auto' }}>Automatic</option>
+      <option value="manual" {{ 'selected' if m.get('mode') == 'manual' }}>Manual review</option>
+    </select>
+  </div>
+
+  <div class="col-md-5">
+    <label class="form-label small mb-1">IMAP host</label>
+    <input type="text" class="form-control form-control-sm font-monospace im-host" value="{{ m.get('host', '') }}" placeholder="imap.gmail.com">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label small mb-1">Port</label>
+    <input type="number" class="form-control form-control-sm im-port" value="{{ m.get('port', 993) }}" min="1" max="65535">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label small mb-1">Folder</label>
+    <input type="text" class="form-control form-control-sm im-folder" value="{{ m.get('folder', 'INBOX') }}" placeholder="INBOX">
+  </div>
+  <div class="col-md-3 d-flex align-items-end gap-3">
+    <div class="form-check form-switch">
+      <input class="form-check-input im-ssl" type="checkbox" {{ 'checked' if m.get('ssl', True) }}>
+      <label class="form-check-label small">SSL</label>
+    </div>
+    <div class="form-check form-switch">
+      <input class="form-check-input im-enabled" type="checkbox" {{ 'checked' if m.get('enabled', True) }}>
+      <label class="form-check-label small">Enabled</label>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label small mb-1">Username</label>
+    <input type="text" class="form-control form-control-sm font-monospace im-username" value="{{ m.get('username', '') }}" placeholder="account@gmail.com">
+  </div>
+  <div class="col-md-6">
+    <label class="form-label small mb-1">Password</label>
+    <input type="password" class="form-control form-control-sm font-monospace im-password" value="{{ m.get('password', '') }}" autocomplete="new-password">
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label small mb-1">Match subjects (one per line)</label>
+    <textarea class="form-control form-control-sm font-monospace im-subjects" rows="3" placeholder="ETDA&#10;CTI Robot">{{ (m.get('subjects') or []) | join('\n') }}</textarea>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label small mb-1">Match senders (one per line)</label>
+    <textarea class="form-control form-control-sm font-monospace im-senders" rows="3" placeholder="no-reply@etda.or.th">{{ (m.get('senders') or []) | join('\n') }}</textarea>
+  </div>
+
+  <div class="col-md-5">
+    <label class="form-label small mb-1">Source reliability</label>
+    <select class="form-select form-select-sm im-reliability">
+      <option value="">- not rated -</option>
+      {% for code, label in admiralty_options %}
+      <option value="{{ code }}" {{ 'selected' if m.get('reliability') == code }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12">
+    <div class="form-text">A message matches if its subject contains any subject term, or its sender contains any sender term. Matching is case-insensitive. Leave both empty to process every message in the folder.</div>
+  </div>
+</div>

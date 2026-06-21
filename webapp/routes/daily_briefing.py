@@ -606,9 +606,13 @@ def resend(id):
     briefing = misp_store.get_briefing(id)
     if briefing is None:
         return "Briefing not found", 404
+    if request.form.get("next") == "detail":
+        redirect_target = url_for("daily_briefing.detail", id=id)
+    else:
+        redirect_target = url_for("daily_briefing.list_briefings")
     if getattr(briefing, "review_state", None) != misp_store.BRIEFING_REVIEW_PUBLISHED:
         flash("Only published briefings can be resent.", "warning")
-        return redirect(url_for("daily_briefing.list_briefings"))
+        return redirect(redirect_target)
     try:
         preview_url = url_for("daily_briefing.detail", id=id, _external=True)
         recipient_count, sent_ok = _notify_briefing_stakeholders(briefing, preview_url=preview_url)
@@ -629,7 +633,7 @@ def resend(id):
     except Exception as exc:
         logger.warning("resend briefing %s failed: %s", id, exc)
         flash(f"Could not resend briefing: {exc}", "warning")
-    return redirect(url_for("daily_briefing.list_briefings"))
+    return redirect(redirect_target)
 
 
 @bp.route("/<string:id>/delete", methods=["POST"])

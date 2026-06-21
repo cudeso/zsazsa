@@ -20,8 +20,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from pymisp import PyMISP, MISPEventReport
 
 import config
-from webapp import audit, collection_cache, matching as _matching, misp_store, newsletter_parsers, scraper_queue
-from webapp.redis_client import RedisError
+from webapp import audit, collection_cache, matching as _matching, misp_store, newsletter_ingest, newsletter_parsers
 from webapp.rate_limit import rate_limited
 from webapp.utils import json_body as _json_object
 
@@ -778,31 +777,83 @@ def newsletter_new():
     return render_template("data_collection/newsletter_new.html", sources=sources)
 
 
-def _newsletter_message(source: str, idx: str) -> dict | None:
-    """Build the misp-scraper publish payload for one selected article, or None."""
-    url = request.form.get(f"url-{idx}", "").strip()
-    if not url:
-        return None
-    feed_tags = []
-    section = request.form.get(f"section-{idx}", "").strip()
-    if section:
-        feed_tags.append(f'zsazsa:newsletter-section="{misp_store.source_slug(section)}"')
-    priority = request.form.get(f"priority-{idx}", "").strip()
-    if priority:
-        feed_tags.append(f'zsazsa:newsletter-priority="{priority}"')
-    return {
-        "link": url,
-        "title": request.form.get(f"title-{idx}", "").strip(),
-        "feed_title": source,
-        "feed": source,
-        "feed_tags": feed_tags,
-    }
+@bp.route("/newsletter/pending")
+def newsletter_pending():
+    """List newsletters archived by the IMAP collector that await manual review."""
+    pending = misp_store.list_pending_newsletters()
+    return render_template("data_collection/newsletter_pending.html", pending=pending)
+
+
+@bp.route("/newsletter/pending/<string:uuid>", methods=["GET", "POST"])
+def newsletter_review_pending(uuid):
+    """Review one pending newsletter and push the selected articles."""
+    item = misp_store.get_newsletter_for_review(uuid)
+    if item is None:
+        flash("Pending newsletter not found.", "warning")
+        return redirect(url_for("data_collection.newsletter_pending"))
+    source = item["source"]
+
+    if request.method == "POST":
+        articles = _selected_articles(source)
+        if not articles:
+            flash("No articles were selected.", "warning")
+            return redirect(url_for("data_collection.newsletter_review_pending", uuid=uuid))
+        counts = newsletter_ingest.publish_articles(source, articles)
+        try:
+            misp_store.finalize_newsletter(uuid, [a["url"] for a in articles])
+        except Exception:
+            logger.exception("could not finalize newsletter %s", uuid)
+        audit.record(
+            "push", "newsletter-import", entity_id=uuid, entity_label=source,
+            details=f"reviewed selected={len(articles)} published={counts['published']} "
+                    f"failed={counts['failed']} no_subscriber={counts['no_subscriber']}",
+        )
+        if counts["published"] == 0:
+            flash("Could not reach the scraper queue. Check the Redis settings.", "warning")
+        else:
+            flash(f"Sent {counts['published']} article(s) to the scraper queue.", "success")
+        return redirect(url_for("data_collection.newsletter_pending"))
+
+    try:
+        parsed = newsletter_parsers.parse(source, item["raw_email"])
+    except Exception:
+        logger.exception("could not parse pending newsletter %s (%s)", uuid, source)
+        flash("Could not parse this newsletter.", "warning")
+        return redirect(url_for("data_collection.newsletter_pending"))
+    for idx, article in enumerate(parsed["articles"]):
+        article["idx"] = idx
+    return render_template(
+        "data_collection/newsletter_review.html",
+        source=source,
+        raw=item["raw_email"],
+        report_title=parsed.get("report_title", ""),
+        tlp=parsed.get("tlp") or "",
+        articles=parsed["articles"],
+        sections=_group_by_section(parsed["articles"]),
+        form_action=url_for("data_collection.newsletter_review_pending", uuid=uuid),
+    )
+
+
+def _selected_articles(source: str) -> list[dict]:
+    """Collect the articles ticked on the review screen as ingest article dicts."""
+    articles = []
+    for idx in request.form.getlist("selected"):
+        url = request.form.get(f"url-{idx}", "").strip()
+        if not url:
+            continue
+        articles.append({
+            "url": url,
+            "title": request.form.get(f"title-{idx}", "").strip(),
+            "section": request.form.get(f"section-{idx}", "").strip(),
+            "priority": request.form.get(f"priority-{idx}", "").strip(),
+        })
+    return articles
 
 
 def _newsletter_push(source: str):
     """Publish the selected articles to the misp-scraper Redis channel."""
-    messages = [m for m in (_newsletter_message(source, i) for i in request.form.getlist("selected")) if m]
-    if not messages:
+    articles = _selected_articles(source)
+    if not articles:
         flash("No articles were selected.", "warning")
         return redirect(url_for("data_collection.newsletter_new"))
 
@@ -814,27 +865,18 @@ def _newsletter_push(source: str):
             source, request.form.get("raw", ""),
             report_title=request.form.get("report_title", ""),
             tlp=request.form.get("tlp", ""),
-            article_urls=[m["link"] for m in messages],
+            article_urls=[a["url"] for a in articles],
         )
         stored = True
     except Exception:
         logger.exception("could not archive newsletter source event for %s", source)
 
-    published = failed = no_subscriber = 0
-    for message in messages:
-        try:
-            receivers = scraper_queue.publish(message)
-        except (OSError, RedisError) as exc:
-            failed += 1
-            logger.warning("scraper publish failed for %s: %s", message["link"], exc)
-        else:
-            published += 1
-            if receivers == 0:
-                no_subscriber += 1
+    counts = newsletter_ingest.publish_articles(source, articles)
+    published, failed, no_subscriber = counts["published"], counts["failed"], counts["no_subscriber"]
 
     audit.record(
         "push", "newsletter-import", entity_label=source,
-        details=f"selected={len(messages)} published={published} failed={failed} "
+        details=f"selected={len(articles)} published={published} failed={failed} "
                 f"no_subscriber={no_subscriber} archived={'yes' if stored else 'no'}",
     )
 

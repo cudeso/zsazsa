@@ -155,6 +155,26 @@ def _prune_logs() -> None:
         logger.warning("Log pruning failed: %s", e)
 
 
+def get_latest_pipeline_run(action: str) -> dict | None:
+    """Return the most recent run of the given action, with its parsed result."""
+    try:
+        with _connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT id, started_at, finished_at, action, triggered_by, status, result_json"
+                " FROM pipeline_run_log WHERE action = ? ORDER BY id DESC LIMIT 1",
+                (action,),
+            ).fetchone()
+        if not row:
+            return None
+        r = dict(row)
+        r["result"] = json.loads(r.pop("result_json")) if r.get("result_json") else None
+        return r
+    except sqlite3.Error as e:
+        logger.error("DB read failed for pipeline_run_log: %s", e)
+        return None
+
+
 def get_recent_pipeline_runs(limit: int = 20) -> list[dict]:
     try:
         with _connect() as conn:

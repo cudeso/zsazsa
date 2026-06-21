@@ -252,6 +252,11 @@ def index():
 
     pipeline = _pipeline_status()
 
+    try:
+        pending_email_sources = len(misp_store.list_pending_newsletters())
+    except Exception:
+        pending_email_sources = 0
+
     # Both summary charts show the eight busiest entries, most active first.
     actor_type_products = sorted(
         misp_store.product_counts_by_threat_actor_type(),
@@ -267,6 +272,7 @@ def index():
         active_pirs=active_pirs,
         active_girs=active_girs,
         pipeline=pipeline,
+        pending_email_sources=pending_email_sources,
         actor_type_products=actor_type_products,
         throughput_by_source=throughput_by_source,
     )

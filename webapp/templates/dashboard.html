@@ -68,6 +68,17 @@
 </div>
 {% endif %}
 
+{% if pending_email_sources %}
+<a href="{{ url_for('data_collection.newsletter_pending') }}"
+   class="alert alert-warning d-flex align-items-center justify-content-between text-decoration-none mb-4">
+  <span class="text-dark">
+    <i class="fas fa-inbox me-2"></i>
+    {{ pending_email_sources }} email source{{ 's' if pending_email_sources != 1 }} awaiting review
+  </span>
+  <span class="btn btn-sm btn-warning">Review</span>
+</a>
+{% endif %}
+
 {% if pipeline %}
 <!-- Collection pipeline status -->
 <div class="card content-card mb-4">

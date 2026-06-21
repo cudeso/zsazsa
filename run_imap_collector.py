@@ -1,0 +1,136 @@
+"""Poll configured IMAP mailboxes for newsletter e-mails and ingest them.
+
+For each enabled mailbox in config.IMAP_SOURCES, fetch unprocessed messages that
+match the mailbox's subject/sender criteria, parse them with the configured
+newsletter parser, and archive each as a MISP event. In 'auto' mode the article
+URLs are pushed to the misp-scraper queue immediately; in 'manual' mode the
+newsletter is left in the pending-review queue for a human to approve. A message
+is only marked processed in the mailbox once it has been archived, so a failure
+simply retries on the next run.
+
+Run from cron, e.g. every 15 minutes:
+    */15 * * * * cd /path/to/zsazsa && venv/bin/python run_imap_collector.py
+"""
+
+import logging
+import logging.handlers
+from pathlib import Path
+
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+import config
+from core import imap_collector
+from core.db import init_db, log_pipeline_run_start, log_pipeline_run_end
+from webapp import misp_store, newsletter_ingest, newsletter_parsers
+
+logger = logging.getLogger(__name__)
+
+
+def setup_logging() -> None:
+    Path(config.LOG_FILE).parent.mkdir(exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+    root = logging.getLogger()
+    root.setLevel(getattr(logging, config.LOG_LEVEL))
+    file_handler = logging.handlers.RotatingFileHandler(
+        config.LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3
+    )
+    file_handler.setFormatter(fmt)
+    root.addHandler(file_handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(fmt)
+    root.addHandler(stream_handler)
+
+
+def _ingest_message(mailbox: dict, body: str) -> None:
+    """Parse and archive one e-mail; push its articles in auto mode."""
+    source = mailbox["parser"]
+    parsed = newsletter_parsers.parse(source, body)
+    report_title = parsed.get("report_title", "")
+    tlp = parsed.get("tlp") or ""
+    reliability = mailbox.get("reliability", "")
+    articles = newsletter_ingest.articles_from_parsed(parsed)
+
+    # Manual mode, or nothing parsed, leaves the newsletter for human review.
+    if mailbox.get("mode", "auto") == "manual" or not articles:
+        misp_store.create_newsletter_event(
+            source, body, report_title=report_title, tlp=tlp,
+            reliability=reliability, status="pending-review",
+        )
+        logger.info("%s: archived newsletter for review (%d article(s))",
+                    mailbox["name"], len(articles))
+        return
+
+    uuid = misp_store.create_newsletter_event(
+        source, body, report_title=report_title, tlp=tlp, reliability=reliability,
+        article_urls=[a["url"] for a in articles],
+    )
+    counts = newsletter_ingest.publish_articles(source, articles)
+    # Redis pub/sub is fire-and-forget: if no subscriber received the push, fall
+    # back to the review queue so nothing is silently lost.
+    if counts["published"] == 0 or counts["no_subscriber"] == counts["published"]:
+        misp_store.mark_newsletter_pending(uuid)
+        logger.warning("%s: scraper not listening, left newsletter %s for review",
+                       mailbox["name"], uuid)
+    else:
+        logger.info("%s: pushed %d/%d article(s) to scraper",
+                    mailbox["name"], counts["published"], len(articles))
+
+
+def _poll_mailbox(mailbox: dict) -> dict:
+    """Poll one mailbox; return {"processed", "status", "message"} for reporting."""
+    name = mailbox.get("name") or mailbox.get("id") or "mailbox"
+    if mailbox.get("parser") not in newsletter_parsers.available_sources():
+        logger.warning("%s: unknown parser %r, skipping", name, mailbox.get("parser"))
+        return {"processed": 0, "status": "skipped", "message": f"unknown parser {mailbox.get('parser')!r}"}
+    handled = 0
+    for conn, uid, body in imap_collector.fetch_matching(mailbox):
+        if not body.strip():
+            logger.warning("%s: a matched message had no readable body, skipping", name)
+            imap_collector.mark_processed(conn, uid)
+            continue
+        try:
+            _ingest_message(mailbox, body)
+        except Exception:
+            logger.exception("%s: failed to ingest a message, will retry next run", name)
+            continue
+        imap_collector.mark_processed(conn, uid)
+        handled += 1
+    logger.info("%s: processed %d new message(s)", name, handled)
+    return {"processed": handled, "status": "ok", "message": f"{handled} message(s) ingested"}
+
+
+def main() -> None:
+    setup_logging()
+    logger.info("IMAP collector started")
+    init_db()
+    run_id = log_pipeline_run_start("imap-collector", triggered_by="cli")
+
+    mailboxes = [m for m in getattr(config, "IMAP_SOURCES", []) or [] if m.get("enabled")]
+    if not mailboxes:
+        logger.info("No enabled IMAP mailboxes configured")
+        log_pipeline_run_end(run_id, "completed", {"message": "No enabled mailboxes configured", "mailboxes": []})
+        return
+
+    records = []
+    for mailbox in mailboxes:
+        record = {"id": mailbox.get("id"), "name": mailbox.get("name") or mailbox.get("id")}
+        try:
+            record.update(_poll_mailbox(mailbox))
+        except Exception as exc:
+            record.update({"processed": 0, "status": "failed", "message": str(exc)})
+            logger.error("Mailbox %s failed: %s", record["name"], exc)
+        records.append(record)
+
+    processed = sum(r["processed"] for r in records)
+    failures = sum(1 for r in records if r["status"] == "failed")
+    message = f"{processed} message(s) ingested from {len(mailboxes)} mailbox(es)"
+    if failures:
+        message += f", {failures} mailbox(es) failed"
+    log_pipeline_run_end(run_id, "failed" if failures else "completed",
+                         {"message": message, "mailboxes": records})
+    logger.info("IMAP collector finished: %s", message)
+
+
+if __name__ == "__main__":
+    main()

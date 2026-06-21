@@ -133,6 +133,7 @@
                   {% elif run.action == 'flash-intel' %}Flash intel
                   {% elif run.action == 'vea' %}VEA
                   {% elif run.action == 'analyser' %}CLI analyser
+                  {% elif run.action == 'imap-collector' %}Mailbox poll
                   {% else %}{{ run.action }}{% endif %}
                   {% if run.triggered_by and run.triggered_by != 'dashboard' %}
                   <span class="text-muted ms-1">({{ run.triggered_by }})</span>
@@ -317,6 +318,45 @@
             {% else %}
             <div class="text-danger" style="font-size:.78rem;">{{ src.error }}</div>
             {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if imap_mailboxes %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-envelope-open-text me-2"></i>IMAP mailboxes</div>
+      <div class="card-body p-0">
+        <ul class="list-unstyled mb-0">
+          {% for mb in imap_mailboxes %}
+          <li class="px-3 py-2 {% if not loop.last %}border-bottom{% endif %}">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <span class="fw-semibold" style="font-size:.875rem;">
+                {{ mb.name }}
+                <span class="text-muted ms-1" style="font-size:.72rem;">{{ mb.mode }}</span>
+              </span>
+              {% if not mb.enabled %}
+              <span class="badge outcome-info" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
+              {% elif mb.status == 'ok' %}
+              <span class="badge outcome-success" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>OK</span>
+              {% elif mb.status == 'failed' %}
+              <span class="badge outcome-error" style="font-size:.7rem;"><i class="fas fa-circle-xmark me-1"></i>Failed</span>
+              {% elif mb.status == 'skipped' %}
+              <span class="badge outcome-warning" style="font-size:.7rem;"><i class="fas fa-forward me-1"></i>Skipped</span>
+              {% else %}
+              <span class="badge outcome-info" style="font-size:.7rem;">Not yet polled</span>
+              {% endif %}
+            </div>
+            <div class="d-flex gap-3" style="font-size:.78rem;color:var(--text-muted);">
+              {% if mb.last_polled %}
+              <span><i class="fas fa-clock me-1"></i>Last polled: {{ mb.last_polled[:16] }}</span>
+              {% else %}
+              <span><i class="fas fa-clock me-1"></i>Never polled</span>
+              {% endif %}
+              {% if mb.message %}<span><i class="fas fa-circle-info me-1"></i>{{ mb.message }}</span>{% endif %}
+            </div>
           </li>
           {% endfor %}
         </ul>

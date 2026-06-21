@@ -17,6 +17,7 @@ class FakeMisp:
         self.attributes = []
 
     def add_event(self, event, pythonify=True):
+        self.event = event
         return SimpleNamespace(uuid="new-uuid", id=42)
 
     def add_event_report(self, event_id, report):
@@ -57,6 +58,18 @@ class CreateNewsletterEvent(unittest.TestCase):
         urls = [attr.value for _eid, attr in self.fake.attributes]
         self.assertEqual(urls, ["https://a.example", "https://b.example"])
         self.assertTrue(all(attr.type == "link" for _eid, attr in self.fake.attributes))
+
+    def test_reliability_applies_admiralty_tag(self):
+        misp_store.create_newsletter_event(
+            "ETDA CTI Robot", "body", tlp="green", reliability="b",
+        )
+        tag_names = [t.name for t in self.fake.event.tags]
+        self.assertIn('admiralty-scale:source-reliability="b"', tag_names)
+
+    def test_unrated_adds_no_admiralty_tag(self):
+        misp_store.create_newsletter_event("ETDA CTI Robot", "body", reliability="")
+        tag_names = [t.name for t in self.fake.event.tags]
+        self.assertFalse(any("admiralty-scale" in n for n in tag_names))
 
     def test_no_report_when_email_blank(self):
         misp_store.create_newsletter_event("ETDA CTI Robot", "   ", article_urls=[])

@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from flask import Blueprint, flash, redirect, render_template, url_for
 
 import config
-from core.db import get_recent_pipeline_runs, event_counts_by_source
+from core.db import get_recent_pipeline_runs, get_latest_pipeline_run, event_counts_by_source
 from webapp import misp_store
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,8 @@ def _source_health():
                     search_kwargs = dict(tags=[config.SCRAPER_MARKER_TAG], limit=1, page=1, metadata=True, pythonify=True)
                     count_kwargs = dict(tags=[config.SCRAPER_MARKER_TAG], limit=1, page=1, metadata=True, return_format="count")
                 else:
-                    misp = PyMISP(src["url"], src["api_key"], src.get("verify_tls", True), False)
+                    misp = PyMISP(src["url"], src["api_key"], src.get("verify_tls", True), False,
+                                  timeout=misp_store.HEALTH_CHECK_TIMEOUT)
                     search_kwargs = dict(limit=1, page=1, metadata=True, pythonify=True)
                     count_kwargs = dict(limit=1, page=1, metadata=True, return_format="count")
                     if src.get("tags"):
@@ -196,10 +197,36 @@ def _purge_orphaned_rows():
         con.close()
 
 
+def _imap_mailbox_status():
+    """Per-mailbox last-poll status, from the most recent IMAP collector run."""
+    mailboxes = getattr(config, "IMAP_SOURCES", []) or []
+    if not mailboxes:
+        return []
+    latest = get_latest_pipeline_run("imap-collector")
+    polled_at = latest.get("started_at") if latest else None
+    by_id = {}
+    if latest and latest.get("result"):
+        for mb in latest["result"].get("mailboxes", []):
+            by_id[mb.get("id")] = mb
+    rows = []
+    for m in mailboxes:
+        record = by_id.get(m.get("id"))
+        rows.append({
+            "name": m.get("name") or m.get("id"),
+            "enabled": m.get("enabled", True),
+            "mode": m.get("mode", "auto"),
+            "last_polled": polled_at if record else None,
+            "status": record.get("status") if record else None,
+            "message": record.get("message") if record else None,
+        })
+    return rows
+
+
 @bp.route("/pipeline")
 def index():
     pipeline = _pipeline_stats()
     recent_runs = get_recent_pipeline_runs(20)
+    imap_mailboxes = _imap_mailbox_status()
     scraper_misp = misp_store.test_scraper_misp()
     webapp_misp = misp_store.test_webapp_misp()
     source_health = []
@@ -212,6 +239,7 @@ def index():
         "pipeline.html",
         pipeline=pipeline,
         recent_runs=recent_runs,
+        imap_mailboxes=imap_mailboxes,
         scraper_misp=scraper_misp,
         webapp_misp=webapp_misp,
         source_health=source_health,

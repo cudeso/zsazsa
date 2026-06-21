@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Email sources | zsazsa CTI{% endblock %}
+{% block page_title %}Email sources{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="fas fa-arrow-left me-1"></i> Back to collection
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card content-card">
+  <div class="card-header"><i class="fas fa-envelope-open-text me-2"></i>Email sources awaiting review</div>
+  <div class="card-body">
+    <p class="text-muted small">
+      These were collected from a mailbox and archived in MISP, but their articles have not
+      been pushed to the scraper yet. Review one to choose which articles to collect.
+    </p>
+    {% if pending %}
+    <div class="list-group">
+      {% for n in pending %}
+      <a href="{{ url_for('data_collection.newsletter_review_pending', uuid=n.uuid) }}"
+         class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-envelope me-2 text-muted"></i>{{ n.info }}</span>
+        <span class="text-muted small">{{ n.date }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted small mb-0">No email sources are waiting for review.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

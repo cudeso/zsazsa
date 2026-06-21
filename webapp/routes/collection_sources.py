@@ -5,7 +5,7 @@ import logging
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 import config as _config
-from webapp import audit, misp_store
+from webapp import audit, misp_store, newsletter_parsers
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("collection_sources", __name__, url_prefix="/config/sources")
@@ -35,9 +35,12 @@ def index():
         "SCRAPER_REDIS_PORT": getattr(_config, "SCRAPER_REDIS_PORT", 6379),
         "SCRAPER_REDIS_PASSWORD": getattr(_config, "SCRAPER_REDIS_PASSWORD", ""),
         "SCRAPER_REDIS_CHANNEL": getattr(_config, "SCRAPER_REDIS_CHANNEL", "urls"),
+        "IMAP_SOURCES": getattr(_config, "IMAP_SOURCES", []) or [],
     }
     return render_template("collection_sources/list.html",
-                           sources=sources, misp_servers=misp_servers, cfg=cfg)
+                           sources=sources, misp_servers=misp_servers, cfg=cfg,
+                           newsletter_sources=newsletter_parsers.available_sources(),
+                           admiralty_options=ADMIRALTY_OPTIONS)
 
 
 @bp.route("/new", methods=["GET", "POST"])

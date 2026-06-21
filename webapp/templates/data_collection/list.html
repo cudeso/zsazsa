@@ -636,6 +636,12 @@
        title="Paste a security newsletter and pick which articles to collect">
       <i class="fas fa-envelope-open-text" style="font-size:.75rem;"></i> Import from newsletter
     </a>
+
+    <!-- Email sources awaiting review (from IMAP mailboxes) -->
+    <a href="{{ url_for('data_collection.newsletter_pending') }}" class="action-pill"
+       title="Review email sources collected from mailboxes">
+      <i class="fas fa-inbox" style="font-size:.75rem;"></i> Email sources
+    </a>
   </div>
 
 </div>

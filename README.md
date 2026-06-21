@@ -359,6 +359,22 @@ The hand-off to the scraper uses Redis publish/subscribe: zsazsa publishes one J
 
 Each message carries the article link, the title, the newsletter name as the feed title, and `feed_tags` that the scraper applies as local tags on the created event.
 
+### Collecting newsletters from a mailbox (IMAP)
+
+Instead of pasting each edition by hand, zsazsa can read newsletters straight from a mailbox. Forward the newsletter (for example the ETDA digest) to a mailbox, and zsazsa polls that mailbox, processes new editions the same way the manual importer does, and marks the e-mail as handled so it is never processed twice.
+
+Mailboxes are configured on the Collection sources page (`/config/sources/`) under "IMAP mailboxes". Add a mailbox with its IMAP host, port, SSL, username and password, the folder to read (default `INBOX`), and the newsletter parser to apply. Each mailbox carries its own match criteria: a list of subjects and a list of senders, one per line. A message is processed when its subject contains any of the listed subject terms or its sender contains any of the listed sender terms (case-insensitive). Leaving both lists empty processes every message in the folder, which suits a mailbox dedicated to one newsletter. Because forwarding rewrites the envelope sender, the sender match also looks at the original `From:` line inside a forwarded message, so you can match on the newsletter's real sender. The connection can be checked with "Test connection" before saving. The password is stored like the other secrets, in `config.py` under `IMAP_SOURCES` (a mailbox password must not live in a MISP event, which is why the mailbox configuration is kept in `config.py` rather than the MISP-backed source registry).
+
+Each mailbox runs in one of two modes. In **automatic** mode a matched newsletter is archived in MISP and its article links are pushed to the scraper immediately. In **manual review** mode the newsletter is archived and parked in the pending queue so a human chooses the articles before anything is pushed. Open the queue from the Data collection page with "Email sources"; reviewing one shows the same article selection screen as the manual importer. Because the scraper hand-off is fire-and-forget, an automatic push that finds no scraper listening is moved to the pending queue rather than lost, so it can be retried from there.
+
+Polling is done by `run_imap_collector.py`, intended to run from cron, for example every fifteen minutes:
+
+```
+*/15 * * * * cd /path/to/zsazsa && venv/bin/python run_imap_collector.py
+```
+
+The Pipeline page (`/pipeline`) shows mailbox status in two places: an "IMAP mailboxes" panel lists each configured mailbox with when it was last polled and the result, and each poll also appears in the run history as "Mailbox poll". A processed message is flagged in the mailbox with a dedicated IMAP keyword (`zsazsaProcessed`) and also marked Seen and Flagged as a visible cue. The keyword, not the read state, is what prevents reprocessing, so opening the mailbox by hand does not interfere. Nothing is ever deleted from the mailbox. Mailbox body handling prefers the plain-text part, falls back to converting the HTML part, and strips the forwarded-message header block before parsing.
+
 ## Statistics
 
 The statistics pages combine operational metrics with CTI maturity signals.
@@ -570,6 +586,24 @@ The "Manual sources" card lists collection sources that are not MISP servers, fo
 | Source reliability | Admiralty scale rating, applied as an `admiralty-scale:source-reliability` tag |
 
 Each manual source is itself stored as a `zsazsa-collection-source` event in the webapp MISP, and can be edited, enabled or disabled, or deleted from the list. As with additional MISP servers, disabling or deleting a manual source that is referenced by a PIR or GIR will prompt for confirmation first, since the reference itself is not removed.
+
+## IMAP mailboxes
+
+The "IMAP mailboxes" card configures mailboxes that `run_imap_collector.py` polls for forwarded newsletters (covered in "Collecting newsletters from a mailbox" above). Each entry is stored in `config.IMAP_SOURCES`.
+
+| Field | Description |
+|---|---|
+| Name | Display name for the mailbox |
+| Newsletter parser | Which newsletter parser to apply to matched mail |
+| Mode | `Automatic` (push articles immediately) or `Manual review` (park for human approval) |
+| IMAP host / Port / SSL | Connection to the mail server (default port 993 with SSL) |
+| Folder | Mailbox folder to read (default `INBOX`) |
+| Username / Password | Mailbox credentials (use an app password where the provider requires one) |
+| Match subjects | Subject substrings, one per line; a match on any one selects the mail |
+| Match senders | Sender substrings, one per line; matched against the From header and a forwarded message's original sender |
+| Source reliability | Admiralty scale rating recorded for the source |
+
+"Test connection" opens the mailbox with the entered settings without reading or changing any mail. Polling never deletes mail; processed messages are flagged with the `zsazsaProcessed` IMAP keyword so they are not handled twice.
 
 ## Manual sources pushing to scraper
 
