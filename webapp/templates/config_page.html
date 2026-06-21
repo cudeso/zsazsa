@@ -851,8 +851,9 @@
       </div>
 
       <!-- Channel list -->
+      {% set mm_channels = cfg.NOTIFICATION_CHANNELS | rejectattr('type', 'equalto', 'email') | list %}
       <div id="notification-channel-list">
-        {% for ch in cfg.NOTIFICATION_CHANNELS %}
+        {% for ch in mm_channels %}
         <div class="notification-channel-row card content-card mb-3" data-original-id="{{ ch.id }}">
           <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
             <i class="fas fa-comment-dots" style="color:#1c58d9;"></i>
@@ -903,9 +904,9 @@
           </div>
         </div>
         {% else %}
-        <p class="text-muted small" id="no-channels-msg">No notification channels configured yet.</p>
+        <p class="text-muted small" id="no-channels-msg">No Mattermost channels configured yet.</p>
         {% endfor %}
-        {% if cfg.NOTIFICATION_CHANNELS %}<p class="text-muted small d-none" id="no-channels-msg">No notification channels configured yet.</p>{% endif %}
+        {% if mm_channels %}<p class="text-muted small d-none" id="no-channels-msg">No Mattermost channels configured yet.</p>{% endif %}
       </div>
 
       <!-- Add new channel -->
@@ -943,6 +944,136 @@
             <span class="small align-self-center" id="add-channel-result"></span>
           </div>
           <div class="form-text mt-2"><strong>Triggers:</strong> product published (flash intel, VEA, briefing), PIR/GIR shared, PIR intake status change.</div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="fas fa-envelope" style="color:#0078f1;"></i>
+        <span class="fw-semibold">Email</span>
+      </div>
+
+      <!-- SMTP server settings (shared by all email channels) -->
+      <div class="card content-card mb-3">
+        <div class="card-header"><i class="fas fa-server me-2"></i>SMTP server</div>
+        <div class="card-body">
+          <p class="text-muted small">
+            Shared SMTP settings used to deliver all email channels below.
+          </p>
+          <div class="row g-3">
+            <div class="col-sm-8">
+              <label class="form-label">SMTP host</label>
+              <input type="text" name="SMTP_HOST" class="form-control font-monospace" value="{{ cfg.SMTP_HOST }}" placeholder="smtp.gmail.com">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Port</label>
+              <input type="number" name="SMTP_PORT" class="form-control" value="{{ cfg.SMTP_PORT }}" min="1" max="65535">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Username</label>
+              <input type="text" name="SMTP_USERNAME" class="form-control font-monospace" value="{{ cfg.SMTP_USERNAME }}" placeholder="account@gmail.com">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Password</label>
+              <div class="input-group">
+                <input type="password" name="SMTP_PASSWORD" class="form-control font-monospace api-key-input" value="{{ cfg.SMTP_PASSWORD }}">
+                <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+              </div>
+            </div>
+            <div class="col-sm-8">
+              <label class="form-label">From address</label>
+              <input type="text" name="SMTP_FROM" class="form-control font-monospace" value="{{ cfg.SMTP_FROM }}" placeholder="CTI team <account@gmail.com>">
+            </div>
+            <div class="col-sm-4">
+              <div class="form-check form-switch mt-4">
+                <input class="form-check-input" type="checkbox" name="SMTP_USE_TLS" id="smtp_use_tls" value="true" {{ 'checked' if cfg.SMTP_USE_TLS }}>
+                <label class="form-check-label" for="smtp_use_tls">Use STARTTLS</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-3 align-items-center">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="test-smtp-btn">
+              <i class="fas fa-plug me-1"></i>Test connection
+            </button>
+            <span class="small" id="test-smtp-result"></span>
+          </div>
+          <div class="form-text mt-2">SMTP settings are saved with <strong>Save configuration</strong> at the top of this tab. The test uses the values entered above, even before saving.</div>
+        </div>
+      </div>
+
+      <!-- Email channel list -->
+      <div id="email-channel-list">
+        {% for ch in cfg.NOTIFICATION_CHANNELS if (ch.type or '') == 'email' %}
+        <div class="email-channel-row card content-card mb-3" data-original-id="{{ ch.id }}">
+          <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
+            <i class="fas fa-envelope" style="color:#0078f1;"></i>
+            <span class="fw-semibold ec-display-name">{{ ch.name }}</span>
+            <span class="badge bg-light text-dark ms-1 ec-display-recipient">{{ ch.recipient }}</span>
+            <span class="badge {{ 'bg-success' if ch.enabled else 'bg-secondary' }} ms-1 ec-display-enabled">
+              {{ 'Enabled' if ch.enabled else 'Disabled' }}
+            </span>
+            <div class="ms-auto d-flex gap-2 align-items-center">
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-ec-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ping-ec-btn" title="Send a test email to this recipient">
+                <i class="fas fa-paper-plane"></i>
+              </button>
+              <span class="ping-ec-result small"></span>
+              <button type="button" class="btn btn-sm btn-outline-danger delete-ec-btn">Delete</button>
+            </div>
+          </div>
+          <div class="card-body ec-form" style="display:none;">
+            <div class="row g-3">
+              <div class="col-sm-5">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control ec-name" value="{{ ch.name }}" placeholder="e.g. SOC mailbox">
+              </div>
+              <div class="col-sm-7">
+                <label class="form-label">Recipient email address</label>
+                <input type="email" class="form-control font-monospace ec-recipient" value="{{ ch.recipient }}" placeholder="soc@example.com">
+              </div>
+              <div class="col-sm-5">
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input ec-enabled" type="checkbox" {{ 'checked' if ch.enabled }}>
+                  <label class="form-check-label">Enabled</label>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-primary save-ec-btn">Save</button>
+              <span class="save-ec-result small align-self-center"></span>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Add new email channel -->
+      <div class="card content-card mb-4 border-dashed">
+        <div class="card-header"><i class="fas fa-plus me-2"></i>Add email channel</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-5">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control" id="new-ec-name" placeholder="e.g. SOC mailbox">
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label">Recipient email address</label>
+              <input type="email" class="form-control font-monospace" id="new-ec-recipient" placeholder="soc@example.com">
+            </div>
+            <div class="col-sm-5">
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="new-ec-enabled" checked>
+                <label class="form-check-label" for="new-ec-enabled">Enabled</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-primary" id="add-ec-btn">Add email channel</button>
+            <span class="small align-self-center" id="add-ec-result"></span>
+          </div>
+          <div class="form-text mt-2">Stakeholders subscribed to this channel receive products by email. Requires the SMTP server above to be configured.</div>
+          <div class="form-text"><i class="fas fa-user-shield me-1"></i>When the same product goes to several recipients, their addresses are hidden from one another.</div>
         </div>
       </div>
 
@@ -1521,6 +1652,189 @@
         nameEl.value = ''; urlEl.value = ''; enabledEl.checked = true;
         if (verifyTlsEl) verifyTlsEl.checked = true;
         resultEl.textContent = 'Channel added';
+        resultEl.className = 'small text-success';
+        setTimeout(() => { resultEl.textContent = ''; }, 3000);
+      } else {
+        resultEl.textContent = data.error || 'Failed';
+        resultEl.className = 'small text-danger';
+      }
+    });
+  }
+})();
+
+// ── SMTP test connection ──────────────────────────────────────────────────────
+(function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const btn = document.getElementById('test-smtp-btn');
+  const resultEl = document.getElementById('test-smtp-result');
+  if (!btn || !resultEl) return;
+
+  btn.addEventListener('click', async () => {
+    const field = (name) => document.querySelector(`[name="${name}"]`);
+    btn.disabled = true;
+    resultEl.textContent = 'Testing…';
+    resultEl.className = 'small text-muted';
+    let data;
+    try {
+      const resp = await fetch(SCRIPT_ROOT + '/config/test-smtp-connection', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({
+          host: field('SMTP_HOST').value.trim(),
+          port: field('SMTP_PORT').value.trim(),
+          use_tls: document.getElementById('smtp_use_tls').checked,
+          username: field('SMTP_USERNAME').value.trim(),
+          password: field('SMTP_PASSWORD').value,
+        }),
+      });
+      data = await resp.json();
+    } catch (e) {
+      data = {ok: false, error: 'Request failed'};
+    }
+    btn.disabled = false;
+    if (data.ok) {
+      resultEl.textContent = 'Connection OK';
+      resultEl.className = 'small text-success';
+    } else {
+      resultEl.textContent = data.error || 'Failed';
+      resultEl.className = 'small text-danger';
+    }
+  });
+})();
+
+// ── Email channels ────────────────────────────────────────────────────────────
+(function () {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const list = document.getElementById('email-channel-list');
+  if (!list) return;
+
+  function bindRow(row) {
+    const toggleBtn = row.querySelector('.toggle-ec-form');
+    const form = row.querySelector('.ec-form');
+    const deleteBtn = row.querySelector('.delete-ec-btn');
+    const pingBtn = row.querySelector('.ping-ec-btn');
+    const pingResult = row.querySelector('.ping-ec-result');
+    const saveBtn = row.querySelector('.save-ec-btn');
+    const saveResult = row.querySelector('.save-ec-result');
+
+    if (toggleBtn && form) {
+      toggleBtn.addEventListener('click', () => {
+        const open = form.style.display !== 'none';
+        form.style.display = open ? 'none' : '';
+        toggleBtn.textContent = open ? 'Edit' : 'Close';
+      });
+    }
+
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm('Delete this email channel?')) return;
+        const resp = await fetch(SCRIPT_ROOT + '/config/delete-notification-channel', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({channel_id: row.dataset.originalId}),
+        });
+        const data = await resp.json();
+        if (data.ok) { row.remove(); } else { alert('Delete failed: ' + (data.error || 'unknown')); }
+      });
+    }
+
+    if (pingBtn && pingResult) {
+      pingBtn.addEventListener('click', async () => {
+        pingBtn.disabled = true;
+        pingResult.textContent = 'Sending…';
+        pingResult.className = 'ping-ec-result small text-muted';
+        const resp = await fetch(SCRIPT_ROOT + '/config/ping-notification-channel', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({channel_id: row.dataset.originalId}),
+        });
+        const data = await resp.json();
+        pingBtn.disabled = false;
+        if (data.ok) {
+          pingResult.textContent = 'Sent';
+          pingResult.className = 'ping-ec-result small text-success';
+        } else {
+          pingResult.textContent = data.error || 'Failed';
+          pingResult.className = 'ping-ec-result small text-danger';
+        }
+        setTimeout(() => { pingResult.textContent = ''; }, 5000);
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const name = row.querySelector('.ec-name').value.trim();
+        const recipient = row.querySelector('.ec-recipient').value.trim();
+        const enabled = row.querySelector('.ec-enabled').checked;
+        if (!name) { saveResult.textContent = 'Name required'; saveResult.className = 'save-ec-result small text-danger'; return; }
+        const resp = await fetch(SCRIPT_ROOT + '/config/save-notification-channel', {
+          method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+          body: JSON.stringify({original_id: row.dataset.originalId, name, recipient, enabled, type: 'email'}),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          row.dataset.originalId = data.new_id;
+          row.querySelector('.ec-display-name').textContent = name;
+          row.querySelector('.ec-display-recipient').textContent = recipient;
+          const badge = row.querySelector('.ec-display-enabled');
+          badge.textContent = enabled ? 'Enabled' : 'Disabled';
+          badge.className = 'badge ms-1 ec-display-enabled ' + (enabled ? 'bg-success' : 'bg-secondary');
+          saveResult.textContent = 'Saved';
+          saveResult.className = 'save-ec-result small text-success';
+          setTimeout(() => { saveResult.textContent = ''; }, 3000);
+        } else {
+          saveResult.textContent = data.error || 'Save failed';
+          saveResult.className = 'save-ec-result small text-danger';
+        }
+      });
+    }
+  }
+
+  list.querySelectorAll('.email-channel-row').forEach(bindRow);
+
+  const addBtn = document.getElementById('add-ec-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', async () => {
+      const nameEl = document.getElementById('new-ec-name');
+      const recipientEl = document.getElementById('new-ec-recipient');
+      const enabledEl = document.getElementById('new-ec-enabled');
+      const resultEl = document.getElementById('add-ec-result');
+      const name = nameEl.value.trim();
+      const recipient = recipientEl.value.trim();
+      const enabled = enabledEl.checked;
+      if (!name) { resultEl.textContent = 'Name required'; resultEl.className = 'small text-danger'; return; }
+      if (!recipient) { resultEl.textContent = 'Recipient required'; resultEl.className = 'small text-danger'; return; }
+      const resp = await fetch(SCRIPT_ROOT + '/config/save-notification-channel', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+        body: JSON.stringify({name, recipient, enabled, type: 'email'}),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        const tpl = document.createElement('div');
+        tpl.className = 'email-channel-row card content-card mb-3';
+        tpl.dataset.originalId = data.new_id;
+        tpl.innerHTML = `
+          <div class="card-header d-flex align-items-center gap-2 px-3 py-2">
+            <i class="fas fa-envelope" style="color:#0078f1;"></i>
+            <span class="fw-semibold ec-display-name">${name}</span>
+            <span class="badge bg-light text-dark ms-1 ec-display-recipient">${recipient}</span>
+            <span class="badge ${enabled ? 'bg-success' : 'bg-secondary'} ms-1 ec-display-enabled">${enabled ? 'Enabled' : 'Disabled'}</span>
+            <div class="ms-auto d-flex gap-2 align-items-center">
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-ec-form">Edit</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary ping-ec-btn" title="Send a test email to this recipient"><i class="fas fa-paper-plane"></i></button>
+              <span class="ping-ec-result small"></span>
+              <button type="button" class="btn btn-sm btn-outline-danger delete-ec-btn">Delete</button>
+            </div>
+          </div>
+          <div class="card-body ec-form" style="display:none;">
+            <div class="row g-3">
+              <div class="col-sm-5"><label class="form-label">Name</label><input type="text" class="form-control ec-name" value="${name}"></div>
+              <div class="col-sm-7"><label class="form-label">Recipient email address</label><input type="email" class="form-control font-monospace ec-recipient" value="${recipient}"></div>
+              <div class="col-sm-5"><div class="form-check form-switch mt-2"><input class="form-check-input ec-enabled" type="checkbox" ${enabled ? 'checked' : ''}><label class="form-check-label">Enabled</label></div></div>
+            </div>
+            <div class="d-flex gap-2 mt-3"><button type="button" class="btn btn-sm btn-primary save-ec-btn">Save</button><span class="save-ec-result small align-self-center"></span></div>
+          </div>`;
+        list.appendChild(tpl);
+        bindRow(tpl);
+        nameEl.value = ''; recipientEl.value = ''; enabledEl.checked = true;
+        resultEl.textContent = 'Email channel added';
         resultEl.className = 'small text-success';
         setTimeout(() => { resultEl.textContent = ''; }, 3000);
       } else {

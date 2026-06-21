@@ -373,10 +373,11 @@ def resend(id):
     stakeholders = _eligible_flash_recipients(fia)
 
     try:
-        from notifier import mattermost
+        from notifier import dispatcher
 
         shim = SimpleNamespace(id=id)
-        sent_ok = mattermost.send_flash_intel_alert(shim, fia.fia_id, content, stakeholders=stakeholders)
+        summary = dispatcher.send_flash_intel(shim, fia.fia_id, content, stakeholders)
+        sent_ok = bool(summary.get("sent_types"))
         audit.record(
             "notify",
             "fia",
@@ -489,12 +490,13 @@ def _publish_and_notify(uuid):
 
     sent_ok = False
     try:
-        from notifier import mattermost
+        from notifier import dispatcher
 
         shim = SimpleNamespace(id=uuid)
-        sent_ok = bool(mattermost.send_flash_intel_alert(shim, fia.fia_id, content, stakeholders=stakeholders))
+        summary = dispatcher.send_flash_intel(shim, fia.fia_id, content, stakeholders)
+        sent_ok = bool(summary.get("sent_types"))
     except Exception as exc:
-        logger.warning("mattermost notify failed for %s: %s", uuid, exc)
+        logger.warning("notify failed for %s: %s", uuid, exc)
 
     try:
         from core import flowintel_client

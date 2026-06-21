@@ -183,6 +183,12 @@ def _read() -> dict:
         "OPENAI_API_KEY": openai_api_key,
         "OPENAI_MODEL": openai_model,
         "NOTIFICATION_CHANNELS": _read_notification_channels(),
+        "SMTP_HOST": getattr(_config, "SMTP_HOST", ""),
+        "SMTP_PORT": getattr(_config, "SMTP_PORT", 587),
+        "SMTP_USE_TLS": getattr(_config, "SMTP_USE_TLS", True),
+        "SMTP_USERNAME": getattr(_config, "SMTP_USERNAME", ""),
+        "SMTP_PASSWORD": getattr(_config, "SMTP_PASSWORD", ""),
+        "SMTP_FROM": getattr(_config, "SMTP_FROM", ""),
         "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
         "FLOWINTEL_CASE_TEMPLATE_PRODUCTS": FLOWINTEL_CASE_TEMPLATE_PRODUCTS,
         "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []),
@@ -288,8 +294,12 @@ def _write(values):
     if channels:
         ch_lines = []
         for c in channels:
+            if (c.get("type") or "").lower() == "email":
+                keys = ("id", "name", "type", "recipient", "enabled")
+            else:
+                keys = ("id", "name", "type", "url", "enabled", "verify_tls")
             ch_lines.append("    {")
-            for k in ("id", "name", "type", "url", "enabled", "verify_tls"):
+            for k in keys:
                 ch_lines.append(f"        {k!r}: {c.get(k)!r},")
             ch_lines.append("    },")
         channels_repr = "[\n" + "\n".join(ch_lines) + "\n]"
@@ -331,6 +341,14 @@ NOTIFICATION_CHANNELS = {channels_repr}
 # Legacy aliases: first active Mattermost channel (used by notifier for fallback)
 MATTERMOST_ENABLED = any(c.get('type') == 'mattermost' and c.get('enabled') for c in NOTIFICATION_CHANNELS)
 MATTERMOST_WEBHOOK_URL = next((c.get('url', '') for c in NOTIFICATION_CHANNELS if c.get('type') == 'mattermost' and c.get('enabled')), '')
+
+# SMTP server settings, shared by all email notification channels.
+SMTP_HOST = {values.get('SMTP_HOST', '')!r}
+SMTP_PORT = {int(values.get('SMTP_PORT') or 587)}
+SMTP_USE_TLS = {bool(values.get('SMTP_USE_TLS', True))}
+SMTP_USERNAME = {values.get('SMTP_USERNAME', '')!r}
+SMTP_PASSWORD = {values.get('SMTP_PASSWORD', '')!r}
+SMTP_FROM = {values.get('SMTP_FROM', '')!r}
 
 # Flowintel case management instances
 FLOWINTEL_INSTANCES = {flowintel_instances_repr}
@@ -511,6 +529,12 @@ def index():
             "OPENAI_API_KEY": request.form.get("OPENAI_API_KEY", ""),
             "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", "")),
             "NOTIFICATION_CHANNELS": _read_notification_channels(),
+            "SMTP_HOST": request.form.get("SMTP_HOST", "").strip(),
+            "SMTP_PORT": int(request.form.get("SMTP_PORT", 587) or 587),
+            "SMTP_USE_TLS": request.form.get("SMTP_USE_TLS") == "true",
+            "SMTP_USERNAME": request.form.get("SMTP_USERNAME", "").strip(),
+            "SMTP_PASSWORD": request.form.get("SMTP_PASSWORD", ""),
+            "SMTP_FROM": request.form.get("SMTP_FROM", "").strip(),
             "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
             "PRODUCT_TYPES": products,
             "DAILY_BRIEFING_TITLE_EXCLUSIONS": exclusions,
@@ -818,6 +842,9 @@ def save_notification_channel():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     channel_type = (data.get("type") or "mattermost").strip().lower()
+    recipient = (data.get("recipient") or "").strip()
+    if channel_type == "email" and not recipient:
+        return jsonify({"ok": False, "error": "Recipient email address required"}), 400
     entry = {
         "id": cid,
         "name": name,
@@ -826,6 +853,8 @@ def save_notification_channel():
         "enabled": enabled,
         "verify_tls": verify_tls,
     }
+    if channel_type == "email":
+        entry["recipient"] = recipient
     current = _read()
     channels = list(current.get("NOTIFICATION_CHANNELS") or [])
     action = "create"
@@ -887,6 +916,21 @@ def ping_notification_channel():
     ch = next((c for c in channels if c.get("id") == channel_id), None)
     if not ch:
         return jsonify({"ok": False, "error": "Channel not found"}), 404
+    if (ch.get("type") or "").strip().lower() == "email":
+        from notifier import email
+
+        recipient = (ch.get("recipient") or "").strip()
+        if not recipient:
+            return jsonify({"ok": False, "error": "Channel has no recipient address configured"}), 400
+        ok = email.send_email(
+            [recipient],
+            "zsazsa test notification",
+            "This is a **zsazsa** test notification. The email channel is configured correctly.",
+            f"test {channel_id}",
+        )
+        if ok:
+            return jsonify({"ok": True})
+        return jsonify({"ok": False, "error": "Send failed. Check SMTP settings and logs."})
     url = (ch.get("url") or "").strip()
     if not url:
         return jsonify({"ok": False, "error": "Channel has no webhook URL configured"}), 400
@@ -1008,6 +1052,31 @@ def test_flowintel_connection():
     if not url or not api_key:
         return jsonify({"ok": False, "error": "URL and API key are required"}), 400
     return jsonify(flowintel_client.test_connection(url, api_key, verify_tls))
+
+
+@bp.route("/config/test-smtp-connection", methods=["POST"])
+@rate_limited("config_test_smtp_connection", limit=20, window_s=60)
+def test_smtp_connection():
+    """Check SMTP connectivity using the supplied settings, without sending mail."""
+    data, err = _json_object()
+    if err:
+        return err
+    from notifier import email
+
+    host = (data.get("host") or "").strip()
+    if not host:
+        return jsonify({"ok": False, "error": "SMTP host is required"}), 400
+    try:
+        port = int(data.get("port") or 587)
+        use_tls = _parse_bool(data.get("use_tls", True), default=True)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Port must be a number"}), 400
+    result = email.test_connection(
+        host, port, use_tls,
+        (data.get("username") or "").strip(),
+        data.get("password") or "",
+    )
+    return jsonify(result)
 
 
 @bp.route("/config/flowintel-case-templates", methods=["POST"])

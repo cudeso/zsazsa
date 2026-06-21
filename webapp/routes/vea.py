@@ -183,11 +183,12 @@ def _publish_and_notify(uuid):
 
     sent_ok = False
     try:
-        from notifier import mattermost
+        from notifier import dispatcher
 
-        sent_ok = bool(mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders))
+        summary = dispatcher.send_vea(vea, markdown, stakeholders)
+        sent_ok = bool(summary.get("sent_types"))
     except Exception as exc:
-        logger.warning("mattermost notify failed for VEA %s: %s", uuid, exc)
+        logger.warning("notify failed for VEA %s: %s", uuid, exc)
 
     try:
         from core import flowintel_client
@@ -516,9 +517,10 @@ def resend(id):
     stakeholders = _eligible_vea_recipients(vea)
 
     try:
-        from notifier import mattermost
+        from notifier import dispatcher
 
-        sent_ok = mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders)
+        summary = dispatcher.send_vea(vea, markdown, stakeholders)
+        sent_ok = bool(summary.get("sent_types"))
         audit.record(
             "notify",
             "vea",

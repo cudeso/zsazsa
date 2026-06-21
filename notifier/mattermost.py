@@ -229,10 +229,14 @@ def send_daily_briefing_notification(briefing, markdown: str, stakeholders: list
     return _chunk_and_send(targets, body, label)
 
 
-def send_vea_notification(vea, markdown: str, stakeholders: list | None = None) -> bool:
-    """Send a detailed VEA notification to subscribed stakeholders."""
-    channel_ids = None
-    if stakeholders:
+def send_vea_notification(vea, markdown: str, stakeholders: list | None = None,
+                          channel_ids: list[str] | None = None) -> bool:
+    """Send a detailed VEA notification to subscribed stakeholders.
+
+    `channel_ids` selects the Mattermost channels directly (used by the
+    dispatcher). When omitted, they are derived from the stakeholders.
+    """
+    if channel_ids is None and stakeholders:
         ids: set[str] = set()
         for s in stakeholders:
             for cid in (getattr(s, "notification_channels", None) or []):
@@ -274,10 +278,15 @@ def send_rfi_notification(
     return send_text(text, f"RFI {rfi.rfi_id}", channel_ids=channel_ids)
 
 
-def send_flash_intel_alert(product_event, fia_id: str, fia_content: str, stakeholders: list | None = None) -> bool:
-    """Send the full Flash Intel Alert report to subscribed stakeholders' Mattermost channels."""
-    channel_ids = None
-    if stakeholders:
+def send_flash_intel_alert(product_event, fia_id: str, fia_content: str,
+                           stakeholders: list | None = None,
+                           channel_ids: list[str] | None = None) -> bool:
+    """Send the full Flash Intel Alert report to subscribed stakeholders' Mattermost channels.
+
+    `channel_ids` selects the Mattermost channels directly (used by the
+    dispatcher). When omitted, they are derived from the stakeholders.
+    """
+    if channel_ids is None and stakeholders:
         ids: set[str] = set()
         for s in stakeholders:
             for cid in (getattr(s, "notification_channels", None) or []):
