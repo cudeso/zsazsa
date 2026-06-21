@@ -203,7 +203,7 @@
                      value="{{ ch.id }}" id="nch_{{ loop.index }}"
                      {{ 'checked' if ch.id in current_channels }}>
               <label class="form-check-label" for="nch_{{ loop.index }}">
-                {% if ch.type == 'flowintel' %}<img src="{{ url_for('static', filename='flowintel-icon.png') }}" alt="Flowintel" style="height:14px;width:auto;" class="me-1">{% endif %}
+                {% if ch.type == 'flowintel' %}<img src="{{ url_for('static', filename='flowintel-icon.png') }}" alt="Flowintel" style="height:14px;width:auto;" class="me-1">{% elif ch.type == 'email' %}<i class="fas fa-envelope me-1" style="color:#0078f1;"></i>{% endif %}
                 {{ ch.name }}
               </label>
             </div>

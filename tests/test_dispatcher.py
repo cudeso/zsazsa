@@ -20,6 +20,7 @@ class Dispatch(unittest.TestCase):
         self._orig_instances = config.FLOWINTEL_INSTANCES
         config.NOTIFICATION_CHANNELS = [
             {"id": "mm1", "name": "MM", "type": "mattermost", "url": "x", "enabled": True},
+            {"id": "em1", "name": "Mail", "type": "email", "recipient": "soc@x.test", "enabled": True},
         ]
         config.FLOWINTEL_INSTANCES = [
             {"id": "fi1", "name": "FI", "enabled": True},
@@ -42,6 +43,32 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(summary["sent_types"], ["mattermost"])
         self.assertEqual(summary["skipped_types"], [])
         self.assertEqual(received["ids"], ["mm1"])
+
+    def test_email_routed_to_email_sender(self):
+        received = {}
+
+        def email_sender(channel_ids):
+            received["ids"] = channel_ids
+            return True
+
+        stakeholder = SimpleNamespace(name="Acme", notification_channels=["em1"])
+        summary = dispatcher._dispatch(
+            [stakeholder],
+            {"mattermost": lambda ids: True, "email": email_sender},
+            "rfi", "RFI-001",
+        )
+
+        self.assertEqual(summary["sent_types"], ["email"])
+        self.assertEqual(received["ids"], ["em1"])
+
+    def test_mattermost_and_email_both_sent(self):
+        stakeholder = SimpleNamespace(name="Acme", notification_channels=["mm1", "em1"])
+        summary = dispatcher._dispatch(
+            [stakeholder],
+            {"mattermost": lambda ids: True, "email": lambda ids: True},
+            "rfi", "RFI-001",
+        )
+        self.assertEqual(sorted(summary["sent_types"]), ["email", "mattermost"])
 
     def test_type_without_sender_is_skipped_not_dropped(self):
         stakeholder = SimpleNamespace(name="Acme", notification_channels=["flowintel:fi1"])

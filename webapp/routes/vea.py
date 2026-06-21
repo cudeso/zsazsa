@@ -15,7 +15,7 @@ from webapp.routes.source_event_utils import (
 
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d{4,}\b', re.IGNORECASE)
 
-from webapp import audit, collection_cache, misp_store
+from webapp import audit, collection_cache, misp_store, product_log
 from webapp.utils import md_to_html
 
 logger = logging.getLogger(__name__)
@@ -183,11 +183,12 @@ def _publish_and_notify(uuid):
 
     sent_ok = False
     try:
-        from notifier import mattermost
+        from notifier import dispatcher
 
-        sent_ok = bool(mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders))
+        summary = dispatcher.send_vea(vea, markdown, stakeholders)
+        sent_ok = bool(summary.get("sent_types"))
     except Exception as exc:
-        logger.warning("mattermost notify failed for VEA %s: %s", uuid, exc)
+        logger.warning("notify failed for VEA %s: %s", uuid, exc)
 
     try:
         from core import flowintel_client
@@ -256,6 +257,7 @@ def wizard_new():
                                 if action == "submit" else misp_store.VEA_REVIEW_DRAFT)
         try:
             uuid, vea_id = misp_store.create_vea(data)
+            product_log.log_product_sources(data.get("source_event_uuids") or [], "vea")
             audit.record("create", "vea", entity_id=uuid, entity_label=vea_id)
             flash(f"{vea_id} {'submitted for review' if action == 'submit' else 'saved as draft'}.", "success")
             return redirect(url_for("vea.detail", id=uuid))
@@ -515,9 +517,10 @@ def resend(id):
     stakeholders = _eligible_vea_recipients(vea)
 
     try:
-        from notifier import mattermost
+        from notifier import dispatcher
 
-        sent_ok = mattermost.send_vea_notification(vea, markdown, stakeholders=stakeholders)
+        summary = dispatcher.send_vea(vea, markdown, stakeholders)
+        sent_ok = bool(summary.get("sent_types"))
         audit.record(
             "notify",
             "vea",

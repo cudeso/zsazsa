@@ -2557,6 +2557,51 @@ def create_manual_collection_event(data: dict) -> str:
     return uuid
 
 
+def create_newsletter_event(source: str, raw_email: str, report_title: str = "",
+                            tlp: str = "", article_urls: list | None = None) -> str:
+    """Archive a pasted newsletter as an event on the webapp MISP server.
+
+    Stores the raw e-mail as a MISP report and tags the event so the source can
+    always be found back. The pushed article URLs are added as link attributes,
+    so MISP correlates this event with the scraper events created from them.
+    Returns the new event UUID.
+    """
+    from pymisp import MISPEventReport
+    misp = _misp()
+
+    title = (report_title or "").strip() or f"{source} newsletter"
+    event = _make_event(f"[zsazsa:newsletter] {title}",
+                        extra_tags=[f"tlp:{tlp}"] if tlp else [])
+    created = misp.add_event(event, pythonify=True)
+    if isinstance(created, dict):
+        raise RuntimeError(f"MISP error: {created.get('errors') or created}")
+    uuid = created.uuid
+
+    _tag_local(misp, uuid, 'zsazsa:source-type="newsletter"')
+    _tag_local(misp, uuid, f'zsazsa:source="{source_slug(source)}"')
+
+    if raw_email.strip():
+        report = MISPEventReport()
+        report.name = f"Newsletter source: {source}"
+        report.content = raw_email
+        report.distribution = 5
+        misp.add_event_report(created.id, report)
+
+    for url in article_urls or []:
+        url = url.strip()
+        if not url:
+            continue
+        a = MISPAttribute()
+        a.type = "link"
+        a.category = "External analysis"
+        a.value = url
+        a.comment = "Pushed to scraper"
+        a.to_ids = False
+        misp.add_attribute(created.id, a)
+
+    return uuid
+
+
 def add_manual_collection_attachment(event_uuid: str, filename: str, file_bytes: bytes) -> str:
     """Add a file attachment to a manually-entered collection event on the webapp MISP.
 

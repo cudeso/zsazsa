@@ -65,6 +65,18 @@ MIGRATIONS = [
         ),
         "supports_apply": True,
     },
+    {
+        "id": "backfill_product_source_log",
+        "name": "Backfill product source log",
+        "script": "scripts/backfill_product_source_log.py",
+        "description": (
+            "Record the source events of existing products (briefings, flash intel, "
+            "VEAs) in the analyser log, so products created before source logging was "
+            "added show up under the pipeline's By collection source. Already-logged "
+            "entries are skipped, so it is safe to run more than once."
+        ),
+        "supports_apply": True,
+    },
 ]
 
 _MIGRATIONS_BY_ID = {m["id"]: m for m in MIGRATIONS}
@@ -171,6 +183,12 @@ def _read() -> dict:
         "OPENAI_API_KEY": openai_api_key,
         "OPENAI_MODEL": openai_model,
         "NOTIFICATION_CHANNELS": _read_notification_channels(),
+        "SMTP_HOST": getattr(_config, "SMTP_HOST", ""),
+        "SMTP_PORT": getattr(_config, "SMTP_PORT", 587),
+        "SMTP_USE_TLS": getattr(_config, "SMTP_USE_TLS", True),
+        "SMTP_USERNAME": getattr(_config, "SMTP_USERNAME", ""),
+        "SMTP_PASSWORD": getattr(_config, "SMTP_PASSWORD", ""),
+        "SMTP_FROM": getattr(_config, "SMTP_FROM", ""),
         "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
         "FLOWINTEL_CASE_TEMPLATE_PRODUCTS": FLOWINTEL_CASE_TEMPLATE_PRODUCTS,
         "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []),
@@ -198,6 +216,10 @@ def _read() -> dict:
         "POLL_WINDOW_HOURS": _config.POLL_WINDOW_HOURS,
         "SCRAPER_MARKER_TAG": _config.SCRAPER_MARKER_TAG,
         "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+        "SCRAPER_REDIS_HOST": getattr(_config, "SCRAPER_REDIS_HOST", "127.0.0.1"),
+        "SCRAPER_REDIS_PORT": getattr(_config, "SCRAPER_REDIS_PORT", 6379),
+        "SCRAPER_REDIS_PASSWORD": getattr(_config, "SCRAPER_REDIS_PASSWORD", ""),
+        "SCRAPER_REDIS_CHANNEL": getattr(_config, "SCRAPER_REDIS_CHANNEL", "urls"),
         "EVENT_LOG_RETENTION_DAYS": getattr(_config, "EVENT_LOG_RETENTION_DAYS", 90),
         "PIPELINE_RUN_LOG_RETENTION_DAYS": getattr(_config, "PIPELINE_RUN_LOG_RETENTION_DAYS", 365),
         "LOG_LEVEL": _config.LOG_LEVEL,
@@ -272,8 +294,12 @@ def _write(values):
     if channels:
         ch_lines = []
         for c in channels:
+            if (c.get("type") or "").lower() == "email":
+                keys = ("id", "name", "type", "recipient", "enabled")
+            else:
+                keys = ("id", "name", "type", "url", "enabled", "verify_tls")
             ch_lines.append("    {")
-            for k in ("id", "name", "type", "url", "enabled", "verify_tls"):
+            for k in keys:
                 ch_lines.append(f"        {k!r}: {c.get(k)!r},")
             ch_lines.append("    },")
         channels_repr = "[\n" + "\n".join(ch_lines) + "\n]"
@@ -315,6 +341,14 @@ NOTIFICATION_CHANNELS = {channels_repr}
 # Legacy aliases: first active Mattermost channel (used by notifier for fallback)
 MATTERMOST_ENABLED = any(c.get('type') == 'mattermost' and c.get('enabled') for c in NOTIFICATION_CHANNELS)
 MATTERMOST_WEBHOOK_URL = next((c.get('url', '') for c in NOTIFICATION_CHANNELS if c.get('type') == 'mattermost' and c.get('enabled')), '')
+
+# SMTP server settings, shared by all email notification channels.
+SMTP_HOST = {values.get('SMTP_HOST', '')!r}
+SMTP_PORT = {int(values.get('SMTP_PORT') or 587)}
+SMTP_USE_TLS = {bool(values.get('SMTP_USE_TLS', True))}
+SMTP_USERNAME = {values.get('SMTP_USERNAME', '')!r}
+SMTP_PASSWORD = {values.get('SMTP_PASSWORD', '')!r}
+SMTP_FROM = {values.get('SMTP_FROM', '')!r}
 
 # Flowintel case management instances
 FLOWINTEL_INSTANCES = {flowintel_instances_repr}
@@ -379,6 +413,12 @@ SCRAPER_MARKER_TAG = {values['SCRAPER_MARKER_TAG']!r}
 MISP_SCRAPER_LIMIT = {int(values.get('MISP_SCRAPER_LIMIT') or 500)}
 EVENT_LOG_RETENTION_DAYS = {int(values.get('EVENT_LOG_RETENTION_DAYS') or 90)}
 PIPELINE_RUN_LOG_RETENTION_DAYS = {int(values.get('PIPELINE_RUN_LOG_RETENTION_DAYS') or 365)}
+
+# Manual sources pushing to the misp-scraper queue (Redis pub/sub the scraper subscribes to)
+SCRAPER_REDIS_HOST = {values.get('SCRAPER_REDIS_HOST', '127.0.0.1')!r}
+SCRAPER_REDIS_PORT = {int(values.get('SCRAPER_REDIS_PORT') or 6379)}
+SCRAPER_REDIS_PASSWORD = {values.get('SCRAPER_REDIS_PASSWORD', '')!r}
+SCRAPER_REDIS_CHANNEL = {values.get('SCRAPER_REDIS_CHANNEL') or 'urls'!r}
 
 # Paths
 STATE_FILE = {_config.STATE_FILE!r}
@@ -489,6 +529,12 @@ def index():
             "OPENAI_API_KEY": request.form.get("OPENAI_API_KEY", ""),
             "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", "")),
             "NOTIFICATION_CHANNELS": _read_notification_channels(),
+            "SMTP_HOST": request.form.get("SMTP_HOST", "").strip(),
+            "SMTP_PORT": int(request.form.get("SMTP_PORT", 587) or 587),
+            "SMTP_USE_TLS": request.form.get("SMTP_USE_TLS") == "true",
+            "SMTP_USERNAME": request.form.get("SMTP_USERNAME", "").strip(),
+            "SMTP_PASSWORD": request.form.get("SMTP_PASSWORD", ""),
+            "SMTP_FROM": request.form.get("SMTP_FROM", "").strip(),
             "FLOWINTEL_INSTANCES": getattr(_config, "FLOWINTEL_INSTANCES", []),
             "PRODUCT_TYPES": products,
             "DAILY_BRIEFING_TITLE_EXCLUSIONS": exclusions,
@@ -618,6 +664,28 @@ def save_scraper_config():
         flash("MISP scraper settings saved.", "success")
     except Exception as exc:
         logger.exception("save_scraper_config failed")
+        flash("Could not save configuration.", "warning")
+    return redirect(url_for("collection_sources.index"))
+
+
+@bp.route("/config/sources/save-scraper-redis", methods=["POST"])
+def save_scraper_redis_config():
+    """Save the misp-scraper Redis queue settings used by newsletter imports."""
+    current = _read()
+    current["SCRAPER_REDIS_HOST"] = request.form.get("SCRAPER_REDIS_HOST", "").strip()
+    try:
+        current["SCRAPER_REDIS_PORT"] = int(request.form.get("SCRAPER_REDIS_PORT") or 6379)
+    except (ValueError, TypeError):
+        current["SCRAPER_REDIS_PORT"] = 6379
+    current["SCRAPER_REDIS_PASSWORD"] = request.form.get("SCRAPER_REDIS_PASSWORD", "")
+    current["SCRAPER_REDIS_CHANNEL"] = request.form.get("SCRAPER_REDIS_CHANNEL", "").strip() or "urls"
+    try:
+        _write(current)
+        importlib.reload(_config)
+        audit.record("update", "config", entity_label="scraper-redis")
+        flash("Scraper queue settings saved.", "success")
+    except Exception:
+        logger.exception("save_scraper_redis_config failed")
         flash("Could not save configuration.", "warning")
     return redirect(url_for("collection_sources.index"))
 
@@ -774,6 +842,9 @@ def save_notification_channel():
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     channel_type = (data.get("type") or "mattermost").strip().lower()
+    recipient = (data.get("recipient") or "").strip()
+    if channel_type == "email" and not recipient:
+        return jsonify({"ok": False, "error": "Recipient email address required"}), 400
     entry = {
         "id": cid,
         "name": name,
@@ -782,6 +853,8 @@ def save_notification_channel():
         "enabled": enabled,
         "verify_tls": verify_tls,
     }
+    if channel_type == "email":
+        entry["recipient"] = recipient
     current = _read()
     channels = list(current.get("NOTIFICATION_CHANNELS") or [])
     action = "create"
@@ -843,6 +916,21 @@ def ping_notification_channel():
     ch = next((c for c in channels if c.get("id") == channel_id), None)
     if not ch:
         return jsonify({"ok": False, "error": "Channel not found"}), 404
+    if (ch.get("type") or "").strip().lower() == "email":
+        from notifier import email
+
+        recipient = (ch.get("recipient") or "").strip()
+        if not recipient:
+            return jsonify({"ok": False, "error": "Channel has no recipient address configured"}), 400
+        ok = email.send_email(
+            [recipient],
+            "zsazsa test notification",
+            "This is a **zsazsa** test notification. The email channel is configured correctly.",
+            f"test {channel_id}",
+        )
+        if ok:
+            return jsonify({"ok": True})
+        return jsonify({"ok": False, "error": "Send failed. Check SMTP settings and logs."})
     url = (ch.get("url") or "").strip()
     if not url:
         return jsonify({"ok": False, "error": "Channel has no webhook URL configured"}), 400
@@ -964,6 +1052,31 @@ def test_flowintel_connection():
     if not url or not api_key:
         return jsonify({"ok": False, "error": "URL and API key are required"}), 400
     return jsonify(flowintel_client.test_connection(url, api_key, verify_tls))
+
+
+@bp.route("/config/test-smtp-connection", methods=["POST"])
+@rate_limited("config_test_smtp_connection", limit=20, window_s=60)
+def test_smtp_connection():
+    """Check SMTP connectivity using the supplied settings, without sending mail."""
+    data, err = _json_object()
+    if err:
+        return err
+    from notifier import email
+
+    host = (data.get("host") or "").strip()
+    if not host:
+        return jsonify({"ok": False, "error": "SMTP host is required"}), 400
+    try:
+        port = int(data.get("port") or 587)
+        use_tls = _parse_bool(data.get("use_tls", True), default=True)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Port must be a number"}), 400
+    result = email.test_connection(
+        host, port, use_tls,
+        (data.get("username") or "").strip(),
+        data.get("password") or "",
+    )
+    return jsonify(result)
 
 
 @bp.route("/config/flowintel-case-templates", methods=["POST"])

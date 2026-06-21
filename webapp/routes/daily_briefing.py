@@ -16,7 +16,7 @@ from pathlib import Path
 import config
 import weasyprint
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
-from webapp import audit, collection_cache, misp_store
+from webapp import audit, collection_cache, misp_store, product_log
 from webapp.collection_cache import AI_SUMMARY_PREFIX
 from webapp.utils import md_to_html
 from webapp.routes.source_event_utils import parse_source_tokens, source_id_from_event_ref
@@ -342,6 +342,7 @@ def save():
         return redirect(url_for("daily_briefing.compose"))
     try:
         uuid = misp_store.create_briefing(data)
+        product_log.log_product_sources([s.get("source_event_uuid") for s in stories], "daily-briefing")
         label = data["title"] or f"Daily briefing {data['date']}"
         audit.record("create", "daily-briefing", entity_id=uuid, entity_label=label)
         flash(f"{label} saved as draft.", "success")

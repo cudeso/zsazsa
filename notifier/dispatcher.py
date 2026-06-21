@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import config
 
-from notifier import mattermost
+from notifier import mattermost, email
 from webapp.utils import normalize_notification_channels
 
 logger = logging.getLogger(__name__)
@@ -88,16 +88,17 @@ def _dispatch(stakeholders: list, senders: dict, entity_label: str, entity_id: s
 
 
 def _send_preview(entity, preview_url: str, markdown: str, stakeholders: list,
-                  send_fn, entity_label: str, entity_id_attr: str) -> dict:
+                  mattermost_fn, email_fn, entity_label: str, entity_id_attr: str) -> dict:
     names = [getattr(s, "name", "") for s in stakeholders or [] if getattr(s, "name", "")]
     senders = {
-        "mattermost": lambda channel_ids: bool(send_fn(
+        "mattermost": lambda channel_ids: bool(mattermost_fn(
             entity,
             markdown,
             preview_url=preview_url,
             channel_ids=channel_ids,
             stakeholder_names=names,
         )),
+        "email": lambda channel_ids: bool(email_fn(entity, markdown, channel_ids=channel_ids)),
     }
     return _dispatch(stakeholders, senders, entity_label, getattr(entity, entity_id_attr, ""))
 
@@ -113,6 +114,7 @@ def send_pir_preview(pir, preview_url: str, markdown: str, stakeholders: list) -
         markdown,
         stakeholders,
         mattermost.send_pir_notification,
+        email.send_pir_notification,
         "PIR",
         "pir_id",
     )
@@ -126,6 +128,7 @@ def send_rfi_preview(rfi, preview_url: str, markdown: str, stakeholders: list) -
         markdown,
         stakeholders,
         mattermost.send_rfi_notification,
+        email.send_rfi_notification,
         "RFI",
         "rfi_id",
     )
@@ -139,19 +142,46 @@ def send_gir_preview(gir, preview_url: str, markdown: str, stakeholders: list) -
         markdown,
         stakeholders,
         mattermost.send_gir_notification,
+        email.send_gir_notification,
         "GIR",
         "gir_id",
     )
 
 
 def send_daily_briefing(briefing, markdown: str, stakeholders: list) -> dict:
-    """Deliver a full daily briefing to stakeholder channels across all channel types.
-
-    Today only Mattermost is wired up; Teams and email add a sender entry here.
-    """
+    """Deliver a full daily briefing to stakeholder channels across all channel types."""
     senders = {
         "mattermost": lambda channel_ids: bool(
             mattermost.send_daily_briefing_notification(briefing, markdown, channel_ids=channel_ids)
         ),
+        "email": lambda channel_ids: bool(
+            email.send_daily_briefing_notification(briefing, markdown, channel_ids=channel_ids)
+        ),
     }
     return _dispatch(stakeholders, senders, "daily briefing", getattr(briefing, "date", ""))
+
+
+def send_vea(vea, markdown: str, stakeholders: list) -> dict:
+    """Deliver a VEA to stakeholder channels across all channel types."""
+    senders = {
+        "mattermost": lambda channel_ids: bool(
+            mattermost.send_vea_notification(vea, markdown, channel_ids=channel_ids)
+        ),
+        "email": lambda channel_ids: bool(
+            email.send_vea_notification(vea, markdown, channel_ids=channel_ids)
+        ),
+    }
+    return _dispatch(stakeholders, senders, "VEA", getattr(vea, "vea_id", ""))
+
+
+def send_flash_intel(product_event, fia_id: str, content: str, stakeholders: list) -> dict:
+    """Deliver a Flash Intel Alert to stakeholder channels across all channel types."""
+    senders = {
+        "mattermost": lambda channel_ids: bool(
+            mattermost.send_flash_intel_alert(product_event, fia_id, content, channel_ids=channel_ids)
+        ),
+        "email": lambda channel_ids: bool(
+            email.send_flash_intel_alert(fia_id, content, channel_ids=channel_ids)
+        ),
+    }
+    return _dispatch(stakeholders, senders, "flash intel", fia_id)

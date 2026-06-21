@@ -78,6 +78,52 @@
   </div>
 </form>
 
+{# ── Manual sources pushing to scraper ────────────────────────────────── #}
+<form method="post" action="{{ url_for('config_page.save_scraper_redis_config') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card content-card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <span><i class="fas fa-envelope-open-text me-2"></i>Manual sources pushing to scraper</span>
+      <button type="submit" class="btn btn-sm btn-primary">
+        <i class="fas fa-floppy-disk me-1"></i>Save
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="form-text mb-3">
+        Newsletter imports (e.g. the <a href="{{ url_for('data_collection.newsletter_new') }}">ETDA CTI Robot</a> importer)
+        publish the selected article URLs to the misp-scraper's Redis channel. The scraper then fetches each
+        article and creates the MISP event, so they behave like normal scraper events. The scraper's
+        <code>subscribe</code> service must be running against this Redis.
+      </div>
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label">Redis host</label>
+          <input type="text" name="SCRAPER_REDIS_HOST" class="form-control font-monospace"
+                 value="{{ cfg.SCRAPER_REDIS_HOST }}" placeholder="127.0.0.1">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Port</label>
+          <input type="number" name="SCRAPER_REDIS_PORT" class="form-control"
+                 value="{{ cfg.SCRAPER_REDIS_PORT }}" min="1" max="65535">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Password</label>
+          <div class="input-group">
+            <input type="password" name="SCRAPER_REDIS_PASSWORD" class="form-control font-monospace api-key-input"
+                   value="{{ cfg.SCRAPER_REDIS_PASSWORD }}">
+            <button class="btn btn-outline-secondary api-key-toggle" type="button" title="Show/hide"><i class="fas fa-eye"></i></button>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Channel</label>
+          <input type="text" name="SCRAPER_REDIS_CHANNEL" class="form-control font-monospace"
+                 value="{{ cfg.SCRAPER_REDIS_CHANNEL }}" placeholder="urls">
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
 {# ── Other MISP servers ───────────────────────────────────────────────── #}
 <div class="card content-card mb-4">
     <div class="card-header d-flex align-items-center justify-content-between">

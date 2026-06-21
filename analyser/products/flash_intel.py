@@ -179,8 +179,9 @@ def _has_automated_subscriber(misp_webapp, product_name: str) -> bool:
 
 
 def _auto_publish(misp_webapp, product_event, fia_id, content):
-    """Mark the FIA approved, publish, and send a Mattermost alert."""
+    """Mark the FIA approved, publish, and send Mattermost and email alerts."""
     from notifier.mattermost import send_flash_intel_alert
+    from notifier import email
 
     # Re-fetch so newly attached objects are present with server IDs.
     fresh = misp_webapp.get_event(product_event.uuid, pythonify=True)
@@ -206,6 +207,7 @@ def _auto_publish(misp_webapp, product_event, fia_id, content):
     tagger.set_workflow_state(misp_webapp, product_event, "complete")
     misp_webapp.publish(product_event.uuid)
     send_flash_intel_alert(product_event, fia_id, content)
+    email.send_flash_intel_alert(fia_id, content)
 
 
 def _add_flash_intel_object(misp_webapp, product_event, fia_id, source_event, content, matched):

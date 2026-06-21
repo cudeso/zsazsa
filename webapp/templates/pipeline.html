@@ -54,7 +54,7 @@
             {% set max_n = pipeline.by_source[0].n %}
             <ul class="list-unstyled mb-0">
               {% for row in pipeline.by_source %}
-              <li class="px-3 py-2 border-bottom">
+              <li class="px-3 py-2 border-bottom{{ ' source-extra d-none' if loop.index > 8 }}">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                   <span class="fw-semibold" style="font-size:.875rem;">{{ row.source_feed or 'Unknown' }}</span>
                   <span class="text-muted small">{{ row.n }}</span>
@@ -65,6 +65,14 @@
               </li>
               {% endfor %}
             </ul>
+            {% if pipeline.by_source | length > 8 %}
+            <div class="px-3 py-2 border-top">
+              <button type="button" class="btn btn-xs btn-link p-0" id="toggle-sources"
+                      data-total="{{ pipeline.by_source | length }}">
+                Show all {{ pipeline.by_source | length }} sources
+              </button>
+            </div>
+            {% endif %}
             {% else %}
             <div class="empty-state py-4"><p class="text-muted small mb-0">No data.</p></div>
             {% endif %}
@@ -349,4 +357,20 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.getElementById('toggle-sources');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    var extra = document.querySelectorAll('.source-extra');
+    if (!extra.length) return;
+    var hidden = extra[0].classList.contains('d-none');
+    extra.forEach(function (el) { el.classList.toggle('d-none', !hidden); });
+    btn.textContent = hidden ? 'Show fewer sources' : 'Show all ' + btn.dataset.total + ' sources';
+  });
+})();
+</script>
 {% endblock %}

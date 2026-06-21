@@ -18,53 +18,11 @@ import socket
 from flask import g, request
 
 import config
+from webapp.redis_client import RedisError, read_reply as _read_reply, send_command as _send_command
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_USER_EMAIL = "admin@admin.test"
-
-
-class RedisError(Exception):
-    """Raised on a Redis protocol error (e.g. failed AUTH)."""
-
-
-def _send_command(sock, *args):
-    parts = [f"*{len(args)}\r\n".encode()]
-    for arg in args:
-        if not isinstance(arg, bytes):
-            arg = str(arg).encode()
-        parts.append(b"$%d\r\n%s\r\n" % (len(arg), arg))
-    sock.sendall(b"".join(parts))
-
-
-def _read_line(sock):
-    buf = b""
-    while not buf.endswith(b"\r\n"):
-        chunk = sock.recv(1)
-        if not chunk:
-            raise RedisError("connection closed by Redis")
-        buf += chunk
-    return buf[:-2]
-
-
-def _read_reply(sock):
-    line = _read_line(sock)
-    kind, rest = line[:1], line[1:]
-    if kind == b"+":
-        return rest
-    if kind == b"-":
-        raise RedisError(rest.decode("utf-8", "replace"))
-    if kind == b":":
-        return int(rest)
-    if kind == b"$":
-        length = int(rest)
-        if length == -1:
-            return None
-        data = b""
-        while len(data) < length + 2:
-            data += sock.recv(length + 2 - len(data))
-        return data[:-2]
-    raise RedisError(f"unexpected Redis reply: {line!r}")
 
 
 def _redis_get(key):

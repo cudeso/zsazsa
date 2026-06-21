@@ -38,7 +38,7 @@ Focus points are first-class data. They can be added, removed, synchronised and 
 
 **Product** pages provide a searchable catalogue of published outputs tagged as CTI products. Analysts can filter by product type and linked PIR, inspect event reports and store feedback as report entries.
 
-**Flash Intel Alert** supports manual drafting, review queue handling, approval and publishing. Drafts can be seeded from one or more source events. Source event accordions in the wizard show reports with rendered Markdown, attributes with one-click append to the observed facts table, and object attributes. Observed facts and exploitation indicators added via the source-event buttons are formatted as Markdown tables. Recommended immediate and near-term actions can be configured as organisation-wide presets and are shown as one-click insert buttons. Context tags from source events can be selected and carried into the product. Publishing can notify Mattermost.
+**Flash Intel Alert** supports manual drafting, review queue handling, approval and publishing. Drafts can be seeded from one or more source events. Source event accordions in the wizard show reports with rendered Markdown, attributes with one-click append to the observed facts table, and object attributes. Observed facts and exploitation indicators added via the source-event buttons are formatted as Markdown tables. Recommended immediate and near-term actions can be configured as organisation-wide presets and are shown as one-click insert buttons. Context tags from source events can be selected and carried into the product. Publishing can notify Mattermost and email.
 
 **Vulnerability advisory** has an equivalent draft, review and publish flow, including multi-CVE input, CVE-focused fields, PIR linking, source event accordion, indicator table building, and action presets.
 
@@ -54,7 +54,7 @@ Community pages provide a local registry of organisations validated against MISP
 
 Distribution is built around stakeholders, roles, product subscriptions, audiences and notification channels. The intended flow is the following.
 
-A stakeholder is created and takes on exactly one role (SOC, Incident Response, Cyber Threat Intelligence, and so on). Each stakeholder indicates which notification channels they want to receive products on, chosen from the channels configured under Settings (Mattermost webhooks and Flowintel instances). A stakeholder also subscribes to one or more product types. The subscription is what the stakeholder wants to receive; the draft or after-approval subscription mode is recorded but currently makes no difference to delivery.
+A stakeholder is created and takes on exactly one role (SOC, Incident Response, Cyber Threat Intelligence, and so on). Each stakeholder indicates which notification channels they want to receive products on, chosen from the channels configured under Settings (Mattermost webhooks, email recipients and Flowintel instances). A stakeholder also subscribes to one or more product types. The subscription is what the stakeholder wants to receive; the draft or after-approval subscription mode is recorded but currently makes no difference to delivery.
 
 A product is created with one or more audiences. An audience is a stakeholder role, so selecting an audience selects the set of stakeholders holding that role. When a product is published, every selected audience is resolved to its matching stakeholders, and a stakeholder receives the product only if all of the following hold: the stakeholder's role is in the product's audience, the stakeholder is subscribed to that product type, and the stakeholder's TLP clearance is high enough for the product's TLP. Eligible stakeholders then receive the product over the notification channels they configured. A channel can accept every product, or it can be restricted to specific product types. Flowintel is an example of a restricted channel: a case is created only on the Flowintel instances those recipients subscribed to, and only for products that are enabled for that instance in its `case_templates` configuration.
 
@@ -62,10 +62,12 @@ Eligibility is computed centrally by `recipient_preview()` in `webapp/misp_store
 
 Current per-product coverage:
 
-- **Flash Intel Alert** and **Vulnerability advisory** implement the full flow above, including audience, subscription, TLP gating, and delivery to both Mattermost and Flowintel.
-- **Daily threat briefing** is delivered to all stakeholders subscribed to it, over each recipient's configured notification channels. It has no audience and applies no TLP gating. Mattermost is delivered today; Teams and email are planned and plug into the same per-channel-type dispatch.
+- **Flash Intel Alert** and **Vulnerability advisory** implement the full flow above, including audience, subscription, TLP gating, and delivery to Mattermost, email and Flowintel.
+- **Daily threat briefing** is delivered to all stakeholders subscribed to it, over each recipient's configured notification channels. It has no audience and applies no TLP gating. Mattermost and email are delivered today and plug into the same per-channel-type dispatch.
 - **Threat landscape report** records an audience but does not yet push notifications on publish.
-- **PIR**, **GIR** and **RFI** are requirements rather than products. They notify an explicitly selected distribution list of stakeholders over Mattermost, independent of product subscriptions and audiences.
+- **PIR**, **GIR** and **RFI** are requirements rather than products. They notify an explicitly selected distribution list of stakeholders over Mattermost and email, independent of product subscriptions and audiences.
+
+Email channels deliver the full product as an email (the same Markdown that drives the other channels, rendered to HTML with a plain-text fallback). When a single product reaches several email recipients, their addresses are kept private from one another. Email delivery relies on the shared SMTP server configured on the Notifications tab; the per-channel value is just the recipient address.
 - The remaining product types listed under `PRODUCT_TYPES` can be subscribed to but do not yet have a publish-and-notify flow.
 
 ## MISP model and tagging approach
@@ -117,7 +119,7 @@ You can configure:
 - manual collection sources (structured registry with name, owner, location, description, enable/disable, and Admiralty scale reliability rating - each backed by a MISP event)
 - product type catalogue
 - recommended immediate and near-term actions shown as presets in Flash Intel and VEA wizards
-- notification channels (multiple named Mattermost webhooks, each with a name and enable/disable toggle; Teams and Email placeholders for future use)
+- notification channels (named Mattermost webhooks and email recipients, each with a name and enable/disable toggle, plus the shared SMTP server used for email)
 - analyser polling window and marker tag
 - log settings and file paths
 
@@ -337,6 +339,26 @@ Vulnerability advisory creation follows the same pattern, with evidence and indi
 
 ![docs/6-vulnadv.png](docs/6-vulnadv.png)
 
+## Importing newsletters
+
+Many teams receive curated security newsletters by e-mail, for example the ETDA Cyber Threat Intelligence (CTI Robot) digest, where each edition lists dozens of articles, each with a short title, an intro, a section and a criticality. Rather than copy these in one by one, the newsletter importer turns a pasted e-mail into a reviewable list of articles.
+
+Open the importer from the Data collection page with "Import from newsletter". Choose the newsletter format, paste the full e-mail, and select "Parse and review". The importer extracts every article with its section (Financial Sector, Vulnerabilities, Malware, and so on), its criticality (Critical, Urgent, Important) and its links, grouped by section.
+
+On the review screen you decide what is worth collecting. Critical and urgent items are pre-selected.
+
+Sending does two things. Each selected article link is handed to the misp-scraper, which fetches the article and creates a MISP event for it, so it flows through the normal collection pipeline. The newsletter e-mail is also archived as its own MISP event, with the raw e-mail kept as a report and the selected links attached.
+
+Before sending, make sure the misp-scraper subscriber is running and its Redis connection is configured (see "Manual sources pushing to scraper" further down). If no subscriber is listening when you send, the importer tells you so nothing is silently lost.
+
+### Technical notes
+
+Each newsletter format has its own parser registered in `webapp/newsletter_parsers.py` (the `PARSERS` map), so supporting a new format means writing one parser and registering it; the import screens themselves are format-agnostic. Parsing is pure text processing and never touches MISP.
+
+The hand-off to the scraper uses Redis publish/subscribe: zsazsa publishes one JSON message per selected article on the configured channel, and the scraper's `subscribe` service consumes it. The connection (`SCRAPER_REDIS_HOST`, `SCRAPER_REDIS_PORT`, `SCRAPER_REDIS_PASSWORD`, `SCRAPER_REDIS_CHANNEL`) is set on the "Manual sources pushing to scraper" card, and is separate from the Redis that zsazsa reads MISP login sessions from.
+
+Each message carries the article link, the title, the newsletter name as the feed title, and `feed_tags` that the scraper applies as local tags on the created event.
+
 ## Statistics
 
 The statistics pages combine operational metrics with CTI maturity signals.
@@ -462,13 +484,19 @@ This tab covers the MISP tags and presets for the zsazsa's tags. The entity type
 
 ## Notifications
 
-The Notifications tab manages `NOTIFICATION_CHANNELS`, a list of named webhook channels (currently Mattermost, with Teams and Email for future use). Stakeholders are subscribed to one or more of these channels under Stakeholder management, so published products and requirement updates reach the right destinations. For backwards compatibility, the legacy `MATTERMOST_ENABLED` and `MATTERMOST_WEBHOOK_URL` settings are derived automatically from the first enabled Mattermost channel and do not need to be set by hand.
+The Notifications tab manages `NOTIFICATION_CHANNELS`, a list of named channels. Each channel has a type: a **Mattermost** channel carries a webhook URL, an **email** channel carries a recipient address. Stakeholders are subscribed to one or more of these channels under Stakeholder management, so published products and requirement updates reach the right destinations. For backwards compatibility, the legacy `MATTERMOST_ENABLED` and `MATTERMOST_WEBHOOK_URL` settings are derived automatically from the first enabled Mattermost channel and do not need to be set by hand.
+
+Email channels share one SMTP server, configured in the same tab and stored in the `SMTP_*` settings. The "Test connection" button checks the SMTP host and credentials without sending anything; each email channel also has a button to send a test message to its recipient. For Gmail and similar providers, use an account-specific app password rather than the normal account password.
 
 | Setting | Description |
 |---|---|
-| `NOTIFICATION_CHANNELS` | Named webhook channels (name, URL, TLS verification, enabled flag) |
+| `NOTIFICATION_CHANNELS` | Named channels. Mattermost: name, URL, TLS verification, enabled flag. Email: name, recipient address, enabled flag |
 | `MATTERMOST_ENABLED` (legacy) | Derived automatically from the first enabled Mattermost channel |
 | `MATTERMOST_WEBHOOK_URL` (legacy) | Derived automatically from the first enabled Mattermost channel |
+| `SMTP_HOST`, `SMTP_PORT` | SMTP server address and port (for example `smtp.gmail.com` and `587`) |
+| `SMTP_USE_TLS` | Use STARTTLS on the connection |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials (use an app password where the provider requires one) |
+| `SMTP_FROM` | From address shown on outgoing mail |
 
 ## Styling
 
@@ -542,3 +570,16 @@ The "Manual sources" card lists collection sources that are not MISP servers, fo
 | Source reliability | Admiralty scale rating, applied as an `admiralty-scale:source-reliability` tag |
 
 Each manual source is itself stored as a `zsazsa-collection-source` event in the webapp MISP, and can be edited, enabled or disabled, or deleted from the list. As with additional MISP servers, disabling or deleting a manual source that is referenced by a PIR or GIR will prompt for confirmation first, since the reference itself is not removed.
+
+## Manual sources pushing to scraper
+
+Some manual sources do not store events directly but hand article links to the misp-scraper, which fetches and creates them.
+
+| Field | Description |
+|---|---|
+| Redis host | Host of the misp-scraper Redis (`SCRAPER_REDIS_HOST`) |
+| Port | Redis port (`SCRAPER_REDIS_PORT`) |
+| Password | Redis password, if the instance requires one (`SCRAPER_REDIS_PASSWORD`) |
+| Channel | Publish/subscribe channel the scraper subscribes to (`SCRAPER_REDIS_CHANNEL`, default `urls`) |
+
+The scraper's own `subscribe` service must be running.
