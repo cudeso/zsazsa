@@ -59,6 +59,13 @@ class CreateNewsletterEvent(unittest.TestCase):
         self.assertEqual(urls, ["https://a.example", "https://b.example"])
         self.assertTrue(all(attr.type == "link" for _eid, attr in self.fake.attributes))
 
+    def test_parser_recorded_as_tag(self):
+        misp_store.create_newsletter_event(
+            "ETDA", "body", parser="ETDA CTI Robot",
+        )
+        self.assertIn('zsazsa:newsletter-parser="ETDA CTI Robot"', self.tags)
+        self.assertIn('zsazsa:source="etda"', self.tags)
+
     def test_reliability_applies_admiralty_tag(self):
         misp_store.create_newsletter_event(
             "ETDA CTI Robot", "body", tlp="green", reliability="b",
@@ -75,6 +82,46 @@ class CreateNewsletterEvent(unittest.TestCase):
         misp_store.create_newsletter_event("ETDA CTI Robot", "   ", article_urls=[])
         self.assertEqual(self.fake.reports, [])
         self.assertEqual(self.fake.attributes, [])
+
+
+class ReviewFakeMisp:
+    def __init__(self, tag_names, report_name, content="raw"):
+        self.event = SimpleNamespace(
+            id=42,
+            tags=[SimpleNamespace(name=n) for n in tag_names],
+        )
+        self._reports = [SimpleNamespace(name=report_name, content=content)]
+
+    def get_event(self, uuid, pythonify=True):
+        return self.event
+
+    def get_event_reports(self, event_id, pythonify=True):
+        return self._reports
+
+
+class GetNewsletterForReview(unittest.TestCase):
+    def _run(self, fake):
+        orig = misp_store._misp
+        misp_store._misp = lambda: fake
+        try:
+            return misp_store.get_newsletter_for_review("some-uuid")
+        finally:
+            misp_store._misp = orig
+
+    def test_recovers_feed_and_parser(self):
+        fake = ReviewFakeMisp(
+            ['zsazsa:newsletter-parser="ETDA CTI Robot"'],
+            "Newsletter source: ETDA",
+        )
+        item = self._run(fake)
+        self.assertEqual(item["feed"], "ETDA")
+        self.assertEqual(item["parser"], "ETDA CTI Robot")
+
+    def test_legacy_without_parser_tag_falls_back_to_feed(self):
+        fake = ReviewFakeMisp([], "Newsletter source: ETDA CTI Robot")
+        item = self._run(fake)
+        self.assertEqual(item["feed"], "ETDA CTI Robot")
+        self.assertEqual(item["parser"], "ETDA CTI Robot")
 
 
 if __name__ == "__main__":

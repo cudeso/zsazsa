@@ -1,23 +1,18 @@
 {% set m = m or {} %}
 <div class="row g-2">
-  <div class="col-md-5">
-    <label class="form-label small mb-1">Name</label>
-    <input type="text" class="form-control form-control-sm im-name" value="{{ m.get('name', '') }}" placeholder="ETDA mailbox">
+  <div class="col-md-6">
+    <label class="form-label small mb-1">Mailbox name</label>
+    <input type="text" class="form-control form-control-sm im-name" value="{{ m.get('name', '') }}" placeholder="Threat intel inbox">
   </div>
-  <div class="col-md-4">
-    <label class="form-label small mb-1">Newsletter parser</label>
-    <select class="form-select form-select-sm im-parser">
-      {% for s in newsletter_sources %}
-      <option value="{{ s }}" {{ 'selected' if m.get('parser') == s }}>{{ s }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-md-3">
-    <label class="form-label small mb-1">Mode</label>
-    <select class="form-select form-select-sm im-mode">
-      <option value="auto" {{ 'selected' if m.get('mode', 'auto') == 'auto' }}>Automatic</option>
-      <option value="manual" {{ 'selected' if m.get('mode') == 'manual' }}>Manual review</option>
-    </select>
+  <div class="col-md-6 d-flex align-items-end gap-3">
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input im-ssl" type="checkbox" {{ 'checked' if m.get('ssl', True) }}>
+      <label class="form-check-label small">SSL</label>
+    </div>
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input im-enabled" type="checkbox" {{ 'checked' if m.get('enabled', True) }}>
+      <label class="form-check-label small">Enabled</label>
+    </div>
   </div>
 
   <div class="col-md-5">
@@ -32,16 +27,6 @@
     <label class="form-label small mb-1">Folder</label>
     <input type="text" class="form-control form-control-sm im-folder" value="{{ m.get('folder', 'INBOX') }}" placeholder="INBOX">
   </div>
-  <div class="col-md-3 d-flex align-items-end gap-3">
-    <div class="form-check form-switch">
-      <input class="form-check-input im-ssl" type="checkbox" {{ 'checked' if m.get('ssl', True) }}>
-      <label class="form-check-label small">SSL</label>
-    </div>
-    <div class="form-check form-switch">
-      <input class="form-check-input im-enabled" type="checkbox" {{ 'checked' if m.get('enabled', True) }}>
-      <label class="form-check-label small">Enabled</label>
-    </div>
-  </div>
 
   <div class="col-md-6">
     <label class="form-label small mb-1">Username</label>
@@ -51,26 +36,15 @@
     <label class="form-label small mb-1">Password</label>
     <input type="password" class="form-control form-control-sm font-monospace im-password" value="{{ m.get('password', '') }}" autocomplete="new-password">
   </div>
+</div>
 
-  <div class="col-md-6">
-    <label class="form-label small mb-1">Match subjects (one per line)</label>
-    <textarea class="form-control form-control-sm font-monospace im-subjects" rows="3" placeholder="ETDA&#10;CTI Robot">{{ (m.get('subjects') or []) | join('\n') }}</textarea>
-  </div>
-  <div class="col-md-6">
-    <label class="form-label small mb-1">Match senders (one per line)</label>
-    <textarea class="form-control form-control-sm font-monospace im-senders" rows="3" placeholder="no-reply@etda.or.th">{{ (m.get('senders') or []) | join('\n') }}</textarea>
-  </div>
-
-  <div class="col-md-5">
-    <label class="form-label small mb-1">Source reliability</label>
-    <select class="form-select form-select-sm im-reliability">
-      <option value="">- not rated -</option>
-      {% for code, label in admiralty_options %}
-      <option value="{{ code }}" {{ 'selected' if m.get('reliability') == code }}>{{ label }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-12">
-    <div class="form-text">A message matches if its subject contains any subject term, or its sender contains any sender term. Matching is case-insensitive. Leave both empty to process every message in the folder.</div>
-  </div>
+<div class="d-flex align-items-center justify-content-between mt-3 mb-2">
+  <span class="small fw-semibold">Data collection sources</span>
+  <button type="button" class="btn btn-sm btn-outline-primary add-im-source"><i class="fas fa-plus me-1"></i>Add source</button>
+</div>
+<div class="form-text mb-2">Add one for each kind of e-mail that arrives in this mailbox. Each has its own parser, match criteria and reliability.</div>
+<div class="im-sources">
+  {% for s in m.get('sources') or [] %}
+  {% include "collection_sources/_imap_source_fields.html" %}
+  {% endfor %}
 </div>

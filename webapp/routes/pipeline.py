@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from flask import Blueprint, flash, redirect, render_template, url_for
 
 import config
-from core.db import get_recent_pipeline_runs, get_latest_pipeline_run, event_counts_by_source
+from core.db import get_recent_pipeline_runs, get_latest_pipeline_run
 from webapp import misp_store
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,9 @@ def _pipeline_stats():
 
         total = cur.execute("SELECT COUNT(*) FROM event_log").fetchone()[0]
 
-        by_source = event_counts_by_source()
+        # Live per-source counts straight from MISP, so this reflects the actual
+        # tagged events rather than the analyser's processing log.
+        by_source = misp_store.data_collection_source_counts()
 
         by_outcome = [
             dict(r) for r in cur.execute(
@@ -211,14 +213,33 @@ def _imap_mailbox_status():
     rows = []
     for m in mailboxes:
         record = by_id.get(m.get("id"))
+        enabled_sources = [s for s in (m.get("sources") or []) if s.get("enabled", True)]
         rows.append({
             "name": m.get("name") or m.get("id"),
             "enabled": m.get("enabled", True),
-            "mode": m.get("mode", "auto"),
+            "source_count": len(enabled_sources),
             "last_polled": polled_at if record else None,
             "status": record.get("status") if record else None,
             "message": record.get("message") if record else None,
         })
+    return rows
+
+
+def _newsletter_source_health():
+    """One row per configured newsletter collection source, with how many events
+    currently carry its data-collection-source tag (live from MISP)."""
+    counts = {row["source_feed"]: row["n"] for row in misp_store.data_collection_source_counts()}
+    rows = []
+    for mailbox in getattr(config, "IMAP_SOURCES", []) or []:
+        for src in mailbox.get("sources") or []:
+            name = src.get("name") or src.get("id")
+            rows.append({
+                "label": name,
+                "mailbox": mailbox.get("name") or mailbox.get("id"),
+                "enabled": src.get("enabled", True) and mailbox.get("enabled", True),
+                "reliability": src.get("reliability", ""),
+                "event_count": counts.get(name, 0),
+            })
     return rows
 
 
@@ -227,6 +248,7 @@ def index():
     pipeline = _pipeline_stats()
     recent_runs = get_recent_pipeline_runs(20)
     imap_mailboxes = _imap_mailbox_status()
+    newsletter_sources = _newsletter_source_health()
     scraper_misp = misp_store.test_scraper_misp()
     webapp_misp = misp_store.test_webapp_misp()
     source_health = []
@@ -240,6 +262,7 @@ def index():
         pipeline=pipeline,
         recent_runs=recent_runs,
         imap_mailboxes=imap_mailboxes,
+        newsletter_sources=newsletter_sources,
         scraper_misp=scraper_misp,
         webapp_misp=webapp_misp,
         source_health=source_health,

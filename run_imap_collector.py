@@ -42,55 +42,75 @@ def setup_logging() -> None:
     root.addHandler(stream_handler)
 
 
-def _ingest_message(mailbox: dict, body: str) -> None:
-    """Parse and archive one e-mail; push its articles in auto mode."""
-    source = mailbox["parser"]
-    parsed = newsletter_parsers.parse(source, body)
+def _ingest_message(source: dict, body: str) -> None:
+    """Parse and archive one e-mail for a collection source; push in auto mode.
+
+    The source's name becomes the scraper feed, so the events created from its
+    articles carry it as their data-collection-source and stay countable.
+    """
+    feed = source["name"]
+    parser = source["parser"]
+    parsed = newsletter_parsers.parse(parser, body)
     report_title = parsed.get("report_title", "")
     tlp = parsed.get("tlp") or ""
-    reliability = mailbox.get("reliability", "")
+    reliability = source.get("reliability", "")
     articles = newsletter_ingest.articles_from_parsed(parsed)
 
     # Manual mode, or nothing parsed, leaves the newsletter for human review.
-    if mailbox.get("mode", "auto") == "manual" or not articles:
+    if source.get("mode", "auto") == "manual" or not articles:
         misp_store.create_newsletter_event(
-            source, body, report_title=report_title, tlp=tlp,
-            reliability=reliability, status="pending-review",
+            feed, body, report_title=report_title, tlp=tlp,
+            reliability=reliability, parser=parser, status="pending-review",
         )
         logger.info("%s: archived newsletter for review (%d article(s))",
-                    mailbox["name"], len(articles))
+                    feed, len(articles))
         return
 
     uuid = misp_store.create_newsletter_event(
-        source, body, report_title=report_title, tlp=tlp, reliability=reliability,
-        article_urls=[a["url"] for a in articles],
+        feed, body, report_title=report_title, tlp=tlp, reliability=reliability,
+        parser=parser, article_urls=[a["url"] for a in articles],
     )
-    counts = newsletter_ingest.publish_articles(source, articles)
+    counts = newsletter_ingest.publish_articles(feed, articles)
     # Redis pub/sub is fire-and-forget: if no subscriber received the push, fall
     # back to the review queue so nothing is silently lost.
     if counts["published"] == 0 or counts["no_subscriber"] == counts["published"]:
         misp_store.mark_newsletter_pending(uuid)
         logger.warning("%s: scraper not listening, left newsletter %s for review",
-                       mailbox["name"], uuid)
+                       feed, uuid)
     else:
         logger.info("%s: pushed %d/%d article(s) to scraper",
-                    mailbox["name"], counts["published"], len(articles))
+                    feed, counts["published"], len(articles))
+
+
+def _match_source(msg, sources: list) -> dict | None:
+    """Return the first collection source whose criteria match the message."""
+    for source in sources:
+        if imap_collector.matches(msg, source.get("subjects") or [], source.get("senders") or []):
+            return source
+    return None
 
 
 def _poll_mailbox(mailbox: dict) -> dict:
     """Poll one mailbox; return {"processed", "status", "message"} for reporting."""
     name = mailbox.get("name") or mailbox.get("id") or "mailbox"
-    if mailbox.get("parser") not in newsletter_parsers.available_sources():
-        logger.warning("%s: unknown parser %r, skipping", name, mailbox.get("parser"))
-        return {"processed": 0, "status": "skipped", "message": f"unknown parser {mailbox.get('parser')!r}"}
+    available = newsletter_parsers.available_sources()
+    sources = [s for s in (mailbox.get("sources") or [])
+               if s.get("enabled", True) and s.get("parser") in available]
+    if not sources:
+        logger.warning("%s: no usable collection sources, skipping", name)
+        return {"processed": 0, "status": "skipped", "message": "no usable collection sources"}
     handled = 0
-    for conn, uid, body in imap_collector.fetch_matching(mailbox):
+    for conn, uid, msg in imap_collector.fetch_unprocessed(mailbox):
+        source = _match_source(msg, sources)
+        if source is None:
+            continue  # not for any source in this mailbox; leave it untouched
+        body = imap_collector.extract_body(msg)
         if not body.strip():
             logger.warning("%s: a matched message had no readable body, skipping", name)
             imap_collector.mark_processed(conn, uid)
             continue
         try:
-            _ingest_message(mailbox, body)
+            _ingest_message(source, body)
         except Exception:
             logger.exception("%s: failed to ingest a message, will retry next run", name)
             continue

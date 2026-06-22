@@ -476,11 +476,11 @@
   </div>
   <div class="card-body">
     <p class="text-muted small">
-      Poll a mailbox for forwarded newsletters. Messages whose subject or sender matches the criteria
-      below are parsed into a newsletter, archived in MISP and (in automatic mode) pushed to the scraper.
-      Polling is run by <code>run_imap_collector.py</code> from cron.
-      Newsletters awaiting review appear under
-      <a href="{{ url_for('data_collection.newsletter_pending') }}">Pending newsletters</a>.
+      Poll a mailbox for forwarded e-mails. A mailbox holds one or more data collection sources;
+      each new message is matched to the first source whose subject or sender criteria fit, then parsed,
+      archived in MISP and (in automatic mode) pushed to the scraper. Polling is run by
+      <code>run_imap_collector.py</code> from cron. Items awaiting review appear under
+      <a href="{{ url_for('data_collection.newsletter_pending') }}">Email sources</a>.
     </p>
 
     <div id="imap-mailbox-list">
@@ -530,6 +530,10 @@
           </div>
         </div>
       </div>
+    </template>
+
+    <template id="imap-source-template">
+      {% with s=None %}{% include "collection_sources/_imap_source_fields.html" %}{% endwith %}
     </template>
   </div>
 </div>
@@ -1058,17 +1062,29 @@
 (function () {
   const list = document.getElementById('imap-mailbox-list');
   const tpl = document.getElementById('imap-mailbox-template');
+  const srcTpl = document.getElementById('imap-source-template');
   const addBtn = document.getElementById('add-imap-mailbox');
   const empty = document.getElementById('no-imap-mailboxes');
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   if (!list) return;
 
+  function sourcePayload(srow) {
+    const v = (sel) => srow.querySelector(sel).value;
+    return {
+      name: v('.ims-name').trim(),
+      parser: v('.ims-parser'),
+      mode: v('.ims-mode'),
+      enabled: srow.querySelector('.ims-enabled').checked,
+      subjects: v('.ims-subjects'),
+      senders: v('.ims-senders'),
+      reliability: v('.ims-reliability'),
+    };
+  }
+
   function payload(row) {
     const v = (sel) => row.querySelector(sel).value;
     return {
       name: v('.im-name').trim(),
-      parser: v('.im-parser'),
-      mode: v('.im-mode'),
       host: v('.im-host').trim(),
       port: v('.im-port').trim(),
       folder: v('.im-folder').trim(),
@@ -1076,10 +1092,13 @@
       enabled: row.querySelector('.im-enabled').checked,
       username: v('.im-username').trim(),
       password: v('.im-password'),
-      subjects: v('.im-subjects'),
-      senders: v('.im-senders'),
-      reliability: v('.im-reliability'),
+      sources: Array.from(row.querySelectorAll('.imap-source-row')).map(sourcePayload),
     };
+  }
+
+  function bindSourceRow(srow) {
+    const rm = srow.querySelector('.remove-im-source');
+    if (rm) rm.addEventListener('click', () => srow.remove());
   }
 
   async function post(path, body) {
@@ -1105,6 +1124,17 @@
         toggle.textContent = open ? 'Edit' : 'Close';
       });
     }
+
+    const addSrc = row.querySelector('.add-im-source');
+    const srcContainer = row.querySelector('.im-sources');
+    if (addSrc && srcContainer && srcTpl) {
+      addSrc.addEventListener('click', () => {
+        const node = srcTpl.content.firstElementChild.cloneNode(true);
+        srcContainer.appendChild(node);
+        bindSourceRow(node);
+      });
+    }
+    row.querySelectorAll('.imap-source-row').forEach(bindSourceRow);
 
     const delBtn = row.querySelector('.delete-im-btn');
     if (delBtn) {

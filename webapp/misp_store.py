@@ -2570,6 +2570,9 @@ def create_manual_collection_event(data: dict) -> str:
 
 NEWSLETTER_PENDING_TAG = 'zsazsa:newsletter-status="pending-review"'
 _NEWSLETTER_REPORT_PREFIX = "Newsletter source: "
+# Records which parser produced a newsletter, so the review screen can re-parse
+# even when the source name differs from the parser name.
+_NEWSLETTER_PARSER_TAG_PREFIX = 'zsazsa:newsletter-parser='
 
 
 def _add_scraper_link(misp, event_ref, url: str) -> None:
@@ -2584,17 +2587,18 @@ def _add_scraper_link(misp, event_ref, url: str) -> None:
 
 
 def create_newsletter_event(source: str, raw_email: str, report_title: str = "",
-                            tlp: str = "", reliability: str = "",
+                            tlp: str = "", reliability: str = "", parser: str = "",
                             article_urls: list | None = None,
                             status: str = "processed") -> str:
     """Archive a newsletter as an event on the webapp MISP server.
 
-    Stores the raw e-mail as a MISP report and tags the event so the source can
-    always be found back. The pushed article URLs are added as link attributes,
-    so MISP correlates this event with the scraper events created from them.
-    With status="pending-review" the event is tagged so it shows up in the
-    pending-newsletters queue for a human to review before the articles are
-    pushed. Returns the new event UUID.
+    `source` is the collection-source name; it is recorded so the newsletter can
+    always be found back, and the pushed article URLs are added as link
+    attributes so MISP correlates this event with the scraper events created from
+    them. `parser` records which parser produced it, so the review screen can
+    re-parse even when the source name differs from the parser name. With
+    status="pending-review" the event is tagged for the review queue before its
+    articles are pushed. Returns the new event UUID.
     """
     from pymisp import MISPEventReport
     misp = _misp()
@@ -2612,6 +2616,8 @@ def create_newsletter_event(source: str, raw_email: str, report_title: str = "",
 
     _tag_local(misp, uuid, 'zsazsa:source-type="newsletter"')
     _tag_local(misp, uuid, f'zsazsa:source="{source_slug(source)}"')
+    if parser:
+        _tag_local(misp, uuid, f'{_NEWSLETTER_PARSER_TAG_PREFIX}"{parser}"')
     if status == "pending-review":
         _tag_local(misp, uuid, NEWSLETTER_PENDING_TAG)
 
@@ -2649,10 +2655,12 @@ def list_pending_newsletters() -> list[dict]:
 
 
 def get_newsletter_for_review(uuid: str) -> dict | None:
-    """Return {uuid, source, raw_email} for an archived newsletter, or None.
+    """Return {uuid, feed, parser, raw_email} for an archived newsletter, or None.
 
-    The source name and raw e-mail are recovered from the stored report so the
-    review screen can re-parse the newsletter.
+    `feed` is the source name (recovered from the report) used when pushing to
+    the scraper; `parser` is the parser to re-parse with. Older newsletters
+    archived before sources were named carry no parser tag, so the feed name
+    (which then equalled the parser) is used as the fallback.
     """
     misp = _misp()
     try:
@@ -2662,10 +2670,17 @@ def get_newsletter_for_review(uuid: str) -> dict | None:
         reports = misp.get_event_reports(event.id, pythonify=True) or []
     except Exception:
         return None
+    parser = ""
+    for tag in getattr(event, "tags", []) or []:
+        name = getattr(tag, "name", "") or ""
+        if name.startswith(_NEWSLETTER_PARSER_TAG_PREFIX):
+            parser = name[len(_NEWSLETTER_PARSER_TAG_PREFIX):].strip().strip('"')
+            break
     for rep in reports:
         name = getattr(rep, "name", "") or ""
         if name.startswith(_NEWSLETTER_REPORT_PREFIX):
-            return {"uuid": uuid, "source": name[len(_NEWSLETTER_REPORT_PREFIX):].strip(),
+            feed = name[len(_NEWSLETTER_REPORT_PREFIX):].strip()
+            return {"uuid": uuid, "feed": feed, "parser": parser or feed,
                     "raw_email": getattr(rep, "content", "") or ""}
     return None
 
@@ -2686,6 +2701,38 @@ def finalize_newsletter(uuid: str, article_urls: list | None = None) -> None:
     for url in article_urls or []:
         if (url or "").strip():
             _add_scraper_link(misp, uuid, url.strip())
+
+
+_DATA_COLLECTION_SOURCE_TAG_PREFIX = "scraper:data-collection-source:"
+
+
+def data_collection_source_counts() -> list[dict]:
+    """Live event count per data-collection-source on the scraper MISP.
+
+    Returns ``[{"source_feed": name, "n": count}, ...]`` sorted by count, read
+    from MISP's tag statistics in a single call so it reflects the actual events
+    carrying each ``scraper:data-collection-source`` tag rather than the
+    analyser's processing log. Returns ``[]`` if the instance is unreachable.
+    """
+    try:
+        stats = _scraper_misp().tags_statistics()
+    except Exception as exc:
+        logger.warning("data_collection_source_counts failed: %s", exc)
+        return []
+    tags = stats.get("tags") if isinstance(stats, dict) else None
+    if not isinstance(tags, dict):
+        return []
+    rows = []
+    for name, count in tags.items():
+        if not name.startswith(_DATA_COLLECTION_SOURCE_TAG_PREFIX):
+            continue
+        try:
+            n = int(count)
+        except (TypeError, ValueError):
+            continue
+        rows.append({"source_feed": name[len(_DATA_COLLECTION_SOURCE_TAG_PREFIX):], "n": n})
+    rows.sort(key=lambda r: r["n"], reverse=True)
+    return rows
 
 
 def add_manual_collection_attachment(event_uuid: str, filename: str, file_bytes: bytes) -> str:
@@ -4625,7 +4672,6 @@ def find_products_using_source(src_uuid: str) -> list:
                         "uuid": b.uuid,
                         "title": b.title or f"Daily briefing {b.date}",
                         "date": b.date or "",
-                        "url": f"/briefing/{b.uuid}",
                     })
                     break
     except Exception as exc:
@@ -4643,7 +4689,6 @@ def find_products_using_source(src_uuid: str) -> list:
                     "uuid": f.uuid,
                     "title": f.title or f"Flash Intel {f.fia_id}",
                     "date": (f.created_at.strftime("%Y-%m-%d") if f.created_at else ""),
-                    "url": f"/products/flash-intel/{f.uuid}",
                 })
     except Exception as exc:
         logger.warning("find_products_using_source FIAs failed: %s", exc)
@@ -4655,7 +4700,6 @@ def find_products_using_source(src_uuid: str) -> list:
                     "uuid": v.uuid,
                     "title": v.title or f"VEA {v.vea_id}",
                     "date": (v.created_at.strftime("%Y-%m-%d") if v.created_at else ""),
-                    "url": f"/products/vea/{v.uuid}",
                 })
     except Exception as exc:
         logger.warning("find_products_using_source VEAs failed: %s", exc)

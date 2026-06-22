@@ -1,0 +1,56 @@
+{% set s = s or {} %}
+<div class="imap-source-row border rounded p-2 mb-2">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <span class="small fw-semibold text-muted"><i class="fas fa-newspaper me-1"></i>Collection source</span>
+    <button type="button" class="btn btn-sm btn-outline-danger remove-im-source" title="Remove source"><i class="fas fa-trash"></i></button>
+  </div>
+  <div class="row g-2">
+    <div class="col-md-4">
+      <label class="form-label small mb-1">Name</label>
+      <input type="text" class="form-control form-control-sm ims-name" value="{{ s.get('name', '') }}" placeholder="ETDA">
+      <div class="form-text">Used as the source name on the events it produces, so they can be counted.</div>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label small mb-1">Parser</label>
+      <select class="form-select form-select-sm ims-parser">
+        {% for p in newsletter_sources %}
+        <option value="{{ p }}" {{ 'selected' if s.get('parser') == p }}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">Mode</label>
+      <select class="form-select form-select-sm ims-mode">
+        <option value="auto" {{ 'selected' if s.get('mode', 'auto') == 'auto' }}>Automatic</option>
+        <option value="manual" {{ 'selected' if s.get('mode') == 'manual' }}>Manual review</option>
+      </select>
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <div class="form-check form-switch mb-2">
+        <input class="form-check-input ims-enabled" type="checkbox" {{ 'checked' if s.get('enabled', True) }}>
+        <label class="form-check-label small">Enabled</label>
+      </div>
+    </div>
+
+    <div class="col-md-5">
+      <label class="form-label small mb-1">Match subjects (one per line)</label>
+      <textarea class="form-control form-control-sm font-monospace ims-subjects" rows="2" placeholder="ETDA">{{ (s.get('subjects') or []) | join('\n') }}</textarea>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label small mb-1">Match senders (one per line)</label>
+      <textarea class="form-control form-control-sm font-monospace ims-senders" rows="2" placeholder="no-reply@etda.or.th">{{ (s.get('senders') or []) | join('\n') }}</textarea>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">Reliability</label>
+      <select class="form-select form-select-sm ims-reliability">
+        <option value="">-</option>
+        {% for code, label in admiralty_options %}
+        <option value="{{ code }}" {{ 'selected' if s.get('reliability') == code }}>{{ code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12">
+      <div class="form-text">A message matches if its subject contains any subject term, or its sender contains any sender term. Matching is case-insensitive. Leave both empty to take every message in the folder.</div>
+    </div>
+  </div>
+</div>

@@ -791,20 +791,20 @@ def newsletter_review_pending(uuid):
     if item is None:
         flash("Pending newsletter not found.", "warning")
         return redirect(url_for("data_collection.newsletter_pending"))
-    source = item["source"]
+    feed = item["feed"]
 
     if request.method == "POST":
-        articles = _selected_articles(source)
+        articles = _selected_articles(feed)
         if not articles:
             flash("No articles were selected.", "warning")
             return redirect(url_for("data_collection.newsletter_review_pending", uuid=uuid))
-        counts = newsletter_ingest.publish_articles(source, articles)
+        counts = newsletter_ingest.publish_articles(feed, articles)
         try:
             misp_store.finalize_newsletter(uuid, [a["url"] for a in articles])
         except Exception:
             logger.exception("could not finalize newsletter %s", uuid)
         audit.record(
-            "push", "newsletter-import", entity_id=uuid, entity_label=source,
+            "push", "newsletter-import", entity_id=uuid, entity_label=feed,
             details=f"reviewed selected={len(articles)} published={counts['published']} "
                     f"failed={counts['failed']} no_subscriber={counts['no_subscriber']}",
         )
@@ -815,16 +815,16 @@ def newsletter_review_pending(uuid):
         return redirect(url_for("data_collection.newsletter_pending"))
 
     try:
-        parsed = newsletter_parsers.parse(source, item["raw_email"])
+        parsed = newsletter_parsers.parse(item["parser"], item["raw_email"])
     except Exception:
-        logger.exception("could not parse pending newsletter %s (%s)", uuid, source)
+        logger.exception("could not parse pending newsletter %s (%s)", uuid, item["parser"])
         flash("Could not parse this newsletter.", "warning")
         return redirect(url_for("data_collection.newsletter_pending"))
     for idx, article in enumerate(parsed["articles"]):
         article["idx"] = idx
     return render_template(
         "data_collection/newsletter_review.html",
-        source=source,
+        source=feed,
         raw=item["raw_email"],
         report_title=parsed.get("report_title", ""),
         tlp=parsed.get("tlp") or "",
@@ -865,6 +865,7 @@ def _newsletter_push(source: str):
             source, request.form.get("raw", ""),
             report_title=request.form.get("report_title", ""),
             tlp=request.form.get("tlp", ""),
+            parser=source,
             article_urls=[a["url"] for a in articles],
         )
         stored = True

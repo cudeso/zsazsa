@@ -154,14 +154,14 @@ def _search_unprocessed(conn: imaplib.IMAP4) -> list[bytes]:
     return data[0].split()
 
 
-def fetch_matching(mailbox: dict):
-    """Yield (conn, uid, body) for unprocessed, matching messages.
+def fetch_unprocessed(mailbox: dict):
+    """Yield (conn, uid, msg) for every unprocessed message in the mailbox.
 
-    The connection is kept open and yielded so the caller can mark each message
-    processed only after it has been ingested successfully.
+    Matching is left to the caller: a mailbox holds several collection sources,
+    each with its own criteria, so the caller decides which source (if any) a
+    message belongs to. The connection is kept open and yielded so the caller can
+    mark each message processed only after it has been ingested successfully.
     """
-    subjects = mailbox.get("subjects") or []
-    senders = mailbox.get("senders") or []
     conn = _connect(mailbox)
     try:
         conn.select(mailbox.get("folder") or "INBOX")
@@ -169,9 +169,7 @@ def fetch_matching(mailbox: dict):
             typ, data = conn.uid("fetch", uid, "(RFC822)")
             if typ != "OK" or not data or not data[0]:
                 continue
-            msg = email.message_from_bytes(data[0][1])
-            if matches(msg, subjects, senders):
-                yield conn, uid, extract_body(msg)
+            yield conn, uid, email.message_from_bytes(data[0][1])
     finally:
         try:
             conn.close()

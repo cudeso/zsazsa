@@ -294,11 +294,19 @@ def _write(values):
     imap_sources = values.get("IMAP_SOURCES", [])
     if imap_sources:
         lines = []
-        for s in imap_sources:
+        for m in imap_sources:
             lines.append("    {")
-            for k in ("id", "name", "enabled", "host", "port", "ssl", "username",
-                      "password", "folder", "subjects", "senders", "parser", "mode", "reliability"):
-                lines.append(f"        {k!r}: {s.get(k)!r},")
+            for k in ("id", "name", "enabled", "host", "port", "ssl",
+                      "username", "password", "folder"):
+                lines.append(f"        {k!r}: {m.get(k)!r},")
+            lines.append("        'sources': [")
+            for s in m.get("sources") or []:
+                lines.append("            {")
+                for k in ("id", "name", "enabled", "parser", "subjects",
+                          "senders", "reliability", "mode"):
+                    lines.append(f"                {k!r}: {s.get(k)!r},")
+                lines.append("            },")
+            lines.append("        ],")
             lines.append("    },")
         imap_sources_repr = "[\n" + "\n".join(lines) + "\n]"
     else:
@@ -812,36 +820,68 @@ def _str_list(value) -> list[str]:
     return [str(i).strip() for i in items if str(i).strip()]
 
 
+def _slug_id(name: str, fallback: str) -> str:
+    """Kebab-case identifier from a display name, with repeated dashes collapsed."""
+    raw = "".join(c.lower() if c.isalnum() else "-" for c in name)
+    return "-".join(p for p in raw.split("-") if p) or fallback
+
+
+def _build_imap_source(raw: dict, position: int, taken_ids: set) -> dict:
+    """Validate one collection source from the save payload. Raises ValueError."""
+    name = (raw.get("name") or "").strip()
+    if not name:
+        raise ValueError("Each collection source needs a name")
+    parser = (raw.get("parser") or "").strip()
+    if parser not in newsletter_parsers.available_sources():
+        raise ValueError(f"Unknown newsletter parser {parser!r}")
+    mode = (raw.get("mode") or "auto").strip().lower()
+    if mode not in ("auto", "manual"):
+        mode = "auto"
+    sid = _slug_id(name, f"source-{position}")
+    base, n = sid, 2
+    while sid in taken_ids:
+        sid, n = f"{base}-{n}", n + 1
+    taken_ids.add(sid)
+    return {
+        "id": sid,
+        "name": name,
+        "enabled": _parse_bool(raw.get("enabled", True), default=True),
+        "parser": parser,
+        "subjects": _str_list(raw.get("subjects")),
+        "senders": _str_list(raw.get("senders")),
+        "reliability": (raw.get("reliability") or "").strip().upper(),
+        "mode": mode,
+    }
+
+
 @bp.route("/config/sources/save-imap", methods=["POST"])
 @rate_limited("config_save_imap", limit=60, window_s=60)
 def save_imap_mailbox():
-    """Add or update a single IMAP mailbox source (AJAX)."""
+    """Add or update one IMAP mailbox and its collection sources (AJAX)."""
     data, err = _json_object()
     if err:
         return err
-    original_id = (data.get("original_id") or "").strip()
     name = (data.get("name") or "").strip()
     host = (data.get("host") or "").strip()
     if not name:
-        return jsonify({"ok": False, "error": "Name required"}), 400
+        return jsonify({"ok": False, "error": "Mailbox name required"}), 400
     if not host:
         return jsonify({"ok": False, "error": "IMAP host required"}), 400
-    sid = (data.get("id") or "").strip()
-    if not sid:
-        sid = "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-") or "mailbox"
     try:
         ssl_on = _parse_bool(data.get("ssl", True), default=True)
         enabled = _parse_bool(data.get("enabled", True), default=True)
         port = int(data.get("port") or (993 if ssl_on else 143))
     except (ValueError, TypeError):
         return jsonify({"ok": False, "error": "Port must be a number"}), 400
-    parser = (data.get("parser") or "").strip()
-    if parser not in newsletter_parsers.available_sources():
-        return jsonify({"ok": False, "error": "Unknown newsletter parser"}), 400
-    mode = (data.get("mode") or "auto").strip().lower()
-    if mode not in ("auto", "manual"):
-        mode = "auto"
 
+    try:
+        taken_ids = set()
+        sources = [_build_imap_source(s, i + 1, taken_ids)
+                   for i, s in enumerate(data.get("sources") or [])]
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    sid = (data.get("id") or "").strip() or _slug_id(name, "mailbox")
     entry = {
         "id": sid,
         "name": name,
@@ -852,26 +892,23 @@ def save_imap_mailbox():
         "username": (data.get("username") or "").strip(),
         "password": data.get("password") or "",
         "folder": (data.get("folder") or "INBOX").strip() or "INBOX",
-        "subjects": _str_list(data.get("subjects")),
-        "senders": _str_list(data.get("senders")),
-        "parser": parser,
-        "mode": mode,
-        "reliability": (data.get("reliability") or "").strip().upper(),
+        "sources": sources,
     }
+    original_id = (data.get("original_id") or "").strip()
     current = _read()
-    sources = list(current.get("IMAP_SOURCES") or [])
+    mailboxes = list(current.get("IMAP_SOURCES") or [])
     action = "create"
     if original_id:
-        for i, s in enumerate(sources):
-            if s.get("id") == original_id:
-                sources[i] = entry
+        for i, m in enumerate(mailboxes):
+            if m.get("id") == original_id:
+                mailboxes[i] = entry
                 action = "update"
                 break
-        if action == "create":
-            sources.append(entry)
+        else:
+            mailboxes.append(entry)
     else:
-        sources.append(entry)
-    current["IMAP_SOURCES"] = sources
+        mailboxes.append(entry)
+    current["IMAP_SOURCES"] = mailboxes
     try:
         _write(current)
         importlib.reload(_config)

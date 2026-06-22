@@ -122,6 +122,9 @@
       <a href="{{ url_for('pipeline.index') }}" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-clock-rotate-left me-1"></i>History
       </a>
+      <a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-layer-group me-1"></i>Review data collection
+      </a>
       {% if pipeline.last_run %}
         {% if pipeline.stale %}
           <span class="badge text-bg-warning" title="Stale: the automation pipeline has not run in over 90 minutes. Check that the analyser process is running."><i class="fas fa-triangle-exclamation me-1"></i>Stale</span>

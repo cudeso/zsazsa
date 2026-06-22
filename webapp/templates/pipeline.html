@@ -335,7 +335,7 @@
             <div class="d-flex align-items-center justify-content-between mb-1">
               <span class="fw-semibold" style="font-size:.875rem;">
                 {{ mb.name }}
-                <span class="text-muted ms-1" style="font-size:.72rem;">{{ mb.mode }}</span>
+                <span class="text-muted ms-1" style="font-size:.72rem;">{{ mb.source_count }} source{{ 's' if mb.source_count != 1 }}</span>
               </span>
               {% if not mb.enabled %}
               <span class="badge outcome-info" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
@@ -360,6 +360,29 @@
           </li>
           {% endfor %}
         </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if newsletter_sources %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-envelope-open-text me-2"></i>Email sources</div>
+      <div class="card-body p-0">
+        <ul class="list-unstyled mb-0">
+          {% for ns in newsletter_sources %}
+          <li class="px-3 py-2 d-flex align-items-center justify-content-between {% if not loop.last %}border-bottom{% endif %}">
+            <span style="font-size:.85rem;">
+              <span class="fw-semibold {% if not ns.enabled %}text-muted{% endif %}">{{ ns.label }}</span>
+              <span class="text-muted ms-1" style="font-size:.72rem;">{{ ns.mailbox }}</span>
+              {% if ns.reliability %}<span class="badge text-bg-light font-monospace ms-1">{{ ns.reliability }}</span>{% endif %}
+            </span>
+            <span class="text-muted" style="font-size:.8rem;">{{ ns.event_count }} event{{ 's' if ns.event_count != 1 }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="card-footer text-muted" style="font-size:.72rem;">
+        Live counts of events currently carrying each source's data-collection-source tag.
       </div>
     </div>
     {% endif %}

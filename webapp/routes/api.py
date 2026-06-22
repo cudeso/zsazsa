@@ -12,7 +12,7 @@ import socket
 from urllib.parse import urlsplit
 
 import config
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, url_for
 
 from core.vuln_lookup import fetch_cve_info
 from webapp import audit, misp_store
@@ -777,6 +777,16 @@ def cve_lookup():
 @rate_limited("api_collection_used_in", limit=30, window_s=60)
 def collection_used_in(uuid):
     products = misp_store.find_products_using_source(uuid)
+    # Build links here, via url_for, so they honour the app's mount path (e.g. /zsazsa).
+    endpoints = {
+        "daily-briefing": "daily_briefing.detail",
+        "flash-intel": "flash_intel.detail",
+        "vea": "vea.detail",
+    }
+    for product in products:
+        endpoint = endpoints.get(product["type"])
+        if endpoint:
+            product["url"] = url_for(endpoint, id=product["uuid"])
     return jsonify({"ok": True, "products": products})
 
 
