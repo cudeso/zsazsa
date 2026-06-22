@@ -46,6 +46,8 @@ Focus points are first-class data. They can be added, removed, synchronised and 
 
 **Threat landscape report** is a periodic strategic product for leadership audiences. It covers top threats, trending threat actors, key incidents, recommendations and an outlook section. Reports follow the same draft/publish workflow as other products and are stored as MISP objects.
 
+Drafts can be edited and deleted from the product pages, but once a product is published it is locked: it can no longer be edited or deleted in zsazsa. This is deliberate, it guards against accidentally removing something that has already been sent to stakeholders. If a published product genuinely has to be removed, delete its event directly in MISP, which is the system of record. The review and list pages carry a short reminder of this.
+
 **Statistics** pages include pipeline and program views. They aggregate source and outcome trends, RFI and feedback KPIs, product production metrics, PIR coverage checks and MISP source health. There is also a purge action for orphaned analyser log rows. The program statistics page includes a **CTI-CMM maturity signal** panel, which derives observable maturity indicators across five domains (Program, Situation, Analytical production, Operational delivery, and Feedback) from the live program data. These signals map to CTI-CMM levels CTI0 through CTI3 and highlight measurable gaps, giving the team a quick orientation of where the program sits and what to address next.
 
 Community pages provide a local registry of organisations validated against MISP UUIDs and reusable across stakeholder records.

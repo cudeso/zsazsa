@@ -92,6 +92,7 @@ _PRODUCT_SORT_KEYS = {
     # Product id: FIAs and VEAs use a zero-padded "<TYPE>-NNNNN" so a plain
     # string sort orders them numerically.
     "id": lambda p: (getattr(p, "fia_id", "") or getattr(p, "vea_id", "") or ""),
+    "cve": lambda p: (getattr(p, "cve_id", "") or "").upper(),
 }
 
 

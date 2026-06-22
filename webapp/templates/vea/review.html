@@ -45,7 +45,7 @@
       <thead>
         <tr>
           {{ sort_th('VEA', 'id', sort, dir, 'vea.review', state_filter, '120px') }}
-          <th style="width:130px">CVE</th>
+          {{ sort_th('CVE', 'cve', sort, dir, 'vea.review', state_filter, '130px') }}
           {{ sort_th('Title', 'title', sort, dir, 'vea.review', state_filter) }}
           <th>TLP</th>
           <th>Exploitation</th>
@@ -221,6 +221,7 @@
     {% endif %}
   </div>
 </div>
+{% include "_published_delete_note.html" %}
 {% endblock %}
 
 {% block scripts %}
