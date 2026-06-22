@@ -13,7 +13,7 @@ import config as _cfg
 from flask import Blueprint, flash, redirect, render_template, request, url_for, Response
 
 from webapp import audit, misp_store, product_log
-from webapp.utils import md_to_html
+from webapp.utils import md_to_html, sort_products
 from webapp.routes.source_event_utils import (
     lookup_source_event_meta,
     normalise_source_event_rows,
@@ -162,41 +162,20 @@ def _eligible_flash_recipients(fia):
     return [s for s in misp_store.list_stakeholders() if getattr(s, "uuid", None) in allowed]
 
 
-def _latest_notify_status(entity_id: str):
-    row = audit.latest_event("notify", "fia", entity_id=entity_id)
-    if row is None:
-        return None
-    details = (row["details"] or "")
-    lower = details.lower()
-    if "result=ok" in lower or lower.startswith("ok"):
-        tone = "success"
-        label = "Delivered"
-    elif "skip" in lower:
-        tone = "warning"
-        label = "Skipped"
-    elif "fail" in lower:
-        tone = "danger"
-        label = "Failed"
-    else:
-        tone = "secondary"
-        label = "Unknown"
-    return {
-        "tone": tone,
-        "label": label,
-        "timestamp": row["timestamp"],
-        "details": details,
-    }
-
-
 @bp.route("/")
 def review():
     state_filter = (request.args.get("state") or "").strip() or None
+    sort = (request.args.get("sort") or "").strip()
+    direction = (request.args.get("dir") or "asc").strip()
     fias = misp_store.list_fias(review_state=state_filter)
+    sort_products(fias, sort, direction)
     return render_template(
         "flash_intel/review.html",
         fias=fias,
         state_filter=state_filter or "",
         review_states=misp_store.FIA_REVIEW_STATES,
+        sort=sort,
+        dir=direction,
     )
 
 
@@ -243,7 +222,7 @@ def detail(id):
         return "FIA not found", 404
     feedback = misp_store.list_product_feedback(fia.uuid)
     recipients = misp_store.recipient_preview("Flash intel alert", fia.tlp, fia.audience)
-    notify_status = _latest_notify_status(id)
+    notify_status = audit.latest_notify_status("fia", id)
     return render_template(
         "flash_intel/detail.html",
         fia=fia,
@@ -275,18 +254,16 @@ def wizard_edit(id):
             misp_store.update_fia(id, data)
             audit.record("update", "fia", entity_id=id, entity_label=fia.fia_id)
             if action == "publish":
-                sent_ok = _publish_and_notify(id)
+                ok, detail = _publish_and_notify(id)
                 audit.record(
                     "notify",
                     "fia",
                     entity_id=id,
                     entity_label=fia.fia_id,
-                    details=f"publish notification; result={'ok' if sent_ok else 'failed'}",
+                    details=f"publish notification; result={'ok' if ok else 'failed'}; {detail}",
                 )
-                if sent_ok:
-                    flash(f"{fia.fia_id} published.", "success")
-                else:
-                    flash(f"{fia.fia_id} published, but notification failed.", "warning")
+                flash(f"{fia.fia_id} published.", "success")
+                flash(f"Notifications: {detail}.", "success" if ok else "warning")
             else:
                 flash(f"{fia.fia_id} saved.", "success")
             return redirect(url_for("flash_intel.detail", id=id))
@@ -310,19 +287,17 @@ def approve(id):
         flash("A target audience is required before publishing. Edit the alert and select an audience first.", "warning")
         return redirect(url_for("flash_intel.detail", id=id))
     try:
-        sent_ok = _publish_and_notify(id)
+        ok, detail = _publish_and_notify(id)
         audit.record("publish", "fia", entity_id=id, entity_label=fia.fia_id)
         audit.record(
             "notify",
             "fia",
             entity_id=id,
             entity_label=fia.fia_id,
-            details=f"publish notification; result={'ok' if sent_ok else 'failed'}",
+            details=f"publish notification; result={'ok' if ok else 'failed'}; {detail}",
         )
-        if sent_ok:
-            flash(f"{fia.fia_id} approved and published.", "success")
-        else:
-            flash(f"{fia.fia_id} approved and published, but notification failed.", "warning")
+        flash(f"{fia.fia_id} approved and published.", "success")
+        flash(f"Notifications: {detail}.", "success" if ok else "warning")
     except Exception as exc:
         flash(f"Could not publish FIA: {exc}", "warning")
     return redirect(url_for("flash_intel.detail", id=id))
@@ -377,7 +352,7 @@ def resend(id):
 
         shim = SimpleNamespace(id=id)
         summary = dispatcher.send_flash_intel(shim, fia.fia_id, content, stakeholders)
-        sent_ok = bool(summary.get("sent_types"))
+        ok, detail = dispatcher.delivery_outcome(summary)
         audit.record(
             "notify",
             "fia",
@@ -385,13 +360,10 @@ def resend(id):
             entity_label=fia.fia_id,
             details=(
                 f"resend to stakeholders; recipients={len(stakeholders)}; "
-                f"result={'ok' if sent_ok else 'failed'}"
+                f"result={'ok' if ok else 'failed'}; {detail}"
             ),
         )
-        if sent_ok:
-            flash(f"{fia.fia_id} resent to stakeholders.", "success")
-        else:
-            flash(f"{fia.fia_id} resend failed. Check notification channels/logs.", "warning")
+        flash(f"{fia.fia_id} resend: {detail}.", "success" if ok else "warning")
     except Exception as exc:
         flash(f"Could not resend {fia.fia_id}: {exc}", "warning")
 
@@ -479,22 +451,26 @@ def pdf(id):
 
 
 def _publish_and_notify(uuid):
-    """Publish FIA and send Mattermost/Flowintel alerts (best-effort)."""
+    """Publish the FIA, deliver to message channels and create Flowintel cases.
+
+    Returns (ok, detail): the message-channel outcome for the caller to surface.
+    Flowintel results are flashed here directly, with their own audit entries.
+    """
+    from notifier import dispatcher
+
     misp_store.publish_fia(uuid)
     fia = misp_store.get_fia(uuid)
     if fia is None:
-        return False
+        return False, "the alert could not be reloaded after publishing"
 
     stakeholders = _eligible_flash_recipients(fia)
     content = misp_store.render_fia_markdown(fia, fia.fia_id)
 
-    sent_ok = False
+    ok, detail = False, "delivery error (see the application log)"
     try:
-        from notifier import dispatcher
-
         shim = SimpleNamespace(id=uuid)
         summary = dispatcher.send_flash_intel(shim, fia.fia_id, content, stakeholders)
-        sent_ok = bool(summary.get("sent_types"))
+        ok, detail = dispatcher.delivery_outcome(summary)
     except Exception as exc:
         logger.warning("notify failed for %s: %s", uuid, exc)
 
@@ -509,7 +485,6 @@ def _publish_and_notify(uuid):
         for instance, result in flowintel_client.send_to_eligible_instances(stakeholders, "Flash intel alert", send_fn):
             instance_name = instance.get("name") or instance.get("id")
             if result["ok"]:
-                sent_ok = True
                 audit.record(
                     "notify", "fia", entity_id=uuid, entity_label=fia.fia_id,
                     details=f"Flowintel case {result['case_id']} created on {instance_name}",
@@ -524,4 +499,4 @@ def _publish_and_notify(uuid):
     except Exception as exc:
         logger.warning("flowintel notify failed for %s: %s", uuid, exc)
 
-    return sent_ok
+    return ok, detail

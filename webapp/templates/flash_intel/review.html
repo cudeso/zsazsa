@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sort_header.html" import sort_th %}
 
 {% block title %}Flash intel review | zsazsa CTI{% endblock %}
 {% block page_title %}Flash intel review queue{% endblock %}
@@ -43,10 +44,11 @@
     <table class="table table-hover zsazsa-table mb-0">
       <thead>
         <tr>
-          <th style="width:110px">FIA</th>
-          <th>Title</th>
+          {{ sort_th('FIA', 'id', sort, dir, 'flash_intel.review', state_filter, '110px') }}
+          {{ sort_th('Title', 'title', sort, dir, 'flash_intel.review', state_filter) }}
           <th>TLP</th>
-          <th>State</th>
+          {{ sort_th('State', 'state', sort, dir, 'flash_intel.review', state_filter) }}
+          {{ sort_th('Published', 'date', sort, dir, 'flash_intel.review', state_filter) }}
           <th>Author</th>
           <th class="text-end">Actions</th>
         </tr>
@@ -77,6 +79,7 @@
             {% elif f.review_state == 'pending-review' %}<span class="badge bg-info text-dark">pending review</span>
             {% else %}<span class="badge bg-secondary">{{ f.review_state }}</span>{% endif %}
           </td>
+          <td style="white-space:nowrap;">{{ f.published_at.strftime('%Y-%m-%d') if f.published_at else '-' }}</td>
           <td>{{ f.author or '-' }}</td>
           <td class="text-end" style="white-space:nowrap;">
             <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
@@ -132,7 +135,7 @@
 
         {# ── Expandable preview row ── #}
         <tr id="fia-preview-{{ f.uuid }}" style="display:none;">
-          <td colspan="6" class="p-0">
+          <td colspan="7" class="p-0">
             <div style="background:var(--surface-muted);border-top:1px solid var(--border-light);padding:1rem 1.25rem;">
 
               {# Header strip #}

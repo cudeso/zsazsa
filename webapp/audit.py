@@ -124,3 +124,26 @@ def latest_event(action, entity_type, entity_id=None):
             args.append(entity_id)
         query.append("ORDER BY id DESC LIMIT 1")
         return db.execute(" ".join(query), tuple(args)).fetchone()
+
+
+def latest_notify_status(entity_type, entity_id):
+    """Summarise the most recent 'notify' audit event for an entity as a badge.
+
+    Shared by the product detail pages (briefing, flash intel, VEA), which all
+    record delivery results in the same `result=ok|failed` / skipped form.
+    Returns {"tone", "label", "timestamp", "details"} or None.
+    """
+    row = latest_event("notify", entity_type, entity_id=entity_id)
+    if row is None:
+        return None
+    details = row["details"] or ""
+    lower = details.lower()
+    if "result=ok" in lower or lower.startswith("ok"):
+        tone, label = "success", "Delivered"
+    elif "skip" in lower:
+        tone, label = "warning", "Skipped"
+    elif "fail" in lower:
+        tone, label = "danger", "Failed"
+    else:
+        tone, label = "secondary", "Unknown"
+    return {"tone": tone, "label": label, "timestamp": row["timestamp"], "details": details}

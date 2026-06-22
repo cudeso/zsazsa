@@ -79,17 +79,53 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(summary["skipped_types"], ["flowintel"])
         self.assertEqual(summary["attempted_types"], ["flowintel"])
 
-    def test_failed_sender_reported_as_skipped(self):
+    def test_failed_sender_reported_as_failed_not_skipped(self):
         stakeholder = SimpleNamespace(name="Acme", notification_channels=["mm1"])
         summary = dispatcher._dispatch([stakeholder], {"mattermost": lambda ids: False}, "rfi", "RFI-001")
         self.assertEqual(summary["sent_types"], [])
-        self.assertEqual(summary["skipped_types"], ["mattermost"])
+        self.assertEqual(summary["failed_types"], ["mattermost"])
+        self.assertEqual(summary["skipped_types"], [])
+
+    def test_raising_sender_counts_as_failed(self):
+        def boom(ids):
+            raise RuntimeError("smtp down")
+
+        stakeholder = SimpleNamespace(name="Acme", notification_channels=["mm1"])
+        summary = dispatcher._dispatch([stakeholder], {"mattermost": boom}, "rfi", "RFI-001")
+        self.assertEqual(summary["failed_types"], ["mattermost"])
 
     def test_no_channels_reports_nothing_attempted(self):
         stakeholder = SimpleNamespace(name="Acme", notification_channels=[])
         summary = dispatcher._dispatch([stakeholder], {"mattermost": lambda ids: True}, "rfi", "RFI-001")
         self.assertEqual(summary["attempted_types"], [])
         self.assertEqual(summary["sent_types"], [])
+
+
+class DeliveryOutcome(unittest.TestCase):
+    def test_all_sent_is_ok(self):
+        ok, msg = dispatcher.delivery_outcome(
+            {"recipients": 2, "sent_types": ["mattermost", "email"], "failed_types": []}
+        )
+        self.assertTrue(ok)
+        self.assertIn("sent via email, mattermost", msg)
+
+    def test_partial_is_not_ok_and_names_failure(self):
+        ok, msg = dispatcher.delivery_outcome(
+            {"recipients": 2, "sent_types": ["email"], "failed_types": ["mattermost"]}
+        )
+        self.assertFalse(ok)
+        self.assertIn("sent via email", msg)
+        self.assertIn("could not reach mattermost", msg)
+
+    def test_no_recipients(self):
+        ok, msg = dispatcher.delivery_outcome({"recipients": 0})
+        self.assertFalse(ok)
+        self.assertIn("no eligible recipients", msg)
+
+    def test_recipients_without_channels(self):
+        ok, msg = dispatcher.delivery_outcome({"recipients": 3, "sent_types": [], "failed_types": []})
+        self.assertFalse(ok)
+        self.assertIn("no message channels", msg)
 
 
 if __name__ == "__main__":

@@ -68,23 +68,56 @@ def _dispatch(stakeholders: list, senders: dict, entity_label: str, entity_id: s
     """
     channels = _channels_by_type(stakeholders)
     summary = describe_delivery(stakeholders)
-    summary.update({"attempted_types": sorted(channels.keys()), "sent_types": [], "skipped_types": []})
+    summary.update({
+        "attempted_types": sorted(channels.keys()),
+        "sent_types": [], "failed_types": [], "skipped_types": [],
+    })
 
     for ctype, ids in channels.items():
         sender = senders.get(ctype)
         if sender is None:
+            # No sender on this path (e.g. flowintel, handled by the publish flows).
             summary["skipped_types"].append(ctype)
             logger.info("No sender for channel type %s (%s %s)", ctype, entity_label, entity_id)
             continue
-        if sender(sorted(ids)):
+        try:
+            delivered = sender(sorted(ids))
+        except Exception as exc:
+            delivered = False
+            logger.warning("Delivery to %s raised for %s %s: %s", ctype, entity_label, entity_id, exc)
+        if delivered:
             summary["sent_types"].append(ctype)
         else:
-            summary["skipped_types"].append(ctype)
+            summary["failed_types"].append(ctype)
+            logger.warning("Delivery to %s failed for %s %s (see channel logs above)",
+                           ctype, entity_label, entity_id)
 
     if not summary["attempted_types"]:
         logger.info("No notification channels configured for %s %s recipients", entity_label, entity_id)
 
     return summary
+
+
+def delivery_outcome(summary: dict) -> tuple[bool, str]:
+    """Turn a dispatch summary into (ok, message) for UI flashes and audit detail.
+
+    `ok` is True only when at least one message channel accepted the product and
+    none failed. Flowintel is delivered outside this dispatch and reported
+    separately, so it never appears here. The message names the channels reached
+    and the ones that could not be, pointing to the log for the underlying cause.
+    """
+    sent = summary.get("sent_types") or []
+    failed = summary.get("failed_types") or []
+    if not summary.get("recipients"):
+        return False, "no eligible recipients (check the product's audience and TLP)"
+    if not sent and not failed:
+        return False, "the recipients have no message channels configured"
+    parts = []
+    if sent:
+        parts.append("sent via " + ", ".join(sorted(sent)))
+    if failed:
+        parts.append("could not reach " + ", ".join(sorted(failed)) + " (see the application log)")
+    return (bool(sent) and not failed), "; ".join(parts)
 
 
 def _send_preview(entity, preview_url: str, markdown: str, stakeholders: list,

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sort_header.html" import sort_th %}
 
 {% block title %}Vulnerability advisories | zsazsa CTI{% endblock %}
 {% block page_title %}Vulnerability advisories{% endblock %}
@@ -43,12 +44,13 @@
     <table class="table table-hover zsazsa-table mb-0">
       <thead>
         <tr>
-          <th style="width:120px">VEA</th>
+          {{ sort_th('VEA', 'id', sort, dir, 'vea.review', state_filter, '120px') }}
           <th style="width:130px">CVE</th>
-          <th>Title</th>
+          {{ sort_th('Title', 'title', sort, dir, 'vea.review', state_filter) }}
           <th>TLP</th>
           <th>Exploitation</th>
-          <th>State</th>
+          {{ sort_th('State', 'state', sort, dir, 'vea.review', state_filter) }}
+          {{ sort_th('Published', 'date', sort, dir, 'vea.review', state_filter) }}
           <th class="text-end">Actions</th>
         </tr>
       </thead>
@@ -88,6 +90,7 @@
             {% elif v.review_state == 'pending-review' %}<span class="badge bg-info text-dark">pending review</span>
             {% else %}<span class="badge bg-secondary">{{ v.review_state }}</span>{% endif %}
           </td>
+          <td style="white-space:nowrap;">{{ v.published_at.strftime('%Y-%m-%d') if v.published_at else '-' }}</td>
           <td class="text-end" style="white-space:nowrap;">
             <div class="d-inline-flex align-items-center gap-1 justify-content-end" style="white-space:nowrap;">
               <div class="btn-group btn-group-sm" role="group" aria-label="VEA quick actions">
@@ -137,7 +140,7 @@
 
         {# ── Expandable preview row ── #}
         <tr id="vea-preview-{{ v.uuid }}" style="display:none;">
-          <td colspan="7" class="p-0">
+          <td colspan="8" class="p-0">
             <div style="background:var(--surface-muted);border-top:1px solid var(--border-light);padding:1rem 1.25rem;">
 
               <div class="d-flex align-items-center gap-3 mb-3">

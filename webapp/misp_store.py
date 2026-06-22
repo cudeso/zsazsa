@@ -605,6 +605,28 @@ def _parse_dt(s):
         return None
 
 
+def _published_at(event):
+    """When the MISP event was last published, or None if it never was.
+
+    Normalised to a naive UTC datetime (PyMISP returns it timezone-aware) so the
+    values sort consistently against each other and against a plain fallback.
+    """
+    ts = getattr(event, "publish_timestamp", None)
+    if isinstance(ts, datetime):
+        dt = ts
+    else:
+        try:
+            epoch = int(ts)
+        except (TypeError, ValueError):
+            return None
+        if epoch <= 0:
+            return None
+        dt = datetime.utcfromtimestamp(epoch)
+    if dt.year <= 1971:
+        return None
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
 def _check(result, label="MISP"):
     if isinstance(result, dict) and "errors" in result:
         raise RuntimeError(f"{label}: {result['errors']}")
@@ -2905,6 +2927,7 @@ def _fia_ns(event):
         creator=g("creator"),
         approved_by=g("approved-by"),
         published=bool(getattr(event, "published", False)),
+        published_at=_published_at(event),
         created_at=_parse_dt(event.date.isoformat() if event.date else None),
     )
 
@@ -3543,6 +3566,7 @@ def _vea_ns(event):
         creator=g("creator"),
         approved_by=g("approved-by"),
         published=bool(getattr(event, "published", False)),
+        published_at=_published_at(event),
         created_at=_parse_dt(event.date.isoformat() if event.date else None),
     )
 
@@ -3950,6 +3974,7 @@ def _briefing_ns(event):
         approved_by=g("approved-by"),
         stories=stories,
         published=bool(getattr(event, "published", False)),
+        published_at=_published_at(event),
         created_at=event.timestamp if getattr(event, "timestamp", None) else _parse_dt(event.date.isoformat() if event.date else None),
     )
 

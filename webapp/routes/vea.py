@@ -16,7 +16,7 @@ from webapp.routes.source_event_utils import (
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d{4,}\b', re.IGNORECASE)
 
 from webapp import audit, collection_cache, misp_store, product_log
-from webapp.utils import md_to_html
+from webapp.utils import md_to_html, sort_products
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("vea", __name__, url_prefix="/products/vea")
@@ -105,32 +105,6 @@ def _eligible_vea_recipients(vea):
     return [s for s in misp_store.list_stakeholders() if getattr(s, "uuid", None) in allowed]
 
 
-def _latest_notify_status(entity_id: str):
-    row = audit.latest_event("notify", "vea", entity_id=entity_id)
-    if row is None:
-        return None
-    details = (row["details"] or "")
-    lower = details.lower()
-    if "result=ok" in lower or lower.startswith("ok"):
-        tone = "success"
-        label = "Delivered"
-    elif "skip" in lower:
-        tone = "warning"
-        label = "Skipped"
-    elif "fail" in lower:
-        tone = "danger"
-        label = "Failed"
-    else:
-        tone = "secondary"
-        label = "Unknown"
-    return {
-        "tone": tone,
-        "label": label,
-        "timestamp": row["timestamp"],
-        "details": details,
-    }
-
-
 def _source_event_uuids(vea) -> list[str]:
     uuids = list(getattr(vea, "source_event_uuids", []) or [])
     if not uuids and getattr(vea, "source_event_uuid", ""):
@@ -172,21 +146,26 @@ def _source_event_references(vea):
 
 
 def _publish_and_notify(uuid):
+    """Publish the VEA, deliver to message channels and create Flowintel cases.
+
+    Returns (ok, detail): the message-channel outcome for the caller to surface.
+    Flowintel results are flashed here directly, with their own audit entries.
+    """
+    from notifier import dispatcher
+
     misp_store.publish_vea(uuid)
     vea = misp_store.get_vea(uuid)
     if vea is None:
-        return False
+        return False, "the advisory could not be reloaded after publishing"
 
     stakeholders = _eligible_vea_recipients(vea)
     preview_url = url_for("vea.detail", id=uuid, _external=True)
     markdown = misp_store.render_vea_markdown(vea, preview_url=preview_url)
 
-    sent_ok = False
+    ok, detail = False, "delivery error (see the application log)"
     try:
-        from notifier import dispatcher
-
         summary = dispatcher.send_vea(vea, markdown, stakeholders)
-        sent_ok = bool(summary.get("sent_types"))
+        ok, detail = dispatcher.delivery_outcome(summary)
     except Exception as exc:
         logger.warning("notify failed for VEA %s: %s", uuid, exc)
 
@@ -201,7 +180,6 @@ def _publish_and_notify(uuid):
         ):
             instance_name = instance.get("name") or instance.get("id")
             if result["ok"]:
-                sent_ok = True
                 audit.record(
                     "notify", "vea", entity_id=uuid, entity_label=vea.vea_id,
                     details=f"Flowintel case {result['case_id']} created on {instance_name}",
@@ -216,18 +194,23 @@ def _publish_and_notify(uuid):
     except Exception as exc:
         logger.warning("flowintel notify failed for VEA %s: %s", uuid, exc)
 
-    return sent_ok
+    return ok, detail
 
 
 @bp.route("/")
 def review():
     state_filter = (request.args.get("state") or "").strip() or None
+    sort = (request.args.get("sort") or "").strip()
+    direction = (request.args.get("dir") or "asc").strip()
     veas = misp_store.list_veas(review_state=state_filter)
+    sort_products(veas, sort, direction)
     return render_template(
         "vea/review.html",
         veas=veas,
         state_filter=state_filter or "",
         review_states=misp_store.VEA_REVIEW_STATES,
+        sort=sort,
+        dir=direction,
     )
 
 
@@ -279,7 +262,7 @@ def detail(id):
         return "VEA not found", 404
     feedback = misp_store.list_product_feedback(vea.uuid)
     recipients = misp_store.recipient_preview("Vulnerability advisory", vea.tlp, vea.audience)
-    notify_status = _latest_notify_status(id)
+    notify_status = audit.latest_notify_status("vea", id)
     linked_pir = None
     if getattr(vea, "linked_pir_uuid", ""):
         try:
@@ -320,18 +303,16 @@ def wizard_edit(id):
             misp_store.update_vea(id, data)
             audit.record("update", "vea", entity_id=id, entity_label=vea.vea_id)
             if action == "publish":
-                sent_ok = _publish_and_notify(id)
+                ok, detail = _publish_and_notify(id)
                 audit.record(
                     "notify",
                     "vea",
                     entity_id=id,
                     entity_label=vea.vea_id,
-                    details=f"publish notification; result={'ok' if sent_ok else 'failed'}",
+                    details=f"publish notification; result={'ok' if ok else 'failed'}; {detail}",
                 )
-                if sent_ok:
-                    flash(f"{vea.vea_id} published.", "success")
-                else:
-                    flash(f"{vea.vea_id} published, but notification failed.", "warning")
+                flash(f"{vea.vea_id} published.", "success")
+                flash(f"Notifications: {detail}.", "success" if ok else "warning")
             else:
                 flash(f"{vea.vea_id} saved.", "success")
             return redirect(url_for("vea.detail", id=id))
@@ -453,19 +434,17 @@ def approve(id):
         flash("A target audience is required before publishing. Edit the advisory and select an audience first.", "warning")
         return redirect(url_for("vea.detail", id=id))
     try:
-        sent_ok = _publish_and_notify(id)
+        ok, detail = _publish_and_notify(id)
         audit.record("publish", "vea", entity_id=id, entity_label=vea.vea_id)
         audit.record(
             "notify",
             "vea",
             entity_id=id,
             entity_label=vea.vea_id,
-            details=f"publish notification; result={'ok' if sent_ok else 'failed'}",
+            details=f"publish notification; result={'ok' if ok else 'failed'}; {detail}",
         )
-        if sent_ok:
-            flash(f"{vea.vea_id} approved and published.", "success")
-        else:
-            flash(f"{vea.vea_id} approved and published, but notification failed.", "warning")
+        flash(f"{vea.vea_id} approved and published.", "success")
+        flash(f"Notifications: {detail}.", "success" if ok else "warning")
     except Exception as exc:
         flash(f"Could not publish VEA: {exc}", "warning")
     return redirect(url_for("vea.detail", id=id))
@@ -520,7 +499,7 @@ def resend(id):
         from notifier import dispatcher
 
         summary = dispatcher.send_vea(vea, markdown, stakeholders)
-        sent_ok = bool(summary.get("sent_types"))
+        ok, detail = dispatcher.delivery_outcome(summary)
         audit.record(
             "notify",
             "vea",
@@ -528,13 +507,10 @@ def resend(id):
             entity_label=vea.vea_id,
             details=(
                 f"resend to stakeholders; recipients={len(stakeholders)}; "
-                f"result={'ok' if sent_ok else 'failed'}"
+                f"result={'ok' if ok else 'failed'}; {detail}"
             ),
         )
-        if sent_ok:
-            flash(f"{vea.vea_id} resent to stakeholders.", "success")
-        else:
-            flash(f"{vea.vea_id} resend failed. Check notification channels/logs.", "warning")
+        flash(f"{vea.vea_id} resend: {detail}.", "success" if ok else "warning")
     except Exception as exc:
         flash(f"Could not resend {vea.vea_id}: {exc}", "warning")
 

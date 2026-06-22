@@ -1,6 +1,7 @@
 """Shared request-parsing and config-normalization utilities."""
 
 import ast
+from datetime import datetime
 
 from flask import jsonify, request
 from markdown_it import MarkdownIt
@@ -81,6 +82,26 @@ def normalize_notification_channels(
         item.setdefault("verify_tls", True)
         normalized.append(item)
     return normalized
+
+
+_PRODUCT_SORT_KEYS = {
+    "title": lambda p: (getattr(p, "title", "") or "").lower(),
+    "state": lambda p: (getattr(p, "review_state", "") or ""),
+    "date": lambda p: getattr(p, "published_at", None) or datetime.min,
+    "bdate": lambda p: (getattr(p, "date", "") or ""),
+    # Product id: FIAs and VEAs use a zero-padded "<TYPE>-NNNNN" so a plain
+    # string sort orders them numerically.
+    "id": lambda p: (getattr(p, "fia_id", "") or getattr(p, "vea_id", "") or ""),
+}
+
+
+def sort_products(items: list, sort: str, direction: str) -> list:
+    """Sort a product list in place by 'title', 'state', 'date' (published) or
+    'bdate' (briefing date). Unknown keys leave the existing order untouched."""
+    key = _PRODUCT_SORT_KEYS.get(sort)
+    if key:
+        items.sort(key=key, reverse=(direction == "desc"))
+    return items
 
 
 def product_detail_url(product_type: str, entity_id: str, fallback_url: str = "") -> str:

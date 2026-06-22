@@ -18,7 +18,7 @@ import weasyprint
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 from webapp import audit, collection_cache, misp_store, product_log
 from webapp.collection_cache import AI_SUMMARY_PREFIX
-from webapp.utils import md_to_html
+from webapp.utils import md_to_html, sort_products
 from webapp.routes.source_event_utils import parse_source_tokens, source_id_from_event_ref
 
 logger = logging.getLogger(__name__)
@@ -213,45 +213,38 @@ def _parse_stories_from_form(form):
     return stories
 
 
-def _notify_briefing_stakeholders(briefing, preview_url: str = "") -> tuple[int, bool]:
+def _notify_briefing_stakeholders(briefing, preview_url: str = "") -> tuple[int, bool, str]:
+    """Deliver the briefing to subscribed stakeholders.
+
+    Returns (recipient_count, ok, detail) where detail describes which channels
+    were reached and which could not be, for the caller's flash and audit log.
+    """
     from notifier import dispatcher
 
     stakeholders = misp_store.stakeholders_subscribed_to("Daily threat briefing")
     markdown = misp_store.render_briefing_markdown(briefing, preview_url=preview_url)
-    result = dispatcher.send_daily_briefing(briefing, markdown, stakeholders)
-    return len(stakeholders), bool(result["sent_types"])
-
-
-def _latest_notify_status(entity_id: str):
-    row = audit.latest_event("notify", "daily-briefing", entity_id=entity_id)
-    if row is None:
-        return None
-    details = (row["details"] or "")
-    lower = details.lower()
-    if "result=ok" in lower or lower.startswith("ok"):
-        tone = "success"
-        label = "Delivered"
-    elif "skip" in lower:
-        tone = "warning"
-        label = "Skipped"
-    elif "fail" in lower:
-        tone = "danger"
-        label = "Failed"
-    else:
-        tone = "secondary"
-        label = "Unknown"
-    return {
-        "tone": tone,
-        "label": label,
-        "timestamp": row["timestamp"],
-        "details": details,
-    }
+    summary = dispatcher.send_daily_briefing(briefing, markdown, stakeholders)
+    ok, detail = dispatcher.delivery_outcome(summary)
+    return len(stakeholders), ok, detail
 
 
 @bp.route("/")
 def list_briefings():
+    state_filter = (request.args.get("state") or "").strip() or None
+    sort = (request.args.get("sort") or "").strip()
+    direction = (request.args.get("dir") or "asc").strip()
     briefings = misp_store.list_briefings()
-    return render_template("daily_briefing/list.html", briefings=briefings)
+    if state_filter:
+        briefings = [b for b in briefings if b.review_state == state_filter]
+    sort_products(briefings, sort, direction)
+    return render_template(
+        "daily_briefing/list.html",
+        briefings=briefings,
+        state_filter=state_filter or "",
+        review_states=misp_store.BRIEFING_REVIEW_STATES,
+        sort=sort,
+        dir=direction,
+    )
 
 
 @bp.route("/triage")
@@ -359,7 +352,7 @@ def detail(id):
         return "Briefing not found", 404
     feedback = misp_store.list_product_feedback(briefing.uuid)
     recipients = misp_store.stakeholders_subscribed_to("Daily threat briefing")
-    notify_status = _latest_notify_status(id)
+    notify_status = audit.latest_notify_status("daily-briefing", id)
 
     # Enrich story source-event references with cache metadata (date, org, title)
     source_uuids = [
@@ -565,10 +558,10 @@ def publish(id):
         misp_store.publish_briefing(id)
         audit.record("publish", "daily-briefing", entity_id=id,
                      entity_label=f"Daily briefing {briefing.date}")
-        notification_sent = True
+        ok, detail = False, "delivery error (see the application log)"
         try:
             preview_url = url_for("daily_briefing.detail", id=id, _external=True)
-            recipient_count, notification_sent = _notify_briefing_stakeholders(briefing, preview_url=preview_url)
+            recipient_count, ok, detail = _notify_briefing_stakeholders(briefing, preview_url=preview_url)
             audit.record(
                 "notify",
                 "daily-briefing",
@@ -576,12 +569,11 @@ def publish(id):
                 entity_label=f"Daily briefing {briefing.date}",
                 details=(
                     f"publish full briefing to stakeholders; recipients={recipient_count}; "
-                    f"result={'ok' if notification_sent else 'failed'}"
+                    f"result={'ok' if ok else 'failed'}; {detail}"
                 ),
             )
         except Exception as exc:
             logger.warning("notify failed for briefing %s: %s", id, exc)
-            notification_sent = False
             audit.record(
                 "notify",
                 "daily-briefing",
@@ -589,13 +581,8 @@ def publish(id):
                 entity_label=f"Daily briefing {briefing.date}",
                 details=f"publish full briefing to stakeholders; result=failed; error={exc}",
             )
-        if notification_sent:
-            flash(f"Daily briefing {briefing.date} published.", "success")
-        else:
-            flash(
-                f"Daily briefing {briefing.date} published, but notification failed. Check notification channel settings/logs.",
-                "warning",
-            )
+        flash(f"Daily briefing {briefing.date} published.", "success")
+        flash(f"Notifications: {detail}.", "success" if ok else "warning")
     except Exception as exc:
         flash(f"Could not publish briefing: {exc}", "warning")
     return redirect(url_for("daily_briefing.detail", id=id))
@@ -615,7 +602,7 @@ def resend(id):
         return redirect(redirect_target)
     try:
         preview_url = url_for("daily_briefing.detail", id=id, _external=True)
-        recipient_count, sent_ok = _notify_briefing_stakeholders(briefing, preview_url=preview_url)
+        recipient_count, ok, detail = _notify_briefing_stakeholders(briefing, preview_url=preview_url)
         audit.record(
             "notify",
             "daily-briefing",
@@ -623,13 +610,10 @@ def resend(id):
             entity_label=f"Daily briefing {briefing.date}",
             details=(
                 f"resend full briefing to stakeholders; recipients={recipient_count}; "
-                f"result={'ok' if sent_ok else 'failed'}"
+                f"result={'ok' if ok else 'failed'}; {detail}"
             ),
         )
-        if sent_ok:
-            flash("Briefing resent to stakeholders.", "success")
-        else:
-            flash("Briefing resend failed. Check notification channel settings/logs.", "warning")
+        flash(f"Briefing resend: {detail}.", "success" if ok else "warning")
     except Exception as exc:
         logger.warning("resend briefing %s failed: %s", id, exc)
         flash(f"Could not resend briefing: {exc}", "warning")

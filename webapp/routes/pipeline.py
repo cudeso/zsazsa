@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 bp = Blueprint("pipeline", __name__)
 
 
-def _pipeline_stats():
+def _pipeline_stats(source_counts):
     if not os.path.exists(config.DB_FILE):
         return None
     try:
@@ -25,7 +25,7 @@ def _pipeline_stats():
 
         # Live per-source counts straight from MISP, so this reflects the actual
         # tagged events rather than the analyser's processing log.
-        by_source = misp_store.data_collection_source_counts()
+        by_source = source_counts
 
         by_outcome = [
             dict(r) for r in cur.execute(
@@ -225,10 +225,10 @@ def _imap_mailbox_status():
     return rows
 
 
-def _newsletter_source_health():
+def _newsletter_source_health(source_counts):
     """One row per configured newsletter collection source, with how many events
     currently carry its data-collection-source tag (live from MISP)."""
-    counts = {row["source_feed"]: row["n"] for row in misp_store.data_collection_source_counts()}
+    counts = {row["source_feed"]: row["n"] for row in source_counts}
     rows = []
     for mailbox in getattr(config, "IMAP_SOURCES", []) or []:
         for src in mailbox.get("sources") or []:
@@ -245,10 +245,12 @@ def _newsletter_source_health():
 
 @bp.route("/pipeline")
 def index():
-    pipeline = _pipeline_stats()
+    # One MISP tag-statistics read, shared by the throughput and email-source panels.
+    source_counts = misp_store.data_collection_source_counts()
+    pipeline = _pipeline_stats(source_counts)
     recent_runs = get_recent_pipeline_runs(20)
     imap_mailboxes = _imap_mailbox_status()
-    newsletter_sources = _newsletter_source_health()
+    newsletter_sources = _newsletter_source_health(source_counts)
     scraper_misp = misp_store.test_scraper_misp()
     webapp_misp = misp_store.test_webapp_misp()
     source_health = []

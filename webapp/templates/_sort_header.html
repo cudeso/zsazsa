@@ -1,0 +1,13 @@
+{# Sortable table header cell. Links back to `endpoint` toggling the direction,
+   preserving the review-state filter. `sort`/`dir` are the active sort. #}
+{% macro sort_th(label, key, sort, dir, endpoint, state_filter="", width="") %}
+{% set next_dir = 'desc' if (sort == key and dir == 'asc') else 'asc' %}
+<th{% if width %} style="width:{{ width }}"{% endif %}>
+  <a href="{{ url_for(endpoint, sort=key, dir=next_dir, state=(state_filter or none)) }}"
+     class="text-decoration-none text-reset">
+    {{ label }}
+    {% if sort == key %}<i class="fas fa-caret-{{ 'up' if dir == 'asc' else 'down' }} ms-1"></i>
+    {% else %}<i class="fas fa-sort ms-1" style="opacity:.35;"></i>{% endif %}
+  </a>
+</th>
+{% endmacro %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sort_header.html" import sort_th %}
 
 {% block title %}Daily briefings | zsazsa CTI{% endblock %}
 {% block page_title %}Daily threat briefings{% endblock %}
@@ -10,18 +11,41 @@
 {% endblock %}
 
 {% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Review state</label>
+        <select name="state" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All states</option>
+          {% for s in review_states %}
+          <option value="{{ s }}" {{ 'selected' if state_filter == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if state_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('daily_briefing.list_briefings') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ briefings | length }} briefing{{ 's' if briefings|length != 1 }}</div>
+    </form>
+  </div>
+</div>
+
 <div class="card content-card">
   <div class="card-body p-0">
     {% if briefings %}
     <table class="table table-hover zsazsa-table mb-0">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Title</th>
+          {{ sort_th('Date', 'bdate', sort, dir, 'daily_briefing.list_briefings', state_filter) }}
+          {{ sort_th('Title', 'title', sort, dir, 'daily_briefing.list_briefings', state_filter) }}
           <th>Stories</th>
           <th>Author</th>
           <th>TLP</th>
-          <th>State</th>
+          {{ sort_th('State', 'state', sort, dir, 'daily_briefing.list_briefings', state_filter) }}
+          {{ sort_th('Published', 'date', sort, dir, 'daily_briefing.list_briefings', state_filter) }}
           <th class="text-end">Actions</th>
         </tr>
       </thead>
@@ -42,6 +66,7 @@
             {% if b.review_state == 'published' %}<span class="badge bg-success">published</span>
             {% else %}<span class="badge bg-secondary">draft</span>{% endif %}
           </td>
+          <td style="white-space:nowrap;">{{ b.published_at.strftime('%Y-%m-%d') if b.published_at else '-' }}</td>
           <td class="text-end" style="white-space:nowrap;">
             <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
               <div class="btn-group btn-group-sm" role="group" aria-label="Briefing quick actions">
@@ -95,7 +120,7 @@
         </tr>
         {# ── Inline preview row ── #}
         <tr id="briefing-preview-{{ b.uuid }}" style="display:none;">
-          <td colspan="7" class="p-0">
+          <td colspan="8" class="p-0">
             <div class="px-4 py-3" style="background:var(--surface-muted);border-top:1px solid var(--border-light);">
               <div class="row g-3">
                 <div class="col-md-9">

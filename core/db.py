@@ -205,24 +205,3 @@ def get_recent_pipeline_runs(limit: int = 20) -> list[dict]:
         return []
 
 
-def event_counts_by_source(limit: int | None = None) -> list[dict]:
-    """Return processed-event counts per source feed, most frequent first.
-
-    Each row is {"source_feed": str, "n": int}. Shared by the pipeline
-    throughput page and the dashboard so both read the same figures.
-    """
-    sql = (
-        "SELECT source_feed, COUNT(*) AS n FROM event_log"
-        " GROUP BY source_feed ORDER BY n DESC"
-    )
-    params = ()
-    if limit:
-        sql += " LIMIT ?"
-        params = (limit,)
-    try:
-        with _connect() as conn:
-            conn.row_factory = sqlite3.Row
-            return [dict(r) for r in conn.execute(sql, params).fetchall()]
-    except sqlite3.Error as e:
-        logger.error("DB read failed for event_counts_by_source: %s", e)
-        return []

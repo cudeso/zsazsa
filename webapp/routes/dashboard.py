@@ -11,7 +11,7 @@ from flask import Blueprint, jsonify, render_template
 
 import config
 from analyser.reader import save_last_run
-from core.db import log_pipeline_run_start, log_pipeline_run_end, event_counts_by_source
+from core.db import log_pipeline_run_start, log_pipeline_run_end
 from webapp import analyser_pipeline, audit
 from webapp import misp_store
 from webapp.utils import json_body as _json_object
@@ -262,7 +262,8 @@ def index():
         misp_store.product_counts_by_threat_actor_type(),
         key=lambda r: r["total"], reverse=True,
     )[:8]
-    throughput_by_source = event_counts_by_source(limit=8)
+    # Live per-source counts from MISP (the authoritative store), not the local log.
+    throughput_by_source = misp_store.data_collection_source_counts()[:8]
 
     return render_template(
         "dashboard.html",
