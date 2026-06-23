@@ -549,7 +549,7 @@ The `/config/sources/` page is where every source the analyser and the data coll
 
 ## MISP scraper connection
 
-The "MISP scraper (collection pipeline)" card holds the connection to the misp-scraper instance: its URL, API key, whether to verify TLS, and the maximum number of events to pull per run (`MISP_SCRAPER_LIMIT`). This source is always active and always appears on the Data collection page. The "Test connection" button checks the URL and API key against the MISP server, and "Pull estimate" reports how many events currently match the scraper marker tag, which is itself configured on the Context elements tab of `/config`. The "Show query" link displays the underlying `misp.search()` call for reference.
+The "MISP scraper (collection pipeline)" card holds the connection to the misp-scraper instance: its URL, API key, whether to verify TLS, the maximum number of events to pull per run (`MISP_SCRAPER_LIMIT`), and how many days back to pull (`MISP_SCRAPER_SINCE_DAYS`). This source is always active and always appears on the Data collection page. The "Test connection" button checks the URL and API key against the MISP server, and "Pull estimate" reports how many events currently match the scraper marker tag, which is itself configured on the Context elements tab of `/config`. The "Show query" link displays the underlying `misp.search()` call for reference.
 
 | Field | Description |
 |---|---|
@@ -557,6 +557,9 @@ The "MISP scraper (collection pipeline)" card holds the connection to the misp-s
 | API key | API key for the scraper MISP instance (`MISP_KEY`) |
 | Verify TLS | Whether to verify the scraper MISP server's TLS certificate (`MISP_VERIFYCERT`) |
 | Max events | Maximum number of events pulled per run (`MISP_SCRAPER_LIMIT`) |
+| Events from last (days) | Only pull scraper events from the last N days (`MISP_SCRAPER_SINCE_DAYS`); 0 disables the date window |
+
+**Why both "Max events" and "Events from last (days)" matter.** The cache worker fetches up to `MISP_SCRAPER_LIMIT` marker-tagged events in a single page, so the data collection view never holds more than that many scraper events. Without a date window, once the scraper accumulates more tagged events than the limit, the surplus is dropped from the cache and may include the most recent events, so newly scraped items stop appearing on the Data collection page even though the refresh log reports a successful run (e.g. `scraper done - 800 events` every cycle, exactly at the limit). The tell-tale sign is a refresh count that sits permanently at the configured limit. `MISP_SCRAPER_SINCE_DAYS` avoids this by restricting the pull to a recent window, so growth past the limit drops the oldest events rather than hiding the newest; keep the window small enough that the tagged events within it stay under `MISP_SCRAPER_LIMIT`. Compare "Pull estimate" (or filter the scraper MISP by `SCRAPER_MARKER_TAG`) against the limit to size both settings. Setting the window to 0 restores the old pull-by-limit behaviour.
 
 ## Additional MISP servers
 

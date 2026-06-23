@@ -29,6 +29,7 @@ def index():
         "MISP_KEY": getattr(_config, "MISP_KEY", ""),
         "MISP_VERIFYCERT": getattr(_config, "MISP_VERIFYCERT", True),
         "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+        "MISP_SCRAPER_SINCE_DAYS": getattr(_config, "MISP_SCRAPER_SINCE_DAYS", 30),
         "MISP_SERVERS": misp_servers,
         "SCRAPER_MARKER_TAG": getattr(_config, "SCRAPER_MARKER_TAG", ""),
         "SCRAPER_REDIS_HOST": getattr(_config, "SCRAPER_REDIS_HOST", "127.0.0.1"),

@@ -23,6 +23,9 @@
 {% block page_title %}Data collection{% endblock %}
 
 {% block topbar_actions %}
+<span id="selected-count-badge" class="badge text-bg-secondary d-none">
+  <span id="selected-count">0</span> selected
+</span>
 <div class="dropdown">
   <button class="btn btn-sm btn-primary dropdown-toggle disabled" type="button" id="create-product-btn"
           data-bs-toggle="dropdown" aria-expanded="false" disabled>
@@ -465,6 +468,11 @@
                 data-date-filter="48h" data-date-label="Last 48h">Last 48h</button>
         <button class="btn btn-sm btn-outline-secondary date-filter-btn text-start"
                 data-date-filter="7d" data-date-label="Last 7d">Last 7d</button>
+        <hr class="my-1">
+        <button class="btn btn-sm btn-outline-secondary date-filter-btn text-start"
+                data-date-filter="older-48h" data-date-label="Older than 48h">Older than 48h</button>
+        <button class="btn btn-sm btn-outline-secondary date-filter-btn text-start"
+                data-date-filter="older-7d" data-date-label="Older than 7d">Older than 7d</button>
       </div>
     </div>
   </div>
@@ -1022,27 +1030,34 @@
   var previewBtn = document.getElementById('preview-excluded-btn');
   var bulkRejectCount = document.getElementById('bulk-reject-count');
 
-  function getVisiblePendingRejectUuids() {
+  // Events matching an exclusion that would be rejected, given the current
+  // filters but ignoring the row display cap, so the preview tooltip and the
+  // reject button always report (and act on) the same set.
+  function getMatchingPendingRejectUuids() {
     var out = [];
     document.querySelectorAll('#events-tbody tr.event-row').forEach(function(row) {
-      if (row.style.display === 'none') return;
+      if (row.dataset.passesFilter !== '1') return;
       var uuid = row.dataset.uuid || '';
       if (uuid && pendingRejectUuids.has(uuid)) out.push(uuid);
     });
     return out;
   }
 
-  function updateBulkRejectCount() {
-    if (!bulkRejectCount) return;
-    bulkRejectCount.textContent = String(getVisiblePendingRejectUuids().length);
+  function updateExclusionCounts() {
+    var n = getMatchingPendingRejectUuids().length;
+    if (bulkRejectCount) bulkRejectCount.textContent = String(n);
+    if (previewBtn) {
+      previewBtn.setAttribute('title',
+        'Preview: show only events that would be rejected (' + n + ' event' + (n === 1 ? '' : 's') + ')');
+    }
   }
 
   if (tableCount) {
-    new MutationObserver(updateBulkRejectCount)
+    new MutationObserver(updateExclusionCounts)
       .observe(tableCount, {childList: true, characterData: true, subtree: true});
   }
 
-  updateBulkRejectCount();
+  updateExclusionCounts();
 
   if (previewBtn && pendingRejectUuids.size > 0) {
     previewBtn.addEventListener('click', function(e) {
@@ -1124,15 +1139,15 @@
   var bulkRejectResult = document.getElementById('bulk-reject-result');
   if (bulkRejectBtn) {
     bulkRejectBtn.addEventListener('click', function() {
-      var targetUuids = getVisiblePendingRejectUuids();
+      var targetUuids = getMatchingPendingRejectUuids();
       if (!targetUuids.length) {
         if (bulkRejectResult) {
-          bulkRejectResult.textContent = 'No matching events in the current filtered view.';
+          bulkRejectResult.textContent = 'No matching events for the current filters.';
           bulkRejectResult.className = 'small ms-1 text-warning';
         }
         return;
       }
-      if (!confirm('Set workflow:state=rejected on all currently visible events matching the daily briefing exclusion patterns?\n\nThis will tag ' + targetUuids.length + ' event(s) in MISP. The action cannot be undone from here.')) {
+      if (!confirm('Set workflow:state=rejected on all events matching the daily briefing exclusion patterns under the current filters?\n\nThis will tag ' + targetUuids.length + ' event(s) in MISP. The action cannot be undone from here.')) {
         return;
       }
       var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';

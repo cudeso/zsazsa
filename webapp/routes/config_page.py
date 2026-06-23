@@ -217,6 +217,7 @@ def _read() -> dict:
         "POLL_WINDOW_HOURS": _config.POLL_WINDOW_HOURS,
         "SCRAPER_MARKER_TAG": _config.SCRAPER_MARKER_TAG,
         "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+        "MISP_SCRAPER_SINCE_DAYS": getattr(_config, "MISP_SCRAPER_SINCE_DAYS", 30),
         "SCRAPER_REDIS_HOST": getattr(_config, "SCRAPER_REDIS_HOST", "127.0.0.1"),
         "SCRAPER_REDIS_PORT": getattr(_config, "SCRAPER_REDIS_PORT", 6379),
         "SCRAPER_REDIS_PASSWORD": getattr(_config, "SCRAPER_REDIS_PASSWORD", ""),
@@ -435,6 +436,7 @@ RECOMMENDED_ACTIONS_NEAR_TERM = {values.get('RECOMMENDED_ACTIONS_NEAR_TERM', [])
 POLL_WINDOW_HOURS = {int(values['POLL_WINDOW_HOURS'])}
 SCRAPER_MARKER_TAG = {values['SCRAPER_MARKER_TAG']!r}
 MISP_SCRAPER_LIMIT = {int(values.get('MISP_SCRAPER_LIMIT') or 500)}
+MISP_SCRAPER_SINCE_DAYS = {int(values.get('MISP_SCRAPER_SINCE_DAYS') or 0)}
 EVENT_LOG_RETENTION_DAYS = {int(values.get('EVENT_LOG_RETENTION_DAYS') or 90)}
 PIPELINE_RUN_LOG_RETENTION_DAYS = {int(values.get('PIPELINE_RUN_LOG_RETENTION_DAYS') or 365)}
 
@@ -546,6 +548,7 @@ def index():
             "MISP_KEY": getattr(_config, "MISP_KEY", ""),
             "MISP_VERIFYCERT": getattr(_config, "MISP_VERIFYCERT", True),
             "MISP_SCRAPER_LIMIT": getattr(_config, "MISP_SCRAPER_LIMIT", 500),
+            "MISP_SCRAPER_SINCE_DAYS": getattr(_config, "MISP_SCRAPER_SINCE_DAYS", 30),
             "MISP_SERVERS": getattr(_config, "MISP_SERVERS", []) or [],
             "IMAP_SOURCES": getattr(_config, "IMAP_SOURCES", []) or [],
             "MISP_WEBAPP_URL": request.form.get("MISP_WEBAPP_URL", ""),
@@ -682,6 +685,10 @@ def save_scraper_config():
         current["MISP_SCRAPER_LIMIT"] = max(1, int(request.form.get("MISP_SCRAPER_LIMIT") or 500))
     except (ValueError, TypeError):
         current["MISP_SCRAPER_LIMIT"] = 500
+    try:
+        current["MISP_SCRAPER_SINCE_DAYS"] = max(0, int(request.form.get("MISP_SCRAPER_SINCE_DAYS") or 0))
+    except (ValueError, TypeError):
+        current["MISP_SCRAPER_SINCE_DAYS"] = 0
     try:
         _write(current)
         importlib.reload(_config)

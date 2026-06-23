@@ -294,12 +294,22 @@ def refresh_source(src: dict):
 
     if src["kind"] == "scraper":
         scraper_limit = getattr(config, "MISP_SCRAPER_LIMIT", 500)
+        # Default to a 30-day window when unset; an explicit 0 disables it.
+        try:
+            since_days = int(getattr(config, "MISP_SCRAPER_SINCE_DAYS", 30))
+        except (TypeError, ValueError):
+            since_days = 30
         try:
             misp = PyMISP(config.MISP_URL, config.MISP_KEY, config.MISP_VERIFYCERT, False)
-            events = misp.search(
+            kwargs = dict(
                 tags=[config.SCRAPER_MARKER_TAG],
                 limit=scraper_limit, page=1, metadata=False, pythonify=True,
             )
+            # Restrict to a recent date window so growth past the limit drops the
+            # oldest events rather than silently hiding the newest ones.
+            if since_days > 0:
+                kwargs["date_from"] = (_dt.date.today() - _dt.timedelta(days=since_days)).isoformat()
+            events = misp.search(**kwargs)
             payload_err = _search_payload_error(events)
             if payload_err:
                 error = payload_err

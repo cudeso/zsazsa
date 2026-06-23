@@ -146,8 +146,8 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
 
   function getDateCutoff(filter) {
     var d = new Date();
-    if (filter === '48h') { d.setDate(d.getDate() - 2); }
-    else if (filter === '7d') { d.setDate(d.getDate() - 7); }
+    if (filter === '48h' || filter === 'older-48h') { d.setDate(d.getDate() - 2); }
+    else if (filter === '7d' || filter === 'older-7d') { d.setDate(d.getDate() - 7); }
     return d.toISOString().slice(0, 10);
   }
 
@@ -188,6 +188,55 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     return 'next in ' + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
   }
 
+  // An automatic refresh reloads the page ~4s after firing, but the worker may
+  // not have updated last_fetch by then, so the reloaded page can read "due"
+  // again. This grace window (stored across the reload) keeps a single auto
+  // refresh from turning into a reload loop while the worker catches up.
+  var AUTO_REFRESH_GRACE_S = 90;
+  function autoRefreshAllowed() {
+    try {
+      var last = parseFloat(sessionStorage.getItem('dcAutoRefreshAt') || '0');
+      return (Date.now() / 1000) - last > AUTO_REFRESH_GRACE_S;
+    } catch (e) { return true; }
+  }
+
+  // Trigger a cache refresh, reset the countdown and reload. Shared by the
+  // manual button and the automatic refresh when the countdown reaches zero.
+  var refreshInProgress = false;
+  function doRefresh(isAuto) {
+    if (refreshInProgress) return;
+    refreshInProgress = true;
+    if (isAuto) { try { sessionStorage.setItem('dcAutoRefreshAt', String(Date.now() / 1000)); } catch (e) {} }
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Refreshing…';
+    }
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
+    if (csrf) headers['X-CSRF-Token'] = csrf.content;
+    fetch('{{ url_for("data_collection.refresh") }}', {method:'POST', headers:headers})
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('refresh-request-failed');
+        return resp.json();
+      })
+      .then(function(payload) {
+        if (!payload || !payload.ok) throw new Error('refresh-not-queued');
+        if (refreshBtn) refreshBtn.innerHTML = '<i class="fas fa-check me-1"></i> Refresh started';
+        if (refreshCountdown && refreshCountdown._resetTimer) refreshCountdown._resetTimer();
+        setTimeout(function() { window.location.reload(); }, 4000);
+      })
+      .catch(function() {
+        refreshInProgress = false;
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.innerHTML = '<i class="fas fa-arrows-rotate me-1"></i> Refresh cache';
+        }
+        // Manual click warns the user; an automatic attempt stays quiet and
+        // simply retries on the next tick.
+        if (!isAuto) alert('Could not trigger cache refresh. Please retry.');
+      });
+  }
+
   if (refreshCountdown) {
     var intervalS = parseInt(refreshCountdown.dataset.intervalS, 10) || 0;
     var lastFetch = parseFloat(refreshCountdown.dataset.lastFetch);
@@ -196,7 +245,10 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
 
     function tickCountdown() {
       if (!nextAt) { refreshCountdown.textContent = ''; return; }
-      refreshCountdown.textContent = fmtCountdown(Math.round(nextAt - (Date.now() / 1000)));
+      var secs = Math.round(nextAt - (Date.now() / 1000));
+      refreshCountdown.textContent = fmtCountdown(secs);
+      // Timer ran out: refresh automatically, exactly as a manual click would.
+      if (secs <= 0 && !refreshInProgress && autoRefreshAllowed()) doRefresh(true);
     }
     tickCountdown();
     setInterval(tickCountdown, 10000);
@@ -211,29 +263,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   }
 
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', function() {
-      refreshBtn.disabled = true;
-      refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Refreshing…';
-      var csrf = document.querySelector('meta[name="csrf-token"]');
-      var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
-      if (csrf) headers['X-CSRF-Token'] = csrf.content;
-      fetch('{{ url_for("data_collection.refresh") }}', {method:'POST', headers:headers})
-        .then(function(resp) {
-          if (!resp.ok) throw new Error('refresh-request-failed');
-          return resp.json();
-        })
-        .then(function(payload) {
-          if (!payload || !payload.ok) throw new Error('refresh-not-queued');
-          refreshBtn.innerHTML = '<i class="fas fa-check me-1"></i> Refresh started';
-          if (refreshCountdown && refreshCountdown._resetTimer) refreshCountdown._resetTimer();
-          setTimeout(function() { window.location.reload(); }, 4000);
-        })
-        .catch(function() {
-          refreshBtn.disabled = false;
-          refreshBtn.innerHTML = '<i class="fas fa-arrows-rotate me-1"></i> Refresh cache';
-          alert('Could not trigger cache refresh. Please retry.');
-        });
-    });
+    refreshBtn.addEventListener('click', function() { doRefresh(false); });
   }
 
   /* ── Core filter + sort engine ── */
@@ -470,9 +500,16 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       }
       if (ok && cutoffStr) {
         if (state.dateFilter === 'today') { if (date !== todayStr) ok = false; }
+        else if (state.dateFilter === 'older-48h' || state.dateFilter === 'older-7d') {
+          if (!date || date >= cutoffStr) ok = false;
+        }
         else { if (!date || date < cutoffStr) ok = false; }
       }
       if (ok) totalMatching++;
+      // Record whether the row passes the filters before the display cap is
+      // applied, so counts (e.g. the exclusion reject count) can be based on
+      // the full matching set rather than just the rendered page.
+      row.dataset.passesFilter = ok ? '1' : '0';
       if (ok && visible >= state.displayLimit) ok = false;
       row.style.display = ok ? '' : 'none';
       if (ok) visible++;
@@ -1099,11 +1136,15 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
   }
 
   var createProductBtn = document.getElementById('create-product-btn');
+  var selectedCountBadge = document.getElementById('selected-count-badge');
+  var selectedCountEl = document.getElementById('selected-count');
   function updateCreateProductBtn() {
-    var anyChecked = !!document.querySelector('.event-row-cb:checked');
+    var count = document.querySelectorAll('.event-row-cb:checked').length;
     if (createProductBtn) {
-      createProductBtn.disabled = !anyChecked; createProductBtn.classList.toggle('disabled', !anyChecked);
+      createProductBtn.disabled = !count; createProductBtn.classList.toggle('disabled', !count);
     }
+    if (selectedCountEl) selectedCountEl.textContent = count;
+    if (selectedCountBadge) selectedCountBadge.classList.toggle('d-none', !count);
   }
   document.querySelectorAll('.event-row-cb').forEach(function(cb) { cb.addEventListener('change', updateCreateProductBtn); });
   if (selectAllCb) selectAllCb.addEventListener('change', updateCreateProductBtn);
@@ -1496,6 +1537,7 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
           if (selectAllCb) selectAllCb.checked = false;
           applyAll();
           updateSelectionToolbar();
+          updateCreateProductBtn();
         }
       );
     });

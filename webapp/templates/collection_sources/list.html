@@ -3,12 +3,6 @@
 {% block title %}Collection sources | zsazsa CTI{% endblock %}
 {% block page_title %}Collection sources{% endblock %}
 
-{% block topbar_actions %}
-<a href="{{ url_for('collection_sources.new') }}" class="btn btn-sm btn-primary">
-  <i class="fas fa-plus me-1"></i> Add manual source
-</a>
-{% endblock %}
-
 {% block content %}
 
 {# ── MISP scraper ─────────────────────────────────────────────────────── #}
@@ -55,6 +49,12 @@
         <div class="col-md-2">
           <label class="form-label">Max events</label>
           <input type="number" name="MISP_SCRAPER_LIMIT" class="form-control" value="{{ cfg.MISP_SCRAPER_LIMIT }}" min="1" max="100000">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Events from last (days)</label>
+          <input type="number" name="MISP_SCRAPER_SINCE_DAYS" class="form-control" value="{{ cfg.MISP_SCRAPER_SINCE_DAYS }}" min="0" max="3650"
+                 title="Only cache scraper events from the last N days. 0 pulls purely by Max events, which can hide the newest events once the tagged set exceeds the limit.">
+          <div class="form-text">0 or empty disables the window.</div>
         </div>
         <div class="col-12 mt-1">
           <button type="button" class="btn btn-sm btn-outline-secondary" id="scraper-test-btn">
@@ -1005,13 +1005,18 @@
         : '<i class="fas fa-code me-1"></i>Hide query';
       if (!open) {
         const scraperLimit = parseInt(document.querySelector('input[name="MISP_SCRAPER_LIMIT"]')?.value || '500', 10);
-        scraperQueryPre.textContent =
+        const sinceDays = parseInt(document.querySelector('input[name="MISP_SCRAPER_SINCE_DAYS"]')?.value || '0', 10);
+        let query =
           'misp.search(\n' +
           '    tags=[' + JSON.stringify(scraperMarkerTag) + '],\n' +
           '    limit=' + scraperLimit + ',\n' +
-          '    page=1,\n' +
-          '    pythonify=True,\n' +
-          ')';
+          '    page=1,\n';
+        if (sinceDays > 0) {
+          const from = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
+          query += '    date_from=' + JSON.stringify(from) + ',\n';
+        }
+        query += '    pythonify=True,\n)';
+        scraperQueryPre.textContent = query;
       }
     });
   }
