@@ -88,7 +88,7 @@
       </thead>
       <tbody>
         {% for gir in girs %}
-        <tr>
+        <tr class="req-row" data-req-id="{{ gir.id }}">
           <td><span class="req-id-badge">{{ gir.gir_id }}</span></td>
           <td>
             <a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="fw-semibold text-decoration-none">{{ gir.topic }}</a>
@@ -120,7 +120,7 @@
           </td>
           <td><span class="badge status-badge status-{{ gir.status | slug }}">{{ gir.status }}</span></td>
           <td>
-            {% set n = fp_counts.get(gir.id, 0) %}
+            {% set n = scope_counts.get(gir.id, 0) %}
             {% if n > 0 %}
             <span class="fp-count-badge" title="{{ n }} scope item{{ 's' if n != 1 }}">{{ n }}</span>
             {% else %}
@@ -130,17 +130,30 @@
           <td class="text-muted">{{ gir.review_cycle or '-' }}</td>
           <td class="text-muted small">{{ gir.next_review.strftime('%d-%m-%Y') if gir.next_review else '-' }}</td>
           <td class="text-end">
-            <a href="{{ url_for('requirements.gir_scope_preview', id=gir.id) }}" class="btn btn-xs btn-outline-info me-1" title="Preview matches in collection">
-              <i class="fas fa-eye"></i>
-            </a>
-            <a href="{{ url_for('requirements.gir_edit', id=gir.id) }}" class="btn btn-xs btn-outline-secondary me-1" title="Edit">
-              <i class="fas fa-pen"></i>
-            </a>
-            <form method="post" action="{{ url_for('requirements.gir_delete', id=gir.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ gir.gir_id }}?')">
-              <button class="btn btn-xs btn-outline-danger" title="Delete">
-                <i class="fas fa-trash"></i>
+            <div class="d-inline-flex flex-nowrap gap-1 justify-content-end">
+              <button type="button" class="btn btn-xs btn-outline-info scope-preview-toggle"
+                      title="Preview matches in collection"
+                      aria-expanded="false"
+                      data-target="scope-row-{{ gir.id }}"
+                      data-fragment-url="{{ url_for('requirements.gir_scope_preview', id=gir.id, fragment=1) }}">
+                <i class="fas fa-eye"></i>
               </button>
-            </form>
+              <a href="{{ url_for('requirements.gir_edit', id=gir.id) }}" class="btn btn-xs btn-outline-secondary" title="Edit">
+                <i class="fas fa-pen"></i>
+              </a>
+              <form method="post" action="{{ url_for('requirements.gir_delete', id=gir.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ gir.gir_id }}?')">
+                <button class="btn btn-xs btn-outline-danger" title="Delete">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <tr id="scope-row-{{ gir.id }}" class="scope-preview-row d-none">
+          <td colspan="9" class="bg-body-secondary p-3">
+            <div class="scope-preview-body">
+              <div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading matches&hellip;</div>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -185,4 +198,5 @@
   });
 })();
 </script>
+{% include "requirements/_list_scope_js.html" %}
 {% endblock %}

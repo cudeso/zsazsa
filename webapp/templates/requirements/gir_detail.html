@@ -239,6 +239,10 @@
       </div>
     </div>
 
+    <!-- Distribution (read-only view) -->
+    {% set dist_edit_url = url_for('requirements.gir_edit', id=gir.uuid) %}
+    {% include "requirements/_distribution_card.html" %}
+
   </div>
 
   <div class="col-lg-4">
@@ -251,22 +255,20 @@
           <dd><span class="badge status-badge status-{{ gir.status | lower }}">{{ gir.status }}</span></dd>
           <dt>Review cycle</dt>
           <dd>{{ gir.review_cycle or '-' }}</dd>
-          <dt>Distribution</dt>
-          <dd>
-            {% if distribution_labels %}
-            <div class="d-flex flex-wrap gap-1">
-              {% for v in distribution_labels %}<span class="source-tag">{{ v }}</span>{% endfor %}
-            </div>
-            {% else %}
-            -
-            {% endif %}
-          </dd>
           <dt>Created</dt>
           <dd>{{ gir.created_at.strftime('%d-%m-%Y') if gir.created_at else '-' }}</dd>
           <dt>Created by</dt>
           <dd>{{ gir.creator or '-' }}</dd>
           <dt>Next review</dt>
           <dd>{{ gir.next_review.strftime('%d-%m-%Y') if gir.next_review else '-' }}</dd>
+          {% if gir.history_url %}
+          <dt>History</dt>
+          <dd>
+            <a href="{{ gir.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
+              <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
+            </a>
+          </dd>
+          {% endif %}
         </dl>
       </div>
     </div>
@@ -293,12 +295,14 @@
       </div>
     </div>
 
-    <div class="d-flex gap-2">
-      <a href="{{ url_for('requirements.gir_edit', id=gir.id) }}" class="btn btn-outline-primary btn-sm">
+    <div class="d-flex gap-2 mb-2">
+      <a href="{{ url_for('requirements.gir_edit', id=gir.id) }}" class="btn btn-sm btn-outline-secondary flex-fill">
         <i class="fas fa-pen me-1"></i> Edit
       </a>
-      <form method="post" action="{{ url_for('requirements.gir_delete', id=gir.id) }}" onsubmit="return confirm('Delete {{ gir.gir_id }}?')">
-        <button class="btn btn-outline-danger btn-sm">
+      <form method="post" action="{{ url_for('requirements.gir_delete', id=gir.id) }}"
+            onsubmit="return confirm('Delete {{ gir.gir_id }}?')" class="flex-fill">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger w-100">
           <i class="fas fa-trash me-1"></i> Delete
         </button>
       </form>

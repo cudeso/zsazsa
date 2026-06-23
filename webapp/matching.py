@@ -149,6 +149,19 @@ def _matches_term(item_n: str, item_c: str, haystack: str) -> bool:
     return re.search(r'(?<!\w)' + re.escape(item_n) + r'(?!\w)', haystack) is not None
 
 
+def term_in_text(term: str, text: str) -> bool:
+    """Whole-word-aware match of a single scope term against a free text blob.
+
+    Used by the scope preview. Reuses the same rules as the event matcher: long
+    terms match as substrings (also in separator-stripped form), short terms
+    match only as whole words. This stops "gas" from matching inside "gasten".
+    """
+    item_n = _norm(term)
+    if not item_n:
+        return False
+    return _matches_term(item_n, _compact(item_n), _norm(text))
+
+
 # ── Core matching ─────────────────────────────────────────────────────────────
 
 def match_event_to_requirement(

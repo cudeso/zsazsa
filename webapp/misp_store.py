@@ -24,7 +24,7 @@ import time
 import urllib3
 import re
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import config
@@ -587,6 +587,46 @@ def _get_obj(event, name):
     return None
 
 
+def _sync_object_attributes(misp, event, object_name, new_obj, label="object"):
+    """Update an existing single-instance object in place, preserving history.
+
+    The naive approach (delete the object, add a fresh one) wipes the MISP
+    attribute history and clutters the event timeline. Instead this diffs the
+    existing object against the freshly built ``new_obj`` and lets MISP do the
+    minimal work: changed attributes are edited in place, new ones are added,
+    and removed ones are soft-deleted. MISP itself skips attributes whose value
+    did not change, so the event history only records real edits.
+
+    Every zsazsa object stores at most one attribute per object_relation, so the
+    diff is keyed on object_relation. Falls back to a plain add when the object
+    does not exist yet.
+    """
+    old = _get_obj(event, object_name)
+    if old is None:
+        _check(misp.add_object(_event_ref(event), new_obj), f"add {label} object")
+        return
+
+    existing = {}
+    for a in getattr(old, "attributes", []) or []:
+        existing.setdefault(a.object_relation, a)
+
+    # Carry the existing object and attribute UUIDs onto the new object so MISP
+    # edits matching attributes in place instead of creating duplicates.
+    new_obj.uuid = old.uuid
+    desired_relations = set()
+    for a in getattr(new_obj, "attributes", []) or []:
+        desired_relations.add(a.object_relation)
+        old_attr = existing.get(a.object_relation)
+        if old_attr is not None:
+            a.uuid = old_attr.uuid
+    _check(misp.update_object(new_obj), f"update {label} object")
+
+    # Soft-delete attributes whose relation is no longer present.
+    for relation, old_attr in existing.items():
+        if relation not in desired_relations:
+            _check(misp.delete_attribute(old_attr.uuid), f"delete {label} {relation}")
+
+
 def _get_fp_attrs(event):
     return [a for a in event.attributes if a.comment == _FP_COMMENT]
 
@@ -753,6 +793,7 @@ def _stakeholder_ns(event):
         id=uuid,
         uuid=uuid,
         misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        history_url=f"{config.MISP_WEBAPP_URL}/audit_logs/eventIndex/{uuid}",
         name=_obj_attr(obj, "name") or "",
         role=_obj_attr(obj, "role") or "",
         organization=_obj_attr(obj, "organization") or "",
@@ -791,6 +832,7 @@ def _pir_ns(event):
         id=uuid,
         uuid=uuid,
         misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        history_url=f"{config.MISP_WEBAPP_URL}/audit_logs/eventIndex/{uuid}",
         pir_id=_obj_attr(obj, "pir-id") or "",
         question=_obj_attr(obj, "question") or "",
         context=_obj_attr(obj, "context") or "",
@@ -862,6 +904,7 @@ def _gir_ns(event):
         id=uuid,
         uuid=uuid,
         misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        history_url=f"{config.MISP_WEBAPP_URL}/audit_logs/eventIndex/{uuid}",
         gir_id=_obj_attr(obj, "gir-id") or "",
         topic=_obj_attr(obj, "topic") or "",
         description=_obj_attr(obj, "description") or "",
@@ -1098,10 +1141,7 @@ def update_stakeholder(uuid, data):
         return create_stakeholder(data)
     if not _event_has_tag(event, config.TAG_STAKEHOLDER) or _get_obj(event, "zsazsa-stakeholder") is None:
         raise ValueError(f"Event {uuid} is not a stakeholder")
-    old = _get_obj(event, "zsazsa-stakeholder")
-    if old:
-        misp.delete_object(old.id)
-    _check(misp.add_object(_event_ref(event), _stakeholder_obj(data)), "update stakeholder object")
+    _sync_object_attributes(misp, event, "zsazsa-stakeholder", _stakeholder_obj(data), "stakeholder")
     misp.update_event({"Event": {"id": event.id, "info": f"[zsazsa:stakeholder] {data['name']}"}})
     return uuid
 
@@ -1205,8 +1245,7 @@ def update_pir(uuid, data):
     old = _get_obj(event, "zsazsa-pir")
     if old:
         data["creator"] = _obj_attr(old, "creator") or ""
-        misp.delete_object(old.id)
-    _check(misp.add_object(_event_ref(event), _pir_obj(data)), "update PIR object")
+    _sync_object_attributes(misp, event, "zsazsa-pir", _pir_obj(data), "PIR")
     _replace_focus_points(uuid, data.get("focus_points", []))
     _apply_scope_tags(misp, uuid, data, new_info=f"[zsazsa:pir] {data['pir_id']}")
     return uuid
@@ -1315,8 +1354,7 @@ def update_gir(uuid, data):
     old = _get_obj(event, "zsazsa-gir")
     if old:
         data["creator"] = _obj_attr(old, "creator") or ""
-        misp.delete_object(old.id)
-    _check(misp.add_object(_event_ref(event), _gir_obj(data)), "update GIR object")
+    _sync_object_attributes(misp, event, "zsazsa-gir", _gir_obj(data), "GIR")
     topic = data.get("topic", "")
     gir_id = data.get("gir_id", "")
     _apply_scope_tags(misp, uuid, data, new_info=f"[zsazsa:gir] {gir_id}: {topic}")
@@ -1475,14 +1513,14 @@ def _rewrite_parent_scope(misp, event, relation, new_values):
     field = relation.replace("-", "_")
     if pir_obj:
         data = _pir_data_from_ns(_pir_ns(event))
+        data["creator"] = _obj_attr(pir_obj, "creator") or ""
         data[field] = list(new_values)
-        misp.delete_object(pir_obj.id)
-        _check(misp.add_object(_event_ref(event), _pir_obj(data)), "update PIR scope")
+        _sync_object_attributes(misp, event, "zsazsa-pir", _pir_obj(data), "PIR scope")
     elif gir_obj:
         data = _gir_data_from_ns(_gir_ns(event))
+        data["creator"] = _obj_attr(gir_obj, "creator") or ""
         data[field] = list(new_values)
-        misp.delete_object(gir_obj.id)
-        _check(misp.add_object(_event_ref(event), _gir_obj(data)), "update GIR scope")
+        _sync_object_attributes(misp, event, "zsazsa-gir", _gir_obj(data), "GIR scope")
 
 
 def remove_focus_point_with_scope(req_uuid, attr_uuid):
@@ -1640,6 +1678,7 @@ def _rfi_ns(event):
         id=uuid,
         uuid=uuid,
         misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        history_url=f"{config.MISP_WEBAPP_URL}/audit_logs/eventIndex/{uuid}",
         rfi_id=_obj_attr(obj, "rfi-id") or "",
         question=_obj_attr(obj, "question") or "",
         context=_obj_attr(obj, "context") or "",
@@ -1713,8 +1752,7 @@ def update_rfi(uuid, data):
     old = _get_obj(event, "zsazsa-rfi")
     if old:
         data["creator"] = _obj_attr(old, "creator") or ""
-        misp.delete_object(old.id)
-    _check(misp.add_object(_event_ref(event), _rfi_obj(data)), "update RFI object")
+    _sync_object_attributes(misp, event, "zsazsa-rfi", _rfi_obj(data), "RFI")
     rfi_id = data.get("rfi_id", "")
     info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
     misp.update_event({"Event": {"id": event.id, "info": info}})
@@ -2479,11 +2517,33 @@ def delete_collection_source(uuid):
     _check(misp.delete_event(uuid), "delete collection source")
 
 
+def imap_source_labels() -> list[str]:
+    """Collection sources defined in IMAP mailboxes, as "<mailbox>/<source>".
+
+    These mailboxes feed their events into the scraper MISP. Only enabled
+    mailboxes and enabled sources are included.
+    """
+    labels = []
+    for mailbox in getattr(config, "IMAP_SOURCES", []) or []:
+        if not mailbox.get("enabled", True):
+            continue
+        mailbox_name = (mailbox.get("name") or "").strip()
+        for source in mailbox.get("sources", []) or []:
+            if not source.get("enabled", True):
+                continue
+            source_name = (source.get("name") or "").strip()
+            if not source_name:
+                continue
+            labels.append(f"{mailbox_name}/{source_name}" if mailbox_name else source_name)
+    return labels
+
+
 def get_all_collection_source_labels() -> list[str]:
     """Return a combined list of all collection source labels.
 
     Includes the fixed scraper source, configured MISP servers (enabled only),
-    and MISP-stored manual sources (enabled only).
+    MISP-stored manual sources (enabled only), and each enabled IMAP mailbox
+    source listed as "<mailbox>/<source>".
     """
     labels = ["misp-scraper"]
     for s in getattr(config, "MISP_SERVERS", []) or []:
@@ -2491,6 +2551,9 @@ def get_all_collection_source_labels() -> list[str]:
             label = (s.get("label") or "").strip()
             if label and label not in labels:
                 labels.append(label)
+    for label in imap_source_labels():
+        if label not in labels:
+            labels.append(label)
     try:
         for src in list_collection_sources():
             if src.enabled and src.name and src.name not in labels:
@@ -4412,11 +4475,12 @@ def _event_text(ev):
 def preview_scope_matches(scope_terms, limit=200, max_results=50, timeframe_hours=None):
     """Return cached scraper events matching scope terms.
 
-    Cheap substring match (case-insensitive) over cached event fields. When
-    ``timeframe_hours`` is set, only events fetched into cache within that
-    window are considered.
+    Whole-word-aware match (case-insensitive) over cached event fields, so a
+    term like "gas" does not match inside "gasten". When ``timeframe_hours`` is
+    set, only events whose MISP event date falls within that window are kept.
     """
     from webapp import collection_cache
+    from webapp import matching as _matching
 
     terms = []
     seen = set()
@@ -4439,15 +4503,18 @@ def preview_scope_matches(scope_terms, limit=200, max_results=50, timeframe_hour
     if not events:
         return []
 
-    cutoff_ts = None
+    # Filter on the event date rather than the cache fetch time: the cache
+    # worker rewrites fetched_at for every row on each refresh, so it does not
+    # reflect how recent an event actually is.
+    cutoff_date = None
     if timeframe_hours is not None:
-        cutoff_ts = time.time() - (float(timeframe_hours) * 3600.0)
+        cutoff_date = (datetime.now() - timedelta(hours=float(timeframe_hours))).date()
 
     rows = []
     for e in events:
-        if cutoff_ts is not None:
-            fetched_at = e.get("fetched_at")
-            if not fetched_at or float(fetched_at) < cutoff_ts:
+        if cutoff_date is not None:
+            event_date = _parse_date(e.get("date"))
+            if event_date is None or event_date < cutoff_date:
                 continue
 
         text = " ".join([
@@ -4457,8 +4524,8 @@ def preview_scope_matches(scope_terms, limit=200, max_results=50, timeframe_hour
             " ".join(e.get("tags") or []),
             " ".join(e.get("galaxy_names") or []),
             " ".join(e.get("vulnerability_ids") or []),
-        ]).lower()
-        matched = [t for t in terms if t.lower() in text]
+        ])
+        matched = [t for t in terms if _matching.term_in_text(t, text)]
         if not matched:
             continue
         rows.append({

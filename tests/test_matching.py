@@ -14,6 +14,7 @@ from webapp.matching import (
     _matches_term,
     _norm,
     match_event_to_requirement,
+    term_in_text,
 )
 
 
@@ -76,6 +77,21 @@ class LongTermMatching(unittest.TestCase):
 
     def test_no_spurious_match(self):
         self.assertFalse(_match("ransomware", "no match here"))
+
+
+class TermInText(unittest.TestCase):
+    """The scope-preview matcher reuses the whole-word rules."""
+
+    def test_short_term_does_not_match_inside_word(self):
+        # "gas" (energy) must not match Dutch "gasten" (guests).
+        title = "Gasten honderd Belgische hotels doelwit van phishingaanvallen"
+        self.assertFalse(term_in_text("gas", title))
+
+    def test_short_term_matches_whole_word(self):
+        self.assertTrue(term_in_text("gas", "gas pipeline outage in Belgium"))
+
+    def test_empty_term(self):
+        self.assertFalse(term_in_text("", "anything"))
 
 
 class MatchEventToRequirement(unittest.TestCase):

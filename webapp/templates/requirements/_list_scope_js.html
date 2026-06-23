@@ -1,0 +1,50 @@
+{# Shared by pir_list and gir_list: the inline scope-preview accordion (the eye
+   button expands a row that lazy-loads the matches fragment; the timeframe
+   selector re-fetches in place) and the row -> status-board hover highlight. #}
+<style>
+  .kanban-card.req-hover { background: var(--neutral-200) !important; box-shadow: 0 0 0 2px var(--neutral-400) !important; }
+</style>
+<script>
+(function() {
+  function loadFragment(body, url) {
+    body.innerHTML = '<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading matches&hellip;</div>';
+    fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function(r) { return r.text(); })
+      .then(function(html) { body.innerHTML = html; })
+      .catch(function() { body.innerHTML = '<div class="text-danger small">Could not load matches.</div>'; });
+  }
+
+  document.querySelectorAll('.scope-preview-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var row = document.getElementById(btn.dataset.target);
+      if (!row) return;
+      var hidden = row.classList.toggle('d-none');
+      btn.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+      btn.classList.toggle('active', !hidden);
+      if (!hidden && !row.dataset.loaded) {
+        row.dataset.loaded = '1';
+        loadFragment(row.querySelector('.scope-preview-body'), btn.dataset.fragmentUrl);
+      }
+    });
+  });
+
+  // Changing the timeframe inside an open accordion re-fetches that fragment.
+  document.addEventListener('change', function(e) {
+    var sel = e.target.closest ? e.target.closest('.scope-timeframe-select') : null;
+    if (!sel) return;
+    var body = sel.closest('.scope-preview-body');
+    if (!body) return;
+    var action = sel.closest('form').getAttribute('action');
+    var url = action + (action.indexOf('?') === -1 ? '?' : '&') + 'timeframe=' + encodeURIComponent(sel.value);
+    loadFragment(body, url);
+  });
+
+  // Hovering a table row highlights the matching card on the status board.
+  document.querySelectorAll('.req-row').forEach(function(row) {
+    var card = document.querySelector('.kanban-card[data-id="' + row.dataset.reqId + '"]');
+    if (!card) return;
+    row.addEventListener('mouseenter', function() { card.classList.add('req-hover'); });
+    row.addEventListener('mouseleave', function() { card.classList.remove('req-hover'); });
+  });
+})();
+</script>

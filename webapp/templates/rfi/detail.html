@@ -5,9 +5,6 @@
 
 {% block misp_object_url %}{{ rfi.misp_url }}{% endblock %}
 {% block topbar_actions %}
-<a href="{{ url_for('rfi.rfi_edit', id=rfi.id) }}" class="btn btn-sm btn-outline-secondary">
-  <i class="fas fa-pen me-1"></i> Edit
-</a>
 <button class="btn btn-sm btn-outline-warning" id="notify-btn"
         data-notify-url="{{ url_for('rfi.rfi_notify', id=rfi.id) }}">
   <i class="fas fa-bell me-1"></i> Notify stakeholders
@@ -277,6 +274,15 @@
 
           <dt class="col-5">Created by</dt>
           <dd class="col-7">{{ rfi.creator or '-' }}</dd>
+
+          {% if rfi.history_url %}
+          <dt class="col-5">History</dt>
+          <dd class="col-7">
+            <a href="{{ rfi.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
+              <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
+            </a>
+          </dd>
+          {% endif %}
         </dl>
       </div>
     </div>
@@ -306,12 +312,18 @@
       </div>
     </div>
 
-    <form method="post" action="{{ url_for('rfi.rfi_delete', id=rfi.id) }}"
-      onsubmit="return confirm('Delete {{ rfi.rfi_id }}?')">
-      <button class="btn btn-outline-danger w-100">
-        <i class="fas fa-trash me-1"></i> Delete RFI
-      </button>
-    </form>
+    <div class="d-flex gap-2 mb-2">
+      <a href="{{ url_for('rfi.rfi_edit', id=rfi.id) }}" class="btn btn-sm btn-outline-secondary flex-fill">
+        <i class="fas fa-pen me-1"></i> Edit
+      </a>
+      <form method="post" action="{{ url_for('rfi.rfi_delete', id=rfi.id) }}"
+            onsubmit="return confirm('Delete {{ rfi.rfi_id }}?')" class="flex-fill">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger w-100">
+          <i class="fas fa-trash me-1"></i> Delete RFI
+        </button>
+      </form>
+    </div>
   </div>
 </div>
 

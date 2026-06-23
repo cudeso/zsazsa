@@ -178,6 +178,17 @@ def _dedup_lower(values):
     return result
 
 
+_SCOPE_COUNT_FIELDS = (
+    "geographic_scope", "sectors", "threat_actors", "threat_types",
+    "technology", "vendor", "incident", "campaign", "mitre_attack_techniques",
+)
+
+
+def _scope_item_count(req):
+    """Total number of scope items across every scope dimension of a PIR/GIR."""
+    return sum(len(getattr(req, field, None) or []) for field in _SCOPE_COUNT_FIELDS)
+
+
 def _scope_focus_points(form):
     points = []
     mappings = [
@@ -225,11 +236,11 @@ def pir_list():
     intel_filter = (request.args.get("intel_level") or "").strip()
     if intel_filter:
         pirs = [p for p in pirs if intel_filter in (p.intel_level or [])]
-    fp_counts = {p.uuid: len(p.focus_points) for p in pirs}
+    scope_counts = {p.uuid: _scope_item_count(p) for p in pirs}
     return render_template(
         "requirements/pir_list.html",
         pirs=pirs,
-        fp_counts=fp_counts,
+        scope_counts=scope_counts,
         intel_levels=INTEL_LEVELS,
         intel_filter=intel_filter,
     )
@@ -554,13 +565,25 @@ def pir_scope_preview(id):
         if fp.value:
             terms.append(fp.value)
     matches = misp_store.preview_scope_matches(terms, timeframe_hours=timeframe_hours)
-    return render_template(
-        "requirements/pir_scope_preview.html",
-        pir=pir,
+    ctx = dict(
         terms=sorted(set(t for t in terms if t)),
         matches=matches,
         timeframe_key=timeframe_key,
         timeframe_options=_SCOPE_PREVIEW_TIMEFRAME_OPTIONS,
+    )
+    if request.args.get("fragment"):
+        return render_template(
+            "requirements/_scope_matches.html",
+            embedded=True,
+            timeframe_action=url_for("requirements.pir_scope_preview", id=pir.uuid, fragment=1),
+            **ctx,
+        )
+    return render_template(
+        "requirements/pir_scope_preview.html",
+        pir=pir,
+        embedded=False,
+        timeframe_action=url_for("requirements.pir_scope_preview", id=pir.uuid),
+        **ctx,
     )
 
 
@@ -583,18 +606,11 @@ def gir_list():
     intel_filter = (request.args.get("intel_level") or "").strip()
     if intel_filter:
         girs = [g for g in girs if intel_filter in (g.intel_level or [])]
-    fp_counts = {
-        g.uuid: (len(g.focus_points)
-                 + len(g.geographic_scope or [])
-                 + len(g.sectors or [])
-                 + len(g.threat_actors or [])
-                 + len(g.threat_types or []))
-        for g in girs
-    }
+    scope_counts = {g.uuid: _scope_item_count(g) for g in girs}
     return render_template(
         "requirements/gir_list.html",
         girs=girs,
-        fp_counts=fp_counts,
+        scope_counts=scope_counts,
         intel_levels=INTEL_LEVELS,
         intel_filter=intel_filter,
     )
@@ -668,13 +684,15 @@ def gir_detail(id):
     for fp in gir.focus_points:
         fp_by_category.setdefault(fp.category, []).append(fp.value)
     stakeholders = misp_store.list_stakeholders()
+    distribution = _distribution_entries(gir.distribution or [], stakeholders)
     return render_template(
         "requirements/gir_detail.html",
         gir=gir,
         focus_points=gir.focus_points,
         categories=FOCUS_CATEGORIES,
         fp_by_category=fp_by_category,
-        distribution_labels=_distribution_labels(gir.distribution or [], stakeholders),
+        distribution=distribution,
+        selected_count=sum(1 for stakeholder in distribution if stakeholder.in_distribution),
         misp_url=misp_url,
         **_galaxy_context(),
     )
@@ -801,13 +819,25 @@ def gir_scope_preview(id):
         if fp.value:
             terms.append(fp.value)
     matches = misp_store.preview_scope_matches(terms, timeframe_hours=timeframe_hours)
-    return render_template(
-        "requirements/gir_scope_preview.html",
-        gir=gir,
+    ctx = dict(
         terms=sorted(set(t for t in terms if t)),
         matches=matches,
         timeframe_key=timeframe_key,
         timeframe_options=_SCOPE_PREVIEW_TIMEFRAME_OPTIONS,
+    )
+    if request.args.get("fragment"):
+        return render_template(
+            "requirements/_scope_matches.html",
+            embedded=True,
+            timeframe_action=url_for("requirements.gir_scope_preview", id=gir.uuid, fragment=1),
+            **ctx,
+        )
+    return render_template(
+        "requirements/gir_scope_preview.html",
+        gir=gir,
+        embedded=False,
+        timeframe_action=url_for("requirements.gir_scope_preview", id=gir.uuid),
+        **ctx,
     )
 
 

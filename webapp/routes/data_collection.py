@@ -63,6 +63,8 @@ def _sources() -> list[dict]:
         "label": "MISP scraper",
         "kind": "scraper",
         "url": config.MISP_URL,
+        # IMAP mailbox sources feed into the scraper, so list them under it.
+        "imap_sources": misp_store.imap_source_labels(),
     }]
     for s in getattr(config, "MISP_SERVERS", []) or []:
         if not s.get("enabled", True):

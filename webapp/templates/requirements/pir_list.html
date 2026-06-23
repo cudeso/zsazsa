@@ -152,7 +152,7 @@
       </thead>
       <tbody>
         {% for pir in pirs %}
-        <tr>
+        <tr class="req-row" data-req-id="{{ pir.id }}">
           <td>
             <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="text-decoration-none">
               <span class="req-id-badge">{{ pir.pir_id }}</span>
@@ -212,7 +212,7 @@
             {% endif %}
           </td>
           <td>
-            {% set n = fp_counts.get(pir.id, 0) %}
+            {% set n = scope_counts.get(pir.id, 0) %}
             {% if n > 0 %}
             <span class="fp-count-badge" title="{{ n }} scope item{{ 's' if n != 1 }}">{{ n }}</span>
             {% else %}
@@ -221,10 +221,14 @@
           </td>
           <td class="text-muted small">{{ pir.next_review.strftime('%d-%m-%Y') if pir.next_review else '-' }}</td>
           <td class="text-end">
-            <div class="d-inline-flex gap-1">
-              <a href="{{ url_for('requirements.pir_scope_preview', id=pir.id) }}" class="btn btn-xs btn-outline-info" title="Preview matches in collection">
+            <div class="d-inline-flex flex-nowrap gap-1 justify-content-end">
+              <button type="button" class="btn btn-xs btn-outline-info scope-preview-toggle"
+                      title="Preview matches in collection"
+                      aria-expanded="false"
+                      data-target="scope-row-{{ pir.id }}"
+                      data-fragment-url="{{ url_for('requirements.pir_scope_preview', id=pir.id, fragment=1) }}">
                 <i class="fas fa-eye"></i>
-              </a>
+              </button>
               {% if pir.intake_status != 'rejected' %}
               <a href="{{ url_for('requirements.pir_edit', id=pir.id) }}" class="btn btn-xs btn-outline-secondary" title="Edit">
                 <i class="fas fa-pen"></i>
@@ -235,6 +239,13 @@
                   <i class="fas fa-trash"></i>
                 </button>
               </form>
+            </div>
+          </td>
+        </tr>
+        <tr id="scope-row-{{ pir.id }}" class="scope-preview-row d-none">
+          <td colspan="9" class="bg-body-secondary p-3">
+            <div class="scope-preview-body">
+              <div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading matches&hellip;</div>
             </div>
           </td>
         </tr>
@@ -302,4 +313,5 @@
   });
 })();
 </script>
+{% include "requirements/_list_scope_js.html" %}
 {% endblock %}

@@ -528,7 +528,15 @@
       <span class="d-flex flex-column" style="line-height:1.2;">
         <span class="source-toggle-label">{{ s.label }}</span>
         {% if s.kind == 'misp' %}<span style="font-size:.6rem;font-weight:400;color:var(--neutral-600);">last {{ s.since_days }}d</span>
-        {% elif s.kind == 'manual' %}<span style="font-size:.6rem;font-weight:400;color:var(--neutral-600);">manual</span>{% endif %}
+        {% elif s.kind == 'manual' %}<span style="font-size:.6rem;font-weight:400;color:var(--neutral-600);">manual</span>
+        {% elif s.kind == 'scraper' and s.imap_sources %}
+          {% for imp in s.imap_sources %}
+          <span style="font-size:.58rem;font-weight:400;color:var(--neutral-600);white-space:nowrap;"
+                title="Collected from an IMAP mailbox via the scraper">
+            <i class="fas fa-envelope fa-xs me-1" style="opacity:.6;"></i>{{ imp }}
+          </span>
+          {% endfor %}
+        {% endif %}
       </span>
       {% if has_err %}
         <span class="source-toggle-badge text-bg-danger"><i class="fas fa-triangle-exclamation"></i></span>
