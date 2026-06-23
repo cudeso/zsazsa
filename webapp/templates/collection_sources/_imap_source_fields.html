@@ -52,6 +52,7 @@
       <input class="form-check-input ims-enabled" type="checkbox" {{ 'checked' if s.get('enabled', True) }}>
       <label class="form-check-label small">Enabled</label>
     </div>
-    <button type="button" class="btn btn-sm btn-primary ims-save-btn"><i class="fas fa-floppy-disk me-1"></i>Save</button>
+    <button type="button" class="btn btn-sm btn-primary ims-save-btn" data-dirty-save><i class="fas fa-floppy-disk me-1"></i>Save</button>
+    <span class="ims-save-result small"></span>
   </div>
 </div>

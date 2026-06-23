@@ -1778,6 +1778,9 @@
       activePreset = null;
       persistActivePreset();
       renderActivePresetIndicator();
+      /* Detaching a preset also drops the filters it applied, so the user is
+         back to a clean slate without a separate "Clear" click. */
+      if (typeof window.zsazsaClearAllFilters === 'function') window.zsazsaClearAllFilters();
     });
   }
 

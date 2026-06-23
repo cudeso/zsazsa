@@ -150,6 +150,13 @@
         <hr>
         <p class="mb-0 text-danger"><strong>Rejection reason:</strong><br>{{ fia.rejection_reason }}</p>
         {% endif %}
+        {% if fia.history_url %}
+        <p class="mb-0 mt-2">
+          <a href="{{ fia.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
+            <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
+          </a>
+        </p>
+        {% endif %}
       </div>
     </div>
 

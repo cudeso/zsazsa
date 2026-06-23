@@ -1090,11 +1090,18 @@
 
   function bindSourceRow(srow) {
     const rm = srow.querySelector('.remove-im-source');
-    if (rm) rm.addEventListener('click', () => srow.remove());
-    // A source belongs to its mailbox, so saving a source saves the mailbox.
+    if (rm) rm.addEventListener('click', () => {
+      const mailbox = srow.closest('.imap-mailbox-row');
+      srow.remove();
+      if (mailbox) window.markCollectionScopeDirty?.(mailbox);
+    });
+    // A source belongs to its mailbox, so saving a source saves the whole
+    // mailbox; the result is shown next to the button that was clicked.
     const save = srow.querySelector('.ims-save-btn');
+    const saveResult = srow.querySelector('.ims-save-result');
     if (save) save.addEventListener('click', () => {
-      srow.closest('.imap-mailbox-row')?.querySelector('.save-im-btn')?.click();
+      const mailbox = srow.closest('.imap-mailbox-row');
+      if (mailbox) saveMailbox(mailbox, saveResult);
     });
   }
 
@@ -1109,6 +1116,33 @@
     } catch (e) {
       return {ok: false, error: 'Request failed'};
     }
+  }
+
+  // Persist a mailbox (with all its sources) and report to the given result
+  // span, which may belong to the mailbox or to one of its collection sources.
+  async function saveMailbox(row, result) {
+    const setResult = (msg, ok) => {
+      if (!result) return;
+      result.textContent = msg;
+      result.classList.remove('text-success', 'text-danger', 'text-muted');
+      result.classList.add(ok ? 'text-success' : 'text-danger');
+    };
+    const p = payload(row);
+    if (!p.name) { setResult('Name required', false); return; }
+    if (!p.host) { setResult('Host required', false); return; }
+    p.original_id = row.dataset.originalId || '';
+    const data = await post('/config/sources/save-imap', p);
+    if (!data.ok) { setResult(data.error || 'Save failed', false); return; }
+    row.dataset.originalId = data.new_id;
+    window.markCollectionScopeClean?.(row);
+    const nameDisplay = row.querySelector('.im-name-display');
+    nameDisplay.textContent = p.name;
+    nameDisplay.classList.remove('fst-italic', 'text-muted');
+    const badge = row.querySelector('.im-enabled-badge');
+    badge.textContent = p.enabled ? 'Enabled' : 'Disabled';
+    badge.className = 'badge im-enabled-badge ' + (p.enabled ? 'source-enabled' : 'source-disabled');
+    setResult('Saved', true);
+    setTimeout(() => { if (result) result.textContent = ''; }, 3000);
   }
 
   let imapCounter = 200;
@@ -1146,6 +1180,7 @@
         const node = srcTpl.content.firstElementChild.cloneNode(true);
         srcContainer.appendChild(node);
         bindSourceRow(node);
+        window.markCollectionScopeDirty?.(row);
       });
     }
     row.querySelectorAll('.imap-source-row').forEach(bindSourceRow);
@@ -1182,30 +1217,7 @@
 
     const saveBtn = row.querySelector('.save-im-btn');
     const saveResult = row.querySelector('.save-im-result');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', async () => {
-        const p = payload(row);
-        if (!p.name) { saveResult.textContent = 'Name required'; saveResult.className = 'save-im-result small text-danger'; return; }
-        if (!p.host) { saveResult.textContent = 'Host required'; saveResult.className = 'save-im-result small text-danger'; return; }
-        p.original_id = row.dataset.originalId || '';
-        const data = await post('/config/sources/save-imap', p);
-        if (data.ok) {
-          row.dataset.originalId = data.new_id;
-          if (window.markCollectionScopeClean) window.markCollectionScopeClean(row);
-          row.querySelector('.im-name-display').textContent = p.name;
-          row.querySelector('.im-name-display').classList.remove('fst-italic', 'text-muted');
-          const badge = row.querySelector('.im-enabled-badge');
-          badge.textContent = p.enabled ? 'Enabled' : 'Disabled';
-          badge.className = 'badge im-enabled-badge ' + (p.enabled ? 'source-enabled' : 'source-disabled');
-          saveResult.textContent = 'Saved';
-          saveResult.className = 'save-im-result small text-success';
-          setTimeout(() => { saveResult.textContent = ''; }, 3000);
-        } else {
-          saveResult.textContent = data.error || 'Save failed';
-          saveResult.className = 'save-im-result small text-danger';
-        }
-      });
-    }
+    if (saveBtn) saveBtn.addEventListener('click', () => saveMailbox(row, saveResult));
   }
 
   list.querySelectorAll('.imap-mailbox-row').forEach(bindRow);
@@ -1294,13 +1306,14 @@
 (function() {
   let submitting = false;
   const scopeOf = (el) => (el && el.closest) ? el.closest('[data-dirty-scope]') : null;
-  const saveOf = (scope) => scope ? scope.querySelector('[data-dirty-save]') : null;
 
   function setDirty(scope, dirty) {
     if (!scope) return;
     scope.dataset.dirty = dirty ? '1' : '';
-    const btn = saveOf(scope);
-    if (btn) btn.disabled = !dirty;
+    // A scope can hold more than one save button (an IMAP mailbox has its own
+    // save plus one per collection source); they all save the mailbox, so they
+    // enable and disable together.
+    scope.querySelectorAll('[data-dirty-save]').forEach((btn) => { btn.disabled = !dirty; });
   }
 
   // Server-rendered scopes start clean, so their save button is disabled.
@@ -1313,8 +1326,10 @@
   // A real form submit (scraper, redis, manual source) navigates away on save.
   document.addEventListener('submit', () => { submitting = true; }, true);
 
-  // AJAX saves (MISP servers, IMAP) call this on success.
+  // AJAX saves (MISP servers, IMAP) call these; adding/removing a source has no
+  // input event, so the IMAP code marks the mailbox dirty explicitly.
   window.markCollectionScopeClean = (el) => setDirty(scopeOf(el), false);
+  window.markCollectionScopeDirty = (el) => setDirty(scopeOf(el), true);
 
   window.addEventListener('beforeunload', (e) => {
     if (submitting) return;

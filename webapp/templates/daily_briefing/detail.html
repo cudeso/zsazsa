@@ -160,6 +160,13 @@
         <p class="mb-1 text-muted" style="font-size:.78rem;">{{ notify_status.details }}</p>
         {% endif %}
         {% endif %}
+        {% if briefing.history_url %}
+        <p class="mb-0 mt-2">
+          <a href="{{ briefing.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
+            <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
+          </a>
+        </p>
+        {% endif %}
       </div>
     </div>
 

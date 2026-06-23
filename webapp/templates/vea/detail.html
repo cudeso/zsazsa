@@ -197,6 +197,13 @@
         <hr>
         <p class="mb-0 text-danger"><strong>Rejection reason:</strong><br>{{ vea.rejection_reason }}</p>
         {% endif %}
+        {% if vea.history_url %}
+        <p class="mb-0 mt-2">
+          <a href="{{ vea.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
+            <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
+          </a>
+        </p>
+        {% endif %}
       </div>
     </div>
 
