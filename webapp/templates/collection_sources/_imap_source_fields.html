@@ -18,18 +18,12 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-4">
       <label class="form-label small mb-1">Mode</label>
       <select class="form-select form-select-sm ims-mode">
         <option value="auto" {{ 'selected' if s.get('mode', 'auto') == 'auto' }}>Automatic</option>
         <option value="manual" {{ 'selected' if s.get('mode') == 'manual' }}>Manual review</option>
       </select>
-    </div>
-    <div class="col-md-2 d-flex align-items-end">
-      <div class="form-check form-switch mb-2">
-        <input class="form-check-input ims-enabled" type="checkbox" {{ 'checked' if s.get('enabled', True) }}>
-        <label class="form-check-label small">Enabled</label>
-      </div>
     </div>
 
     <div class="col-md-5">
@@ -52,5 +46,12 @@
     <div class="col-12">
       <div class="form-text">A message matches if its subject contains any subject term, or its sender contains any sender term. Matching is case-insensitive. Leave both empty to take every message in the folder.</div>
     </div>
+  </div>
+  <div class="d-flex align-items-center gap-3 flex-wrap mt-2 pt-2 border-top">
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input ims-enabled" type="checkbox" {{ 'checked' if s.get('enabled', True) }}>
+      <label class="form-check-label small">Enabled</label>
+    </div>
+    <button type="button" class="btn btn-sm btn-primary ims-save-btn"><i class="fas fa-floppy-disk me-1"></i>Save</button>
   </div>
 </div>

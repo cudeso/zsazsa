@@ -1,0 +1,18 @@
+{# Data collection sources for a mailbox, shown as a clearly nested subcard.
+   Expects `m` (a mailbox dict) or None, plus newsletter_sources and
+   admiralty_options in context. #}
+{% set m = m or {} %}
+<div class="card border mt-3" style="background:var(--neutral-50, #f8f9fa);">
+  <div class="card-header d-flex align-items-center justify-content-between py-2" style="background:transparent;">
+    <span class="small fw-semibold"><i class="fas fa-newspaper me-2 text-muted"></i>Data collection sources</span>
+    <button type="button" class="btn btn-sm btn-outline-primary add-im-source"><i class="fas fa-plus me-1"></i>Add source</button>
+  </div>
+  <div class="card-body py-2">
+    <div class="form-text mb-2">Add one for each kind of e-mail that arrives in this mailbox. Each has its own parser, match criteria and reliability.</div>
+    <div class="im-sources">
+      {% for s in m.get('sources') or [] %}
+      {% include "collection_sources/_imap_source_fields.html" %}
+      {% endfor %}
+    </div>
+  </div>
+</div>

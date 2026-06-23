@@ -9,10 +9,6 @@
       <input class="form-check-input im-ssl" type="checkbox" {{ 'checked' if m.get('ssl', True) }}>
       <label class="form-check-label small">SSL</label>
     </div>
-    <div class="form-check form-switch mb-2">
-      <input class="form-check-input im-enabled" type="checkbox" {{ 'checked' if m.get('enabled', True) }}>
-      <label class="form-check-label small">Enabled</label>
-    </div>
   </div>
 
   <div class="col-md-5">
@@ -36,15 +32,4 @@
     <label class="form-label small mb-1">Password</label>
     <input type="password" class="form-control form-control-sm font-monospace im-password" value="{{ m.get('password', '') }}" autocomplete="new-password">
   </div>
-</div>
-
-<div class="d-flex align-items-center justify-content-between mt-3 mb-2">
-  <span class="small fw-semibold">Data collection sources</span>
-  <button type="button" class="btn btn-sm btn-outline-primary add-im-source"><i class="fas fa-plus me-1"></i>Add source</button>
-</div>
-<div class="form-text mb-2">Add one for each kind of e-mail that arrives in this mailbox. Each has its own parser, match criteria and reliability.</div>
-<div class="im-sources">
-  {% for s in m.get('sources') or [] %}
-  {% include "collection_sources/_imap_source_fields.html" %}
-  {% endfor %}
 </div>

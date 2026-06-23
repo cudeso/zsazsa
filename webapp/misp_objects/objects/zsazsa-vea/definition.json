@@ -214,6 +214,12 @@
       "ui-priority": 34,
       "description": "User who approved/published this advisory",
       "disable_correlation": true
+    },
+    "feedback-deadline": {
+      "misp-attribute": "text",
+      "ui-priority": 35,
+      "description": "Date by which feedback should be returned (ISO 8601)",
+      "disable_correlation": true
     }
   }
 }

@@ -35,7 +35,7 @@
 
 {% macro bullets(items) %}
   {% if items %}
-  <ul>{% for i in items %}<li>{{ i }}</li>{% endfor %}</ul>
+  <ul>{% for i in items %}<li>{{ i | md_inline }}</li>{% endfor %}</ul>
   {% else %}<p class="no-content">None recorded.</p>{% endif %}
 {% endmacro %}
 
@@ -50,9 +50,9 @@
 
 <h2>What happened</h2>
 <div class="section-box">
-  {{ bullets(fia.what_happened) }}
+  {% if what_happened_html %}{{ what_happened_html | safe }}{% else %}<p class="no-content">None recorded.</p>{% endif %}
   <div class="source-meta">
-    <strong>Source:</strong> {{ fia.source_description or 'unspecified' }}
+    <strong>Source:</strong> {{ (fia.source_description or 'unspecified') | md_inline }}
     {% if fia.source_reliability %}
     · <strong>Reliability:</strong> <span class="adm-badge">{{ fia.source_reliability }}</span>
     {% endif %}
@@ -65,10 +65,10 @@
 <h2>Why it matters</h2>
 <div class="section-box">
   <ul>
-    {% if fia.likely_impact %}<li><strong>Likely impact:</strong> {{ fia.likely_impact }}</li>{% endif %}
-    {% if fia.affected_assets %}<li><strong>Affected assets:</strong> {{ fia.affected_assets }}</li>{% endif %}
+    {% if fia.likely_impact %}<li><strong>Likely impact:</strong> {{ fia.likely_impact | md_inline }}</li>{% endif %}
+    {% if fia.affected_assets %}<li><strong>Affected assets:</strong> {{ fia.affected_assets | md_inline }}</li>{% endif %}
     {% if fia.actor_types %}<li><strong>Threat actor type:</strong> {{ fia.actor_types | join(', ') }}</li>{% endif %}
-    {% if fia.actor_context %}<li><strong>Actor context:</strong> {{ fia.actor_context }}</li>{% endif %}
+    {% if fia.actor_context %}<li><strong>Actor context:</strong> {{ fia.actor_context | md_inline }}</li>{% endif %}
     {% if fia.geographic_scope %}<li><strong>Geography:</strong> {{ fia.geographic_scope | join(', ') }}</li>{% endif %}
     {% if fia.sectors %}<li><strong>Sectors:</strong> {{ fia.sectors | join(', ') }}</li>{% endif %}
     {% if fia.threat_actors %}<li><strong>Threat actors:</strong> {{ fia.threat_actors | join(', ') }}</li>{% endif %}
@@ -97,7 +97,7 @@
 </div>
 
 {% if fia.external_references or source_events or unresolved_source_uuids %}
-<h2>References</h2>
+<h2>References &amp; feedback</h2>
 <div class="section-box">
   <ul>
     {% for r in fia.external_references %}

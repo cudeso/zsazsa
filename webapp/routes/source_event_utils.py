@@ -108,6 +108,42 @@ def parse_source_tokens(tokens: list[str]) -> tuple[list[str], dict[str, str], l
     return source_uuids, source_hints, source_pairs
 
 
+def source_event_references(product):
+    """Enriched references for a product's source MISP events.
+
+    Returns a list of dicts with keys: url, info, date, orgc, source_label.
+    The url points at the server each event was collected from. Falls back to a
+    bare URL when the event metadata cannot be fetched.
+    """
+    uuids = list(getattr(product, "source_event_uuids", []) or [])
+    if not uuids and getattr(product, "source_event_uuid", ""):
+        uuids = [product.source_event_uuid]
+    uuids = [u for u in uuids if u]
+    if not uuids:
+        return []
+    hints = dict(getattr(product, "source_event_hints", {}) or {})
+    events = misp_store.fetch_source_events(uuids, hints, strict_source=bool(hints))
+    events_by_uuid = {ev.get("uuid"): ev for ev in events}
+    refs = []
+    for uid in uuids:
+        ev = events_by_uuid.get(uid)
+        if ev:
+            base = (ev.get("source_url") or _cfg.MISP_WEBAPP_URL).rstrip("/")
+            refs.append({
+                "url": f"{base}/events/view/{uid}",
+                "info": ev.get("info", ""),
+                "date": ev.get("date", ""),
+                "orgc": ev.get("orgc", ""),
+                "source_label": ev.get("source_label", ""),
+            })
+        else:
+            refs.append({
+                "url": f"{_cfg.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}",
+                "info": "", "date": "", "orgc": "", "source_label": "",
+            })
+    return refs
+
+
 def lookup_source_event_meta(request_args):
     """Shared handler body for the /source-event-meta AJAX endpoint."""
     event_ref = (request_args.get("event") or request_args.get("uuid") or "").strip()

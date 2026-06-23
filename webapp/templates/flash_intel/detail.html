@@ -14,7 +14,7 @@
 {% endblock %}
 
 {% macro bullets(items) %}
-  {% if items %}<ul class="mb-0">{% for i in items %}<li>{{ i }}</li>{% endfor %}</ul>{% else %}<span class="text-muted">none recorded</span>{% endif %}
+  {% if items %}<ul class="mb-0">{% for i in items %}<li>{{ i | md_inline }}</li>{% endfor %}</ul>{% else %}<span class="text-muted">none recorded</span>{% endif %}
 {% endmacro %}
 
 {% block content %}
@@ -42,18 +42,22 @@
         {% endif %}
         <hr>
         <h5>What happened</h5>
-        {{ bullets(fia.what_happened) }}
+        {% if fia.what_happened %}
+        <div class="report-md-body" data-md="{{ fia.what_happened | join('\n') | e }}"></div>
+        {% else %}
+        <span class="text-muted">none recorded</span>
+        {% endif %}
         <p class="mt-3 mb-0 small text-muted">
-          Source: {{ fia.source_description or 'unspecified' }} ·
+          Source: {{ (fia.source_description or 'unspecified') | md_inline }} ·
           Reliability: {{ fia.source_reliability or '-' }} ·
           Credibility: {{ fia.information_credibility or '-' }}
         </p>
         <hr>
         <h5>Why it matters</h5>
         <ul>
-          <li><strong>Likely impact:</strong> {{ fia.likely_impact or '-' }}</li>
-          <li><strong>Affected assets:</strong> {{ fia.affected_assets or '-' }}</li>
-          <li><strong>Actor context:</strong> {{ fia.actor_context or '-' }}</li>
+          <li><strong>Likely impact:</strong> {{ (fia.likely_impact or '-') | md_inline }}</li>
+          <li><strong>Affected assets:</strong> {{ (fia.affected_assets or '-') | md_inline }}</li>
+          <li><strong>Actor context:</strong> {{ (fia.actor_context or '-') | md_inline }}</li>
           {% if fia.geographic_scope %}<li><strong>Geography:</strong> {{ fia.geographic_scope | join(', ') }}</li>{% endif %}
           {% if fia.sectors %}<li><strong>Sectors:</strong> {{ fia.sectors | join(', ') }}</li>{% endif %}
           {% if fia.threat_actors %}<li><strong>Threat actors:</strong> {{ fia.threat_actors | join(', ') }}</li>{% endif %}
@@ -76,8 +80,8 @@
         <h6 class="mt-3">Hunting hypotheses</h6>
         {{ bullets(fia.hunting_hypotheses) }}
         <hr>
-        <h5>References</h5>
-        {% if fia.external_references or fia.source_event_uuids %}
+        <h5>References &amp; feedback</h5>
+        {% if fia.external_references or source_event_refs %}
           <ul class="mb-0">
             {% for r in fia.external_references %}
               {% if r.startswith('http://') or r.startswith('https://') %}
@@ -86,15 +90,25 @@
               <li>{{ r }}</li>
               {% endif %}
             {% endfor %}
-            {% for uid in fia.source_event_uuids %}
-              {% set event_url = misp_webapp_url.rstrip('/') ~ '/events/view/' ~ uid %}
+            {% for ref in source_event_refs %}
               <li>
-                <a href="{{ event_url }}" target="_blank" rel="noopener noreferrer">{{ event_url }}</a>
+                <a href="{{ ref.url }}" target="_blank" rel="noopener noreferrer">{{ ref.url }}</a>
+                {% if ref.info or ref.date or ref.orgc %}
+                <div class="small text-muted">
+                  {% if ref.info %}<span><strong>Title:</strong> {{ ref.info }}</span>{% endif %}
+                  {% if ref.date %}<span class="ms-2"><strong>Date:</strong> {{ ref.date }}</span>{% endif %}
+                  {% if ref.orgc %}<span class="ms-2"><strong>Creator org:</strong> {{ ref.orgc }}</span>{% endif %}
+                </div>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>
         {% else %}
           <span class="text-muted">none recorded</span>
+        {% endif %}
+        {% if fia.feedback_deadline %}
+        <p class="mt-3 mb-0 small"><i class="fas fa-clock me-1 text-muted"></i><strong>Feedback requested by:</strong>
+          {{ fia.feedback_deadline.strftime('%d-%m-%Y') }}</p>
         {% endif %}
       </div>
     </div>

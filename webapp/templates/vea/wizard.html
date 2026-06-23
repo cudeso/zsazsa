@@ -359,12 +359,19 @@
     </div>
 
     <div class="card content-card mb-4">
-      <div class="card-header"><i class="fas fa-book me-2"></i>References</div>
+      <div class="card-header"><i class="fas fa-book me-2"></i>References &amp; feedback</div>
       <div class="card-body">
         <div class="mb-3">
           <label class="form-label">External references</label>
           <textarea name="references" id="references" class="form-control" rows="4">{{ lines(vea.references) if vea else '' }}</textarea>
           <div class="form-text">Include CISA KEV, GCVE.eu, vendor advisory, NVD entry. One URL per line.</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Feedback deadline</label>
+          <input type="date" name="feedback_deadline" class="form-control"
+            value="{{ vea.feedback_deadline.isoformat() if vea and vea.feedback_deadline else '' }}">
+          <div class="form-text">If set, recipients are asked to return findings by this date.</div>
         </div>
 
         {% set saved_ctx_tags = (vea.context_tags if vea else []) %}

@@ -257,6 +257,12 @@ def index():
     except Exception:
         pending_email_sources = 0
 
+    try:
+        pending_feedback = misp_store.list_pending_feedback_products()
+    except Exception:
+        logger.exception("Failed to load pending-feedback products")
+        pending_feedback = []
+
     # Both summary charts show the eight busiest entries, most active first.
     actor_type_products = sorted(
         misp_store.product_counts_by_threat_actor_type(),
@@ -274,6 +280,7 @@ def index():
         active_girs=active_girs,
         pipeline=pipeline,
         pending_email_sources=pending_email_sources,
+        pending_feedback=pending_feedback,
         actor_type_products=actor_type_products,
         throughput_by_source=throughput_by_source,
     )

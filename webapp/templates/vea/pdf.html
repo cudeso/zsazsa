@@ -28,7 +28,7 @@
 </div>
 
 {% macro bullets(items) %}
-  {% if items %}<ul>{% for i in items %}<li>{{ i }}</li>{% endfor %}</ul>
+  {% if items %}<ul>{% for i in items %}<li>{{ i | md_inline }}</li>{% endfor %}</ul>
   {% else %}<p class="no-content">None recorded.</p>{% endif %}
 {% endmacro %}
 
@@ -41,10 +41,10 @@
 <h2>Affected technology</h2>
 <div class="section-box">
   <table class="detail-table">
-    {% if vea.affected_product %}<tr><th>Product</th><td>{{ vea.affected_product }}</td></tr>{% endif %}
-    {% if vea.affected_versions %}<tr><th>Affected versions</th><td>{{ vea.affected_versions }}</td></tr>{% endif %}
-    {% if vea.fixed_version %}<tr><th>Fixed version</th><td>{{ vea.fixed_version }}</td></tr>{% endif %}
-    {% if vea.exposure %}<tr><th>Our exposure</th><td>{{ vea.exposure }}</td></tr>{% endif %}
+    {% if vea.affected_product %}<tr><th>Product</th><td>{{ vea.affected_product | md_inline }}</td></tr>{% endif %}
+    {% if vea.affected_versions %}<tr><th>Affected versions</th><td>{{ vea.affected_versions | md_inline }}</td></tr>{% endif %}
+    {% if vea.fixed_version %}<tr><th>Fixed version</th><td>{{ vea.fixed_version | md_inline }}</td></tr>{% endif %}
+    {% if vea.exposure %}<tr><th>Our exposure</th><td>{{ vea.exposure | md_inline }}</td></tr>{% endif %}
   </table>
 </div>
 {% endif %}
@@ -52,15 +52,15 @@
 <h2>Exploitation status</h2>
 <div class="section-box">
   <table class="detail-table">
-    {% if vea.observed_exploitation %}<tr><th>Observed exploitation</th><td>{{ vea.observed_exploitation }}</td></tr>{% endif %}
-    {% if vea.exploit_availability %}<tr><th>Exploit availability</th><td>{{ vea.exploit_availability }}</td></tr>{% endif %}
-    {% if vea.exploitation_complexity %}<tr><th>Exploitation complexity</th><td>{{ vea.exploitation_complexity }}</td></tr>{% endif %}
-    {% if vea.threat_actor_interest %}<tr><th>Threat actor interest</th><td>{{ vea.threat_actor_interest }}</td></tr>{% endif %}
+    {% if vea.observed_exploitation %}<tr><th>Observed exploitation</th><td>{{ vea.observed_exploitation | md_inline }}</td></tr>{% endif %}
+    {% if vea.exploit_availability %}<tr><th>Exploit availability</th><td>{{ vea.exploit_availability | md_inline }}</td></tr>{% endif %}
+    {% if vea.exploitation_complexity %}<tr><th>Exploitation complexity</th><td>{{ vea.exploitation_complexity | md_inline }}</td></tr>{% endif %}
+    {% if vea.threat_actor_interest %}<tr><th>Threat actor interest</th><td>{{ vea.threat_actor_interest | md_inline }}</td></tr>{% endif %}
     <tr><th>CISA KEV listed</th><td>{% if vea.cisa_kev == 'Yes' %}<span class="kev-badge">Yes</span>{% else %}{{ vea.cisa_kev or 'No' }}{% endif %}</td></tr>
   </table>
   {% if vea.source_description or vea.source_reliability or vea.information_credibility %}
   <p class="source-meta">
-    Source: {{ vea.source_description or 'unspecified' }}
+    Source: {{ (vea.source_description or 'unspecified') | md_inline }}
     {% if vea.source_reliability %} · Reliability: {{ vea.source_reliability }}{% endif %}
     {% if vea.information_credibility %} · Credibility: {{ vea.information_credibility }}{% endif %}
   </p>
@@ -70,8 +70,8 @@
 {% if vea.worst_case or vea.most_likely %}
 <h2>Risk assessment</h2>
 <div class="section-box">
-  {% if vea.worst_case %}<p><strong>Worst case:</strong> {{ vea.worst_case }}</p>{% endif %}
-  {% if vea.most_likely %}<p><strong>Most likely:</strong> {{ vea.most_likely }}</p>{% endif %}
+  {% if vea.worst_case %}<p><strong>Worst case:</strong> {{ vea.worst_case | md_inline }}</p>{% endif %}
+  {% if vea.most_likely %}<p><strong>Most likely:</strong> {{ vea.most_likely | md_inline }}</p>{% endif %}
 </div>
 {% endif %}
 
@@ -80,9 +80,9 @@
   {{ bullets(vea.immediate_actions) }}
   {% if vea.patch_sla_internet or vea.patch_sla_internal or vea.target_patch_version %}
   <p style="margin-top:6pt;">
-    {% if vea.patch_sla_internet %}<strong>Internet-facing SLA:</strong> {{ vea.patch_sla_internet }} &nbsp;{% endif %}
-    {% if vea.patch_sla_internal %}<strong>Internal SLA:</strong> {{ vea.patch_sla_internal }} &nbsp;{% endif %}
-    {% if vea.target_patch_version %}<strong>Target version:</strong> {{ vea.target_patch_version }}{% endif %}
+    {% if vea.patch_sla_internet %}<strong>Internet-facing SLA:</strong> {{ vea.patch_sla_internet | md_inline }} &nbsp;{% endif %}
+    {% if vea.patch_sla_internal %}<strong>Internal SLA:</strong> {{ vea.patch_sla_internal | md_inline }} &nbsp;{% endif %}
+    {% if vea.target_patch_version %}<strong>Target version:</strong> {{ vea.target_patch_version | md_inline }}{% endif %}
   </p>
   {% endif %}
 </div>
@@ -102,16 +102,19 @@
 {% endif %}
 
 {% if external_references or source_event_refs %}
-<h2>References</h2>
+<h2>References &amp; feedback</h2>
 <div class="section-box">
   <ul>
     {% for r in external_references %}
     <li>{{ r }}</li>
     {% endfor %}
     {% for ref in source_event_refs %}
-    <li>{{ ref.url }}{% if ref.info %} — {{ ref.info }}{% endif %}{% if ref.date %} ({{ ref.date }}){% endif %}</li>
+    <li>{{ ref.url }}{% if ref.info %} — {{ ref.info }}{% endif %}{% if ref.date %} ({{ ref.date }}){% endif %}{% if ref.orgc %} · {{ ref.orgc }}{% endif %}</li>
     {% endfor %}
   </ul>
+  {% if vea.feedback_deadline %}
+  <p style="margin-top:6pt;"><strong>Feedback requested by:</strong> {{ vea.feedback_deadline.strftime('%Y-%m-%d') }}</p>
+  {% endif %}
 </div>
 {% endif %}
 

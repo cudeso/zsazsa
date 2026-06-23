@@ -1863,6 +1863,42 @@ def add_product_feedback(event_uuid, author, rating, comment):
         logger.warning("tag %s with feedback failed: %s", event_uuid, exc)
 
 
+def list_pending_feedback_products():
+    """Published flash intel alerts and vulnerability advisories that asked for
+    feedback by a deadline but have not received any yet.
+
+    Products without a feedback deadline are never included. "Received" is judged
+    from the feedback tag on the event, so this stays to a few MISP searches
+    rather than one lookup per product.
+    """
+    misp = _misp()
+    have_feedback = set()
+    try:
+        fb_events = misp.search(tags=[TAG_FEEDBACK], limit=1000, metadata=True, pythonify=True)
+        if fb_events and not isinstance(fb_events, dict):
+            have_feedback = {e.uuid for e in fb_events}
+    except Exception:
+        logger.exception("feedback-tag search failed")
+
+    today = datetime.utcnow().date()
+    pending = []
+    for kind, items in (("flash-intel", list_fias()), ("vea", list_veas())):
+        for p in items:
+            if not p.feedback_deadline or not p.published or p.uuid in have_feedback:
+                continue
+            pending.append(SimpleNamespace(
+                kind=kind,
+                uuid=p.uuid,
+                product_id=p.fia_id if kind == "flash-intel" else p.vea_id,
+                title=p.title or "(untitled)",
+                deadline=p.feedback_deadline,
+                days_left=(p.feedback_deadline - today).days,
+                overdue=p.feedback_deadline < today,
+            ))
+    pending.sort(key=lambda p: p.deadline)
+    return pending
+
+
 # ── Cross-entity queries ──────────────────────────────────────────────────────
 
 def pirs_for_stakeholder(stakeholder_uuid):
@@ -2483,7 +2519,8 @@ def update_collection_source(uuid, data: dict):
     if old_obj is not None:
         old_enabled = _obj_attr(old_obj, "enabled") != "false"
         misp.delete_object(old_obj.id)
-    _check(misp.add_object(uuid, _collection_source_obj(data, enabled=old_enabled),
+    new_enabled = data["enabled"] if "enabled" in data else old_enabled
+    _check(misp.add_object(uuid, _collection_source_obj(data, enabled=new_enabled),
                             pythonify=True), "update collection source object")
     new_info = f"Collection source: {(data.get('name') or '').strip()}"
     misp.update_event({"Event": {"id": ev.id, "info": new_info}})
@@ -2999,6 +3036,34 @@ def _fia_id_from_event_id(event_id):
     return f"FIA-{int(event_id):05d}"
 
 
+def _source_server_url_map():
+    """Map a source-event server id to its MISP web URL, from config (no network)."""
+    mapping = {"scraper": config.MISP_URL, "webapp": config.MISP_WEBAPP_URL}
+    for server in getattr(config, "MISP_SERVERS", []) or []:
+        sid = server.get("id") or server.get("label") or ""
+        if sid and server.get("url"):
+            mapping[sid] = server["url"].rstrip("/")
+    return mapping
+
+
+def source_event_urls(uuids, hints=None):
+    """Build MISP event URLs that point at the server each event came from.
+
+    `hints` maps a source-event UUID to the server id it was collected from, so
+    events pulled from another MISP server link back to that server rather than
+    the local web instance.
+    """
+    hints = hints or {}
+    url_map = _source_server_url_map()
+    urls = []
+    for uid in uuids or []:
+        if not uid:
+            continue
+        base = url_map.get(hints.get(uid, ""), config.MISP_WEBAPP_URL).rstrip("/")
+        urls.append(f"{base}/events/view/{uid}")
+    return urls
+
+
 def render_fia_markdown(fia, fia_id=None):
     """Render an FIA namespace into the markdown report content."""
     fid = fia_id or fia.fia_id or "FIA-#####"
@@ -3007,7 +3072,8 @@ def render_fia_markdown(fia, fia_id=None):
     def bullets(items):
         return "\n".join(f"- {ln}" for ln in items) if items else "- (none recorded)"
 
-    source_refs = [f"{config.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}" for uid in (getattr(fia, "source_event_uuids", []) or []) if uid]
+    source_refs = source_event_urls(getattr(fia, "source_event_uuids", []) or [],
+                                    getattr(fia, "source_event_hints", {}) or {})
 
     parts = [
         f"# Flash intel alert: {fia.title or '(untitled)'}",
@@ -3555,6 +3621,7 @@ def _vea_obj(data):
     _oa(obj, "exploitation-indicators", _join_lines(data.get("exploitation_indicators")))
     _oa(obj, "detection-rules", _join_lines(data.get("detection_rules")))
     _oa(obj, "references", _join_lines(data.get("references")))
+    _oa(obj, "feedback-deadline", data.get("feedback_deadline"))
     _oa(obj, "review-state", data.get("review_state", VEA_REVIEW_DRAFT))
     _oa(obj, "rejection-reason", data.get("rejection_reason"))
     src_uuids, src_hints = _normalise_source_uuids_and_hints(
@@ -3619,6 +3686,7 @@ def _vea_ns(event):
         exploitation_indicators=g("exploitation-indicators").splitlines(),
         detection_rules=g("detection-rules").splitlines(),
         references=g("references").splitlines(),
+        feedback_deadline=_parse_date(g("feedback-deadline")),
         review_state=g("review-state") or VEA_REVIEW_DRAFT,
         rejection_reason=g("rejection-reason"),
         source_event_uuids=source_event_uuids,
@@ -3645,11 +3713,8 @@ def render_vea_markdown(vea, vea_id=None, preview_url: str = ""):
     def bullets(items):
         return "\n".join(f"- {ln}" for ln in items) if items else "- (none recorded)"
 
-    source_refs = [
-        f"{config.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}"
-        for uid in (getattr(vea, "source_event_uuids", []) or [])
-        if uid
-    ]
+    source_refs = source_event_urls(getattr(vea, "source_event_uuids", []) or [],
+                                    getattr(vea, "source_event_hints", {}) or {})
 
     lines = [
         f"# Vulnerability advisory: {vea.cve_id or vid}",
@@ -3739,6 +3804,15 @@ def render_vea_markdown(vea, vea_id=None, preview_url: str = ""):
         "",
         bullets(list(dict.fromkeys((vea.references or []) + source_refs))),
     ]
+    if getattr(vea, "feedback_deadline", None):
+        lines.extend([
+            "",
+            "---",
+            "",
+            "## Feedback requested",
+            "",
+            f"Please report findings to the CTI team by {vea.feedback_deadline.isoformat()}.",
+        ])
     if preview_url:
         lines += ["", f"[Open advisory]({preview_url})"]
     return "\n".join(lines)
@@ -3892,6 +3966,7 @@ def set_vea_review_state(uuid, state, reason=None):
             "exploitation_indicators": v.exploitation_indicators,
             "detection_rules": v.detection_rules,
             "references": v.references,
+            "feedback_deadline": v.feedback_deadline.isoformat() if getattr(v, "feedback_deadline", None) else "",
             "source_event_uuids": list(getattr(v, "source_event_uuids", []) or []),
             "source_event_hints": dict(getattr(v, "source_event_hints", {}) or {}),
             "source_event_uuid": v.source_event_uuid,

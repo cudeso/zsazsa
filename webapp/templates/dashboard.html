@@ -169,6 +169,42 @@
 </div>
 {% endif %}
 
+{% if pending_feedback %}
+<!-- Products awaiting feedback -->
+<div class="card content-card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-comment-dots me-2 text-primary"></i>Awaiting feedback</span>
+    <span class="badge rounded-pill bg-primary">{{ pending_feedback | length }}</span>
+  </div>
+  <div class="list-group list-group-flush">
+    {% for p in pending_feedback %}
+    <a href="{{ url_for('flash_intel.detail', id=p.uuid) if p.kind == 'flash-intel' else url_for('vea.detail', id=p.uuid) }}"
+       class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-3">
+      <span class="d-flex align-items-center gap-2 text-truncate">
+        {% if p.kind == 'flash-intel' %}
+        <span class="badge rounded-pill text-bg-danger flex-shrink-0"><i class="fas fa-bolt me-1"></i>FIA</span>
+        {% else %}
+        <span class="badge rounded-pill text-bg-warning text-dark flex-shrink-0"><i class="fas fa-bug me-1"></i>VEA</span>
+        {% endif %}
+        <span class="fw-semibold flex-shrink-0">{{ p.product_id }}</span>
+        <span class="text-muted text-truncate">{{ p.title }}</span>
+      </span>
+      <span class="d-flex align-items-center gap-2 flex-shrink-0">
+        {% if p.overdue %}
+        <span class="badge text-bg-danger"><i class="fas fa-triangle-exclamation me-1"></i>Overdue {{ -p.days_left }}d</span>
+        {% elif p.days_left == 0 %}
+        <span class="badge text-bg-warning text-dark">Due today</span>
+        {% else %}
+        <span class="badge text-bg-light text-dark border">Due in {{ p.days_left }}d</span>
+        {% endif %}
+        <span class="small text-muted d-none d-md-inline">{{ p.deadline.strftime('%d-%m-%Y') }}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="modal fade" id="pipelineProgressModal" tabindex="-1" aria-labelledby="pipelineProgressModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">

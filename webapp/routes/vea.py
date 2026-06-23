@@ -11,6 +11,7 @@ from webapp.routes.source_event_utils import (
     lookup_source_event_meta,
     normalise_source_event_rows,
     parse_source_tokens,
+    source_event_references,
 )
 
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d{4,}\b', re.IGNORECASE)
@@ -63,6 +64,7 @@ def _form_data(form, vea_id=""):
         "exploitation_indicators": misp_store._split_lines(form.get("exploitation_indicators")),
         "detection_rules": misp_store._split_lines(form.get("detection_rules")),
         "references": misp_store._split_lines(form.get("references")),
+        "feedback_deadline": form.get("feedback_deadline") or "",
         "context_tags": form.getlist("context_tags"),
         "review_state": form.get("review_state", misp_store.VEA_REVIEW_DRAFT),
         "source_event_uuids": source_event_uuids,
@@ -103,46 +105,6 @@ def _eligible_vea_recipients(vea):
     if not allowed:
         return []
     return [s for s in misp_store.list_stakeholders() if getattr(s, "uuid", None) in allowed]
-
-
-def _source_event_uuids(vea) -> list[str]:
-    uuids = list(getattr(vea, "source_event_uuids", []) or [])
-    if not uuids and getattr(vea, "source_event_uuid", ""):
-        uuids = [vea.source_event_uuid]
-    return [u for u in uuids if u]
-
-
-def _source_event_references(vea):
-    """Enriched references for source MISP events: url + title + date + creator org.
-
-    Returns a list of dicts with keys: url, info, date, orgc, source_label.
-    Falls back to a bare URL entry when event metadata cannot be fetched.
-    """
-    uuids = _source_event_uuids(vea)
-    if not uuids:
-        return []
-    hints = dict(getattr(vea, "source_event_hints", {}) or {})
-    events = misp_store.fetch_source_events(uuids, source_hints=hints, strict_source=bool(hints))
-    events_by_uuid = {ev.get("uuid"): ev for ev in events}
-    refs = []
-    for uid in uuids:
-        ev = events_by_uuid.get(uid)
-        if ev:
-            base = (ev.get("source_url") or _cfg.MISP_WEBAPP_URL).rstrip("/")
-            refs.append({
-                "url": f"{base}/events/view/{uid}",
-                "info": ev.get("info", ""),
-                "date": ev.get("date", ""),
-                "orgc": ev.get("orgc", ""),
-                "source_label": ev.get("source_label", ""),
-            })
-        else:
-            refs.append({
-                "url": f"{_cfg.MISP_WEBAPP_URL.rstrip('/')}/events/view/{uid}",
-                "info": "", "date": "", "orgc": "", "source_label": "",
-            })
-    return refs
-
 
 
 def _publish_and_notify(uuid):
@@ -273,7 +235,7 @@ def detail(id):
         "vea/detail.html",
         vea=vea,
         external_references=list(vea.references or []),
-        source_event_refs=_source_event_references(vea),
+        source_event_refs=source_event_references(vea),
         feedback=feedback,
         recipients=recipients,
         notify_status=notify_status,
@@ -390,14 +352,7 @@ def _build_seed_from_sources(source_uuids, source_pairs, source_events):
         base = (ev.get("source_url") or _cfg.MISP_WEBAPP_URL).rstrip("/")
         references.append(f"{base}/events/view/{ev.get('uuid')}")
     if not references:
-        _source_url_map = {"scraper": _cfg.MISP_URL, "webapp": _cfg.MISP_WEBAPP_URL}
-        for _s in getattr(_cfg, "MISP_SERVERS", []) or []:
-            _sid = _s.get("id") or _s.get("label") or ""
-            if _sid and _s.get("url"):
-                _source_url_map[_sid] = _s["url"].rstrip("/")
-        for uuid, sid in source_pairs:
-            base = _source_url_map.get(sid, _cfg.MISP_WEBAPP_URL).rstrip("/")
-            references.append(f"{base}/events/view/{uuid}")
+        references = misp_store.source_event_urls(source_uuids, source_hints)
 
     for cve in cve_ids:
         references.append(f"https://vulnerability.circl.lu/vuln/{cve}")
@@ -417,7 +372,7 @@ def _build_seed_from_sources(source_uuids, source_pairs, source_events):
         worst_case="", most_likely="",
         immediate_actions=[], patch_sla_internet="", patch_sla_internal="",
         target_patch_version="", exploitation_indicators=[], detection_rules=[],
-        references=references, review_state=misp_store.VEA_REVIEW_DRAFT,
+        references=references, feedback_deadline=None, review_state=misp_store.VEA_REVIEW_DRAFT,
         rejection_reason="", source_event_uuids=source_uuids,
         source_event_hints=source_hints,
         source_event_uuid=source_uuids[0] if source_uuids else "", linked_pir_uuid="",
@@ -572,7 +527,7 @@ def pdf(id):
         vea=vea,
         css_url=css_url,
         external_references=list(vea.references or []),
-        source_event_refs=_source_event_references(vea),
+        source_event_refs=source_event_references(vea),
         summary_html=md_to_html(vea.summary or ""),
     )
     try:

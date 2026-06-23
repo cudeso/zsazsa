@@ -18,6 +18,7 @@ from webapp.routes.source_event_utils import (
     lookup_source_event_meta,
     normalise_source_event_rows,
     parse_source_tokens,
+    source_event_references,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ def _form_data(form, fia_id=""):
         "actions_near_term": misp_store._split_lines(form.get("actions_near_term")),
         "mitre_techniques": misp_store._split_lines(form.get("mitre_techniques")),
         "hunting_hypotheses": misp_store._split_lines(form.get("hunting_hypotheses")),
-        "external_references": [r.strip() for r in form.getlist("external_reference_item")
+        "external_references": [r.strip() for r in misp_store._split_lines(form.get("external_references"))
                                  if r.strip() and r.strip().startswith(("http://", "https://"))],
         "feedback_deadline": form.get("feedback_deadline") or "",
         "author": form.get("author", ""),
@@ -229,6 +230,7 @@ def detail(id):
         feedback=feedback,
         recipients=recipients,
         notify_status=notify_status,
+        source_event_refs=source_event_references(fia),
     )
 
 
@@ -435,6 +437,7 @@ def pdf(id):
         unresolved_source_uuids=unresolved_source_uuids,
         summary_html=md_to_html(fia.summary or ""),
         action_required_html=md_to_html(fia.action_required or ""),
+        what_happened_html=md_to_html("\n".join(fia.what_happened or [])),
     )
     try:
         import weasyprint

@@ -7,12 +7,25 @@ from flask import jsonify, request
 from markdown_it import MarkdownIt
 from werkzeug.routing import BuildError
 
-_md = MarkdownIt("commonmark").enable("table")
+# breaks=True renders single newlines as <br>, matching the client-side preview
+# (marked with breaks:true) so multi-line fields like observed facts look the same
+# in the on-screen preview, the PDF and e-mail.
+_md = MarkdownIt("commonmark", {"breaks": True}).enable("table")
 
 
 def md_to_html(text: str) -> str:
     """Render Markdown to HTML for server-side contexts (e.g. PDF generation)."""
     return _md.render(text or "")
+
+
+def md_to_html_inline(text: str) -> str:
+    """Render Markdown to inline HTML (no wrapping block element).
+
+    For short, single-value fields shown inside a sentence or list item, where a
+    wrapping <p> would break the layout but inline markdown (links, bold, code,
+    line breaks) should still render.
+    """
+    return _md.renderInline(text or "")
 
 
 def json_body():

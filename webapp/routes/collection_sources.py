@@ -74,6 +74,11 @@ def edit(id):
             flash("Name is required.", "warning")
             return render_template("collection_sources/form.html", source=source, data=data,
                                    admiralty_options=ADMIRALTY_OPTIONS)
+        if data.get("enabled") is False and source.enabled:
+            block = _requirement_block(source, "disable")
+            if block:
+                flash(f"{block} Other changes were kept.", "warning")
+                data["enabled"] = True
         try:
             misp_store.update_collection_source(id, data)
             audit.record("update", "collection_source", entity_id=id, entity_label=data["name"])
@@ -99,15 +104,9 @@ def toggle(id):
         return "Source not found", 404
     new_state = not source.enabled
     if not new_state:
-        pirs = [p for p in misp_store.list_pirs() if source.name in (p.collection_sources or [])]
-        girs = [g for g in misp_store.list_girs() if source.name in (g.collection_sources or [])]
-        if pirs or girs:
-            refs = ([f"{len(pirs)} PIR(s)"] if pirs else []) + ([f"{len(girs)} GIR(s)"] if girs else [])
-            flash(
-                f"Cannot disable '{source.name}': referenced in {', '.join(refs)}. "
-                "Remove the source from those requirements first.",
-                "warning",
-            )
+        block = _requirement_block(source, "disable")
+        if block:
+            flash(block, "warning")
             return redirect(url_for("collection_sources.index"))
     try:
         misp_store.toggle_collection_source(id, new_state)
@@ -126,15 +125,9 @@ def delete(id):
     if source is None:
         flash("Source not found.", "warning")
         return redirect(url_for("collection_sources.index"))
-    pirs = [p for p in misp_store.list_pirs() if source.name in (p.collection_sources or [])]
-    girs = [g for g in misp_store.list_girs() if source.name in (g.collection_sources or [])]
-    if pirs or girs:
-        refs = ([f"{len(pirs)} PIR(s)"] if pirs else []) + ([f"{len(girs)} GIR(s)"] if girs else [])
-        flash(
-            f"Cannot delete '{source.name}': referenced in {', '.join(refs)}. "
-            "Remove the source from those requirements first.",
-            "warning",
-        )
+    block = _requirement_block(source, "delete")
+    if block:
+        flash(block, "warning")
         return redirect(url_for("collection_sources.index"))
     try:
         misp_store.delete_collection_source(id)
@@ -148,12 +141,28 @@ def delete(id):
 _VALID_RELIABILITY = {code for code, _ in ADMIRALTY_OPTIONS}
 
 
+def _requirement_block(source, verb):
+    """Return a warning message if PIRs or GIRs still reference this source, else
+    None. Disabling or deleting a referenced source would leave them dangling."""
+    pirs = [p for p in misp_store.list_pirs() if source.name in (p.collection_sources or [])]
+    girs = [g for g in misp_store.list_girs() if source.name in (g.collection_sources or [])]
+    if not (pirs or girs):
+        return None
+    refs = ", ".join(([f"{len(pirs)} PIR(s)"] if pirs else []) + ([f"{len(girs)} GIR(s)"] if girs else []))
+    return (f"Cannot {verb} '{source.name}': referenced in {refs}. "
+            "Remove the source from those requirements first.")
+
+
 def _form_data(form):
     reliability = form.get("source_reliability", "").strip().upper()
-    return {
+    data = {
         "name": form.get("name", "").strip(),
         "owner": form.get("owner", "").strip(),
         "location": form.get("location", "").strip(),
         "description": form.get("description", "").strip(),
         "source_reliability": reliability if reliability in _VALID_RELIABILITY else "",
     }
+    # The inline edit form carries the enabled switch; the new-source form does not.
+    if form.get("enabled_field"):
+        data["enabled"] = form.get("enabled") == "on"
+    return data

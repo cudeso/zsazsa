@@ -6,7 +6,7 @@
 {% block content %}
 
 {# ── MISP scraper ─────────────────────────────────────────────────────── #}
-<form method="post" action="{{ url_for('config_page.save_scraper_config') }}">
+<form method="post" action="{{ url_for('config_page.save_scraper_config') }}" data-dirty-scope>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="card content-card mb-4">
     <div class="card-header d-flex align-items-center justify-content-between">
@@ -15,7 +15,7 @@
       </span>
       <div class="d-flex align-items-center gap-2">
         <span class="badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Always active</span>
-        <button type="submit" class="btn btn-sm btn-primary">
+        <button type="submit" class="btn btn-sm btn-primary" data-dirty-save>
           <i class="fas fa-floppy-disk me-1"></i>Save
         </button>
       </div>
@@ -56,16 +56,19 @@
                  title="Only cache scraper events from the last N days. 0 pulls purely by Max events, which can hide the newest events once the tagged set exceeds the limit.">
           <div class="form-text">0 or empty disables the window.</div>
         </div>
-        <div class="col-12 mt-1">
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="scraper-test-btn">
-            <i class="fas fa-plug me-1"></i>Test connection
-          </button>
-          <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="scraper-estimate-btn"
-                  title="Estimate how many events the scraper MISP currently holds">
-            <i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate
-          </button>
-          <span class="small ms-2" id="scraper-test-result"></span>
-          <span class="small ms-2" id="scraper-estimate-result"></span>
+        <div class="col-md-6">
+          <label class="form-label d-block">&nbsp;</label>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="scraper-test-btn">
+              <i class="fas fa-plug me-1"></i>Test connection
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="scraper-estimate-btn"
+                    title="Estimate how many events the scraper MISP currently holds">
+              <i class="fas fa-magnifying-glass-chart me-1"></i>Pull estimate
+            </button>
+            <span class="small" id="scraper-test-result"></span>
+            <span class="small" id="scraper-estimate-result"></span>
+          </div>
         </div>
         <div class="col-12 mt-2">
           <button type="button" class="btn btn-xs btn-link text-muted p-0" id="scraper-query-toggle" style="font-size:.78rem;">
@@ -79,12 +82,12 @@
 </form>
 
 {# ── Manual sources pushing to scraper ────────────────────────────────── #}
-<form method="post" action="{{ url_for('config_page.save_scraper_redis_config') }}">
+<form method="post" action="{{ url_for('config_page.save_scraper_redis_config') }}" data-dirty-scope>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="card content-card mb-4">
     <div class="card-header d-flex align-items-center justify-content-between">
       <span><i class="fas fa-envelope-open-text me-2"></i>Manual sources pushing to scraper</span>
-      <button type="submit" class="btn btn-sm btn-primary">
+      <button type="submit" class="btn btn-sm btn-primary" data-dirty-save>
         <i class="fas fa-floppy-disk me-1"></i>Save
       </button>
     </div>
@@ -142,7 +145,7 @@
       </div>
       <div id="misp-servers-list">
         {% for s in cfg.MISP_SERVERS %}
-        <div class="misp-server-row border rounded mb-3" data-original-id="{{ s.id }}">
+        <div class="misp-server-row border rounded mb-3" data-dirty-scope data-original-id="{{ s.id }}">
           <div class="server-row-header d-flex align-items-center px-3 py-2 gap-2"
                style="cursor:pointer;user-select:none;">
             <i class="fas fa-server text-muted" style="font-size:.85rem;"></i>
@@ -154,12 +157,6 @@
             {% else %}
             <span class="server-enabled-badge badge source-disabled" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
             {% endif %}
-            <button type="button" class="btn btn-xs btn-outline-secondary toggle-server-enabled ms-1"
-                    data-label="{{ s.label }}"
-                    data-enabled="{{ 'true' if s.get('enabled', True) else 'false' }}"
-                    title="Enable or disable this server">
-              <i class="fas fa-power-off"></i>
-            </button>
             <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
             <button type="button" class="btn btn-sm btn-outline-danger delete-misp-server ms-1" title="Delete">
               <i class="fas fa-trash"></i>
@@ -239,15 +236,18 @@
                   <label class="form-label small mb-1">Max events</label>
                   <input type="number" name="server_limit" class="form-control form-control-sm" value="{{ s.limit or 500 }}" min="1" max="100000">
                 </div>
-                <input type="hidden" class="server-enabled-value" value="{{ 'true' if s.get('enabled', True) else 'false' }}">
                 <div class="col-12">
                   <button type="button" class="btn btn-xs btn-link text-muted p-0 query-preview-toggle" style="font-size:.78rem;">
                     <i class="fas fa-code me-1"></i>Show query
                   </button>
                   <pre class="query-preview font-monospace bg-light border rounded p-2 mt-1 mb-0" style="display:none;font-size:.72rem;white-space:pre-wrap;word-break:break-all;"></pre>
                 </div>
-                <div class="col-12 mt-2 d-flex align-items-center gap-2">
-                  <button type="button" class="btn btn-sm btn-primary save-server-btn">
+                <div class="col-12 mt-2 d-flex align-items-center gap-3 flex-wrap">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input server-enabled-switch" type="checkbox" {{ 'checked' if s.get('enabled', True) }}>
+                    <label class="form-check-label small">Enabled</label>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-primary save-server-btn" data-dirty-save>
                     <i class="fas fa-floppy-disk me-1"></i>Save server
                   </button>
                   <span class="save-server-result small"></span>
@@ -263,7 +263,7 @@
       </div>
 
       <template id="misp-server-template">
-        <div class="misp-server-row border rounded mb-3" data-original-id="">
+        <div class="misp-server-row border rounded mb-3" data-dirty-scope data-original-id="">
           <div class="server-row-header d-flex align-items-center px-3 py-2 gap-2"
                style="cursor:pointer;user-select:none;">
             <i class="fas fa-server text-muted" style="font-size:.85rem;"></i>
@@ -271,10 +271,6 @@
             <span class="server-url-display text-muted small"
                   style="font-size:.78rem;max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
             <span class="server-enabled-badge badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
-            <button type="button" class="btn btn-xs btn-outline-secondary toggle-server-enabled ms-1"
-                    data-label="" data-enabled="true" title="Enable or disable this server">
-              <i class="fas fa-power-off"></i>
-            </button>
             <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
             <button type="button" class="btn btn-sm btn-outline-danger delete-misp-server ms-1" title="Delete">
               <i class="fas fa-trash"></i>
@@ -354,15 +350,18 @@
                   <label class="form-label small mb-1">Max events</label>
                   <input type="number" name="server_limit" class="form-control form-control-sm" value="500" min="1" max="100000">
                 </div>
-                <input type="hidden" class="server-enabled-value" value="true">
                 <div class="col-12">
                   <button type="button" class="btn btn-xs btn-link text-muted p-0 query-preview-toggle" style="font-size:.78rem;">
                     <i class="fas fa-code me-1"></i>Show query
                   </button>
                   <pre class="query-preview font-monospace bg-light border rounded p-2 mt-1 mb-0" style="display:none;font-size:.72rem;white-space:pre-wrap;word-break:break-all;"></pre>
                 </div>
-                <div class="col-12 mt-2 d-flex align-items-center gap-2">
-                  <button type="button" class="btn btn-sm btn-primary save-server-btn">
+                <div class="col-12 mt-2 d-flex align-items-center gap-3 flex-wrap">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input server-enabled-switch" type="checkbox" checked>
+                    <label class="form-check-label small">Enabled</label>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-primary save-server-btn" data-dirty-save>
                     <i class="fas fa-floppy-disk me-1"></i>Save server
                   </button>
                   <span class="save-server-result small"></span>
@@ -376,94 +375,83 @@
   </div>
 
 {# ── Manual sources ───────────────────────────────────────────────────── #}
-<div class="card content-card">
+<div class="card content-card mb-4">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span><i class="fas fa-hand me-2"></i>Manual sources</span>
-    <a href="{{ url_for('collection_sources.new') }}" class="btn btn-xs btn-outline-primary">
-      <i class="fas fa-plus"></i>
-    </a>
+    <button type="button" class="btn btn-sm btn-outline-primary" id="add-manual-source">
+      <i class="fas fa-plus me-1"></i>Add manual source
+    </button>
   </div>
-  {% if sources %}
-  <div class="card-body p-0">
-    <table class="table zsazsa-table mb-0">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Owner</th>
-          <th>Location</th>
-          <th>Reliability</th>
-          <th>Status</th>
-          <th style="width:1%;"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for src in sources %}
-        <tr>
-          <td>
-            <span class="fw-semibold">{{ src.name }}</span>
-            {% if src.description %}
-            <div class="text-muted small">{{ src.description | truncate(80) }}</div>
-            {% endif %}
-          </td>
-          <td class="text-muted small">{{ src.owner or '-' }}</td>
-          <td class="small" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-            {% if src.location %}<span title="{{ src.location }}">{{ src.location | truncate(35) }}</span>{% else %}-{% endif %}
-          </td>
-          <td>
-            {% if src.source_reliability %}
-            <span class="badge text-bg-light font-monospace">{{ src.source_reliability }}</span>
-            {% else %}-{% endif %}
-          </td>
-          <td>
-            {% if src.enabled %}
-            <span class="badge source-enabled" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
-            {% else %}
-            <span class="badge source-disabled" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
-            {% endif %}
-          </td>
-          <td class="text-end" style="white-space:nowrap;">
-            {% if src.misp_url %}
-            <a href="{{ src.misp_url }}" target="_blank" rel="noopener"
-               class="btn btn-xs btn-outline-secondary me-1" title="Open MISP event">
-              <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:11px;width:auto;vertical-align:middle;opacity:.7;">
-            </a>
-            {% endif %}
-            <a href="{{ url_for('collection_sources.edit', id=src.uuid) }}"
-               class="btn btn-xs btn-outline-secondary me-1" title="Edit">
-              <i class="fas fa-pen"></i>
-            </a>
-            <form method="post" action="{{ url_for('collection_sources.toggle', id=src.uuid) }}"
-                  class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-xs btn-outline-secondary me-1"
-                      title="{{ 'Disable' if src.enabled else 'Enable' }}">
-                <i class="fas fa-power-off"></i>
-              </button>
-            </form>
-            <form method="post" action="{{ url_for('collection_sources.delete', id=src.uuid) }}"
-                  class="d-inline"
-                  onsubmit="return confirm('Delete source ' + {{ src.name | tojson }} + '?');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-xs btn-outline-danger" title="Delete">
-                <i class="fas fa-trash"></i>
-              </button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
   <div class="card-body">
-    <div class="empty-state py-3">
-      <p class="text-muted mb-3 small">No manual collection sources registered yet.</p>
-      <a href="{{ url_for('collection_sources.new') }}" class="btn btn-primary btn-sm">
-        <i class="fas fa-plus me-1"></i> Add your first source
-      </a>
+    <div class="form-text mb-3">
+      Intelligence gathered by hand (newsletters, partner portals and similar). Each source can be
+      selected when editing a PIR or GIR. Click a row to edit it inline.
     </div>
+    <div id="manual-sources-list">
+      {% for src in sources %}
+      <div class="manual-source-row border rounded mb-3" data-dirty-scope data-uuid="{{ src.uuid }}">
+        <div class="manual-source-header d-flex align-items-center px-3 py-2 gap-2" style="cursor:pointer;user-select:none;">
+          <i class="fas fa-hand text-muted" style="font-size:.85rem;"></i>
+          <span class="fw-semibold flex-grow-1">{{ src.name }}</span>
+          {% if src.source_reliability %}<span class="badge text-bg-light font-monospace" style="font-size:.7rem;">{{ src.source_reliability }}</span>{% endif %}
+          <span class="badge manual-enabled-badge {{ 'source-enabled' if src.enabled else 'source-disabled' }}" style="font-size:.7rem;">
+            <i class="fas {{ 'fa-circle-check' if src.enabled else 'fa-circle-pause' }} me-1"></i>{{ 'Enabled' if src.enabled else 'Disabled' }}
+          </span>
+          <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
+          <form method="post" action="{{ url_for('collection_sources.delete', id=src.uuid) }}" class="d-inline ms-1"
+                onsubmit="event.stopPropagation(); return confirm('Delete source ' + {{ src.name | tojson }} + '?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+          </form>
+        </div>
+        <div class="collapse" id="manual-body-{{ loop.index }}">
+          <div class="border-top px-3 pt-3 pb-2">
+            <form method="post" action="{{ url_for('collection_sources.edit', id=src.uuid) }}" id="manual-edit-{{ loop.index }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="enabled_field" value="1">
+              {% include "collection_sources/_manual_fields.html" %}
+              <div class="d-flex align-items-center gap-3 flex-wrap mt-3 pt-3 border-top">
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input manual-enabled-switch" type="checkbox" name="enabled"
+                         id="manual-enabled-{{ loop.index }}" {{ 'checked' if src.enabled }}>
+                  <label class="form-check-label small" for="manual-enabled-{{ loop.index }}">Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary" data-dirty-save>
+                  <i class="fas fa-floppy-disk me-1"></i>Save source
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="text-muted small" id="no-manual-sources"{% if sources %} style="display:none;"{% endif %}>
+      No manual collection sources registered yet.
+    </div>
+
+    <template id="manual-source-template">
+      <div class="manual-source-row border rounded mb-3" data-dirty-scope data-uuid="">
+        <div class="manual-source-header d-flex align-items-center px-3 py-2 gap-2" style="cursor:pointer;user-select:none;">
+          <i class="fas fa-hand text-muted" style="font-size:.85rem;"></i>
+          <span class="manual-name-display fw-semibold flex-grow-1 fst-italic text-muted">New source</span>
+          <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
+          <button type="button" class="btn btn-sm btn-outline-danger remove-manual-row ms-1" title="Discard"><i class="fas fa-trash"></i></button>
+        </div>
+        <div class="collapse show" id="manual-body-new">
+          <div class="border-top px-3 pt-3 pb-2">
+            <form method="post" action="{{ url_for('collection_sources.new') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {% with src=None %}{% include "collection_sources/_manual_fields.html" %}{% endwith %}
+              <div class="mt-3">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i>Create source</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </template>
   </div>
-  {% endif %}
 </div>
 
 {# ── IMAP mailboxes ───────────────────────────────────────────────────── #}
@@ -485,23 +473,30 @@
 
     <div id="imap-mailbox-list">
       {% for m in cfg.IMAP_SOURCES %}
-      <div class="imap-mailbox-row border rounded mb-3" data-original-id="{{ m.id }}">
-        <div class="d-flex align-items-center px-3 py-2 gap-2">
+      <div class="imap-mailbox-row border rounded mb-3" data-dirty-scope data-original-id="{{ m.id }}">
+        <div class="imap-mailbox-header d-flex align-items-center px-3 py-2 gap-2" style="cursor:pointer;user-select:none;">
           <i class="fas fa-envelope text-muted" style="font-size:.85rem;"></i>
           <span class="im-name-display fw-semibold flex-grow-1">{{ m.name }}</span>
-          <span class="badge {{ 'source-enabled' if m.enabled else 'source-disabled' }} im-enabled-badge" style="font-size:.7rem;">
-            {{ 'Enabled' if m.enabled else 'Disabled' }}
-          </span>
-          <button type="button" class="btn btn-sm btn-outline-secondary toggle-im-form ms-1">Edit</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary test-im-btn" title="Test connection"><i class="fas fa-plug"></i></button>
-          <span class="test-im-result small"></span>
-          <button type="button" class="btn btn-sm btn-outline-danger delete-im-btn" title="Delete"><i class="fas fa-trash"></i></button>
+          <span class="badge {{ 'source-enabled' if m.enabled else 'source-disabled' }} im-enabled-badge" style="font-size:.7rem;">{{ 'Enabled' if m.enabled else 'Disabled' }}</span>
+          <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
+          <button type="button" class="btn btn-sm btn-outline-danger delete-im-btn ms-1" title="Delete"><i class="fas fa-trash"></i></button>
         </div>
-        <div class="im-form border-top px-3 pt-3 pb-2" style="display:none;">
-          {% include "collection_sources/_imap_fields.html" with context %}
-          <div class="d-flex gap-2 mt-2">
-            <button type="button" class="btn btn-sm btn-primary save-im-btn">Save</button>
-            <span class="save-im-result small align-self-center"></span>
+        <div class="im-form collapse" id="imap-body-{{ loop.index }}">
+          <div class="border-top px-3 pt-3 pb-2">
+            {% include "collection_sources/_imap_fields.html" with context %}
+            <div class="d-flex align-items-center gap-3 flex-wrap mt-3 pt-3 border-top">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input im-enabled" type="checkbox" {{ 'checked' if m.enabled }}>
+                <label class="form-check-label small">Enabled</label>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary save-im-btn" data-dirty-save><i class="fas fa-floppy-disk me-1"></i>Save</button>
+              <span class="save-im-result small"></span>
+            </div>
+            <div class="mt-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary test-im-btn"><i class="fas fa-plug me-1"></i>Test connection</button>
+              <span class="test-im-result small ms-2"></span>
+            </div>
+            {% include "collection_sources/_imap_sources_subcard.html" with context %}
           </div>
         </div>
       </div>
@@ -512,21 +507,30 @@
     </div>
 
     <template id="imap-mailbox-template">
-      <div class="imap-mailbox-row border rounded mb-3" data-original-id="">
-        <div class="d-flex align-items-center px-3 py-2 gap-2">
+      <div class="imap-mailbox-row border rounded mb-3" data-dirty-scope data-original-id="">
+        <div class="imap-mailbox-header d-flex align-items-center px-3 py-2 gap-2" style="cursor:pointer;user-select:none;">
           <i class="fas fa-envelope text-muted" style="font-size:.85rem;"></i>
           <span class="im-name-display fw-semibold flex-grow-1 fst-italic text-muted">New mailbox</span>
           <span class="badge source-enabled im-enabled-badge" style="font-size:.7rem;">Enabled</span>
-          <button type="button" class="btn btn-sm btn-outline-secondary toggle-im-form ms-1">Edit</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary test-im-btn" title="Test connection"><i class="fas fa-plug"></i></button>
-          <span class="test-im-result small"></span>
-          <button type="button" class="btn btn-sm btn-outline-danger delete-im-btn" title="Delete"><i class="fas fa-trash"></i></button>
+          <i class="fas fa-chevron-down collapse-chevron text-muted ms-1" style="font-size:.75rem;transition:transform .2s;"></i>
+          <button type="button" class="btn btn-sm btn-outline-danger delete-im-btn ms-1" title="Delete"><i class="fas fa-trash"></i></button>
         </div>
-        <div class="im-form border-top px-3 pt-3 pb-2">
-          {% with m=None %}{% include "collection_sources/_imap_fields.html" with context %}{% endwith %}
-          <div class="d-flex gap-2 mt-2">
-            <button type="button" class="btn btn-sm btn-primary save-im-btn">Save</button>
-            <span class="save-im-result small align-self-center"></span>
+        <div class="im-form collapse show" id="imap-body-tpl">
+          <div class="border-top px-3 pt-3 pb-2">
+            {% with m=None %}{% include "collection_sources/_imap_fields.html" with context %}{% endwith %}
+            <div class="d-flex align-items-center gap-3 flex-wrap mt-3 pt-3 border-top">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input im-enabled" type="checkbox" checked>
+                <label class="form-check-label small">Enabled</label>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary save-im-btn" data-dirty-save><i class="fas fa-floppy-disk me-1"></i>Save</button>
+              <span class="save-im-result small"></span>
+            </div>
+            <div class="mt-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary test-im-btn"><i class="fas fa-plug me-1"></i>Test connection</button>
+              <span class="test-im-result small ms-2"></span>
+            </div>
+            {% with m=None %}{% include "collection_sources/_imap_sources_subcard.html" with context %}{% endwith %}
           </div>
         </div>
       </div>
@@ -604,7 +608,7 @@
           url: (row.querySelector('[name="server_url"]')?.value || '').trim(),
           api_key: (row.querySelector('[name="server_api_key"]')?.value || '').trim(),
           verify_tls: row.querySelector('[name="server_verify_tls"]')?.value === 'true',
-          enabled: row.querySelector('.server-enabled-value')?.value === 'true',
+          enabled: !!row.querySelector('.server-enabled-switch')?.checked,
           tags: (row.querySelector('[name="server_tags"]')?.value || '').trim(),
           tags_and: (row.querySelector('[name="server_tags_and"]')?.value || '').trim(),
           tags_not: (row.querySelector('[name="server_tags_not"]')?.value || '').trim(),
@@ -626,6 +630,7 @@
           saveBtn.innerHTML = '<i class="fas fa-floppy-disk me-1"></i>Save server';
           if (data.ok) {
             row.dataset.originalId = data.new_id;
+            if (window.markCollectionScopeClean) window.markCollectionScopeClean(row);
             if (saveResult) { saveResult.textContent = 'Saved'; saveResult.className = 'save-server-result small text-success'; setTimeout(() => { saveResult.textContent = ''; }, 3000); }
           } else {
             if (saveResult) { saveResult.textContent = data.error || 'Save failed'; saveResult.className = 'save-server-result small text-danger'; }
@@ -638,33 +643,17 @@
       });
     }
 
-    const toggleBtn = row.querySelector('.toggle-server-enabled');
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const hiddenField = row.querySelector('.server-enabled-value');
-        const badge = row.querySelector('.server-enabled-badge');
-        const currentlyEnabled = hiddenField.value === 'true';
-        if (currentlyEnabled) {
-          const serverLabel = toggleBtn.dataset.label || '';
-          try {
-            const resp = await fetch(`/config/server_usage?label=${encodeURIComponent(serverLabel)}`);
-            const data = await resp.json();
-            if (data.in_use) {
-              const msg = `"${serverLabel}" is referenced in ${data.pir_count} PIR(s) and ${data.gir_count} GIR(s). Disabling it will not remove those references. Continue?`;
-              if (!confirm(msg)) return;
-            }
-          } catch (err) { /* ignore, proceed */ }
-          hiddenField.value = 'false';
-          badge.innerHTML = '<i class="fas fa-circle-pause me-1"></i>Disabled';
-          badge.classList.remove('source-enabled'); badge.classList.add('source-disabled');
+    const enabledSwitch = row.querySelector('.server-enabled-switch');
+    const enabledBadge = row.querySelector('.server-enabled-badge');
+    if (enabledSwitch && enabledBadge) {
+      enabledSwitch.addEventListener('change', () => {
+        if (enabledSwitch.checked) {
+          enabledBadge.innerHTML = '<i class="fas fa-circle-check me-1"></i>Enabled';
+          enabledBadge.classList.remove('source-disabled'); enabledBadge.classList.add('source-enabled');
         } else {
-          hiddenField.value = 'true';
-          badge.innerHTML = '<i class="fas fa-circle-check me-1"></i>Enabled';
-          badge.classList.remove('source-disabled'); badge.classList.add('source-enabled');
+          enabledBadge.innerHTML = '<i class="fas fa-circle-pause me-1"></i>Disabled';
+          enabledBadge.classList.remove('source-enabled'); enabledBadge.classList.add('source-disabled');
         }
-        const saveBtn = row.querySelector('.save-server-btn');
-        if (saveBtn) saveBtn.click();
       });
     }
 
@@ -672,7 +661,7 @@
     const chevron = row.querySelector('.collapse-chevron');
     if (header && collapseEl) {
       header.addEventListener('click', (e) => {
-        if (e.target.closest('.delete-misp-server') || e.target.closest('.toggle-server-enabled')) return;
+        if (e.target.closest('.delete-misp-server')) return;
         bootstrap.Collapse.getOrCreateInstance(collapseEl, {toggle: false}).toggle();
       });
       collapseEl.addEventListener('show.bs.collapse', () => {
@@ -694,8 +683,6 @@
         labelDisplay.textContent = v || 'New server';
         labelDisplay.classList.toggle('text-muted', !v);
         labelDisplay.classList.toggle('fst-italic', !v);
-        const tb = row.querySelector('.toggle-server-enabled');
-        if (tb) tb.dataset.label = v;
       });
     }
 
@@ -1104,6 +1091,11 @@
   function bindSourceRow(srow) {
     const rm = srow.querySelector('.remove-im-source');
     if (rm) rm.addEventListener('click', () => srow.remove());
+    // A source belongs to its mailbox, so saving a source saves the mailbox.
+    const save = srow.querySelector('.ims-save-btn');
+    if (save) save.addEventListener('click', () => {
+      srow.closest('.imap-mailbox-row')?.querySelector('.save-im-btn')?.click();
+    });
   }
 
   async function post(path, body) {
@@ -1119,14 +1111,31 @@
     }
   }
 
+  let imapCounter = 200;
+
   function bindRow(row) {
-    const form = row.querySelector('.im-form');
-    const toggle = row.querySelector('.toggle-im-form');
-    if (toggle && form) {
-      toggle.addEventListener('click', () => {
-        const open = form.style.display !== 'none';
-        form.style.display = open ? 'none' : '';
-        toggle.textContent = open ? 'Edit' : 'Close';
+    const header = row.querySelector('.imap-mailbox-header');
+    const collapseEl = row.querySelector('.im-form');
+    const chevron = row.querySelector('.collapse-chevron');
+    if (collapseEl && (!collapseEl.id || collapseEl.id === 'imap-body-tpl')) {
+      collapseEl.id = 'imap-body-' + (++imapCounter);
+    }
+    if (header && collapseEl) {
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.delete-im-btn')) return;
+        bootstrap.Collapse.getOrCreateInstance(collapseEl, {toggle: false}).toggle();
+      });
+      collapseEl.addEventListener('show.bs.collapse', () => { if (chevron) chevron.style.transform = 'rotate(0deg)'; });
+      collapseEl.addEventListener('hide.bs.collapse', () => { if (chevron) chevron.style.transform = 'rotate(-90deg)'; });
+      if (!collapseEl.classList.contains('show') && chevron) chevron.style.transform = 'rotate(-90deg)';
+    }
+
+    const imEnabled = row.querySelector('.im-enabled');
+    const imBadge = row.querySelector('.im-enabled-badge');
+    if (imEnabled && imBadge) {
+      imEnabled.addEventListener('change', () => {
+        imBadge.textContent = imEnabled.checked ? 'Enabled' : 'Disabled';
+        imBadge.className = 'badge im-enabled-badge ' + (imEnabled.checked ? 'source-enabled' : 'source-disabled');
       });
     }
 
@@ -1182,6 +1191,7 @@
         const data = await post('/config/sources/save-imap', p);
         if (data.ok) {
           row.dataset.originalId = data.new_id;
+          if (window.markCollectionScopeClean) window.markCollectionScopeClean(row);
           row.querySelector('.im-name-display').textContent = p.name;
           row.querySelector('.im-name-display').classList.remove('fst-italic', 'text-muted');
           const badge = row.querySelector('.im-enabled-badge');
@@ -1208,6 +1218,110 @@
       bindRow(node);
     });
   }
+})();
+
+// ── Manual sources ────────────────────────────────────────────────────────────
+(function() {
+  const list = document.getElementById('manual-sources-list');
+  const tpl = document.getElementById('manual-source-template');
+  const addBtn = document.getElementById('add-manual-source');
+  const empty = document.getElementById('no-manual-sources');
+  if (!list || !tpl || !addBtn) return;
+  let counter = 0;
+
+  function bindRow(row) {
+    const header = row.querySelector('.manual-source-header');
+    const collapseEl = row.querySelector('.collapse');
+    const chevron = row.querySelector('.collapse-chevron');
+    if (collapseEl && (!collapseEl.id || collapseEl.id === 'manual-body-new')) {
+      collapseEl.id = 'manual-body-new-' + (++counter);
+    }
+    if (header && collapseEl) {
+      header.addEventListener('click', (e) => {
+        // Don't toggle when interacting with the delete form, the MISP link or the discard button.
+        if (e.target.closest('form, a, .remove-manual-row')) return;
+        bootstrap.Collapse.getOrCreateInstance(collapseEl, {toggle: false}).toggle();
+      });
+      collapseEl.addEventListener('show.bs.collapse', () => { if (chevron) chevron.style.transform = 'rotate(0deg)'; });
+      collapseEl.addEventListener('hide.bs.collapse', () => { if (chevron) chevron.style.transform = 'rotate(-90deg)'; });
+      if (!collapseEl.classList.contains('show') && chevron) chevron.style.transform = 'rotate(-90deg)';
+    }
+
+    const nameInput = row.querySelector('input[name="name"]');
+    const nameDisplay = row.querySelector('.manual-name-display');
+    if (nameInput && nameDisplay) {
+      nameInput.addEventListener('input', () => {
+        const v = nameInput.value.trim();
+        nameDisplay.textContent = v || 'New source';
+        nameDisplay.classList.toggle('text-muted', !v);
+        nameDisplay.classList.toggle('fst-italic', !v);
+      });
+    }
+
+    const enabledSwitch = row.querySelector('.manual-enabled-switch');
+    const enabledBadge = row.querySelector('.manual-enabled-badge');
+    if (enabledSwitch && enabledBadge) {
+      enabledSwitch.addEventListener('change', () => {
+        enabledBadge.innerHTML = enabledSwitch.checked
+          ? '<i class="fas fa-circle-check me-1"></i>Enabled'
+          : '<i class="fas fa-circle-pause me-1"></i>Disabled';
+        enabledBadge.className = 'badge manual-enabled-badge ' + (enabledSwitch.checked ? 'source-enabled' : 'source-disabled');
+      });
+    }
+
+    const removeBtn = row.querySelector('.remove-manual-row');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', (e) => { e.stopPropagation(); row.remove(); });
+    }
+  }
+
+  list.querySelectorAll('.manual-source-row').forEach(bindRow);
+
+  addBtn.addEventListener('click', () => {
+    const frag = tpl.content.cloneNode(true);
+    const row = frag.querySelector('.manual-source-row');
+    list.appendChild(frag);
+    if (empty) empty.style.display = 'none';
+    bindRow(row);
+    row.querySelector('input[name="name"]')?.focus();
+  });
+})();
+
+// ── Unsaved-change tracking ───────────────────────────────────────────────────
+// Each card or row marked with [data-dirty-scope] keeps its [data-dirty-save]
+// button disabled until something inside it changes, and the page warns before
+// unloading while any scope still has unsaved edits.
+(function() {
+  let submitting = false;
+  const scopeOf = (el) => (el && el.closest) ? el.closest('[data-dirty-scope]') : null;
+  const saveOf = (scope) => scope ? scope.querySelector('[data-dirty-save]') : null;
+
+  function setDirty(scope, dirty) {
+    if (!scope) return;
+    scope.dataset.dirty = dirty ? '1' : '';
+    const btn = saveOf(scope);
+    if (btn) btn.disabled = !dirty;
+  }
+
+  // Server-rendered scopes start clean, so their save button is disabled.
+  document.querySelectorAll('[data-dirty-scope]').forEach((scope) => { setDirty(scope, false); });
+
+  ['input', 'change'].forEach((evt) => {
+    document.addEventListener(evt, (e) => { setDirty(scopeOf(e.target), true); }, true);
+  });
+
+  // A real form submit (scraper, redis, manual source) navigates away on save.
+  document.addEventListener('submit', () => { submitting = true; }, true);
+
+  // AJAX saves (MISP servers, IMAP) call this on success.
+  window.markCollectionScopeClean = (el) => setDirty(scopeOf(el), false);
+
+  window.addEventListener('beforeunload', (e) => {
+    if (submitting) return;
+    const dirty = Array.from(document.querySelectorAll('[data-dirty-scope]'))
+      .some((s) => s.dataset.dirty === '1');
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
 })();
 </script>
 {% endblock %}

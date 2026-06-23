@@ -370,20 +370,9 @@
       <div class="card-body">
         <div class="mb-3">
           <label class="form-label">External references</label>
-          <div id="ref-list">
-            {% for r in (fia.external_references if fia else []) %}
-            <div class="ref-row d-flex gap-2 mb-2">
-              <input type="text" name="external_reference_item" class="form-control form-control-sm font-monospace"
-                     value="{{ r }}">
-              <button type="button" class="btn btn-sm btn-outline-danger ref-remove">
-                <i class="fas fa-minus"></i>
-              </button>
-            </div>
-            {% endfor %}
-          </div>
-          <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="ref-add">
-            <i class="fas fa-plus me-1"></i>Add reference
-          </button>
+          <textarea name="external_references" id="external_references" class="form-control font-monospace" rows="4"
+                    style="font-size:.88rem;">{{ lines(fia.external_references) if fia else '' }}</textarea>
+          <div class="form-text">One URL per line. Vendor advisory, NVD/GCVE entry, blog post, etc.</div>
         </div>
 
         <div class="mb-3">
@@ -589,20 +578,6 @@
       el.removeAttribute('data-md');
     });
   }
-
-  // Dynamic external reference rows
-  var refList = document.getElementById('ref-list');
-  document.getElementById('ref-add').addEventListener('click', function() {
-    var row = document.createElement('div');
-    row.className = 'ref-row d-flex gap-2 mb-2';
-    row.innerHTML = '<input type="text" name="external_reference_item" class="form-control form-control-sm font-monospace" placeholder="https://">'
-      + '<button type="button" class="btn btn-sm btn-outline-danger ref-remove"><i class="fas fa-minus"></i></button>';
-    refList.appendChild(row);
-  });
-  refList.addEventListener('click', function(e) {
-    var btn = e.target.closest('.ref-remove');
-    if (btn) btn.closest('.ref-row').remove();
-  });
 
   // Dynamic source MISP event rows
   var uuidList = document.getElementById('uuid-list');

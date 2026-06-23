@@ -6,12 +6,14 @@ import secrets
 from pathlib import Path
 
 from flask import Flask, abort, g, redirect, request, session, jsonify, render_template
+from markupsafe import Markup
 from pymisp.exceptions import PyMISPError
 from requests.exceptions import RequestException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 from webapp import audit, misp_session, org_store, sso_users, collection_cache
+from webapp.utils import md_to_html_inline
 from webapp.version import APP_VERSION
 
 
@@ -88,6 +90,13 @@ def create_app():
             "ui_theme": getattr(config, "THEME", "default"),
             "current_user_email": misp_session.current_user_email(),
         }
+
+    @app.template_filter("md_inline")
+    def _md_inline(s):
+        """Render a short text field as inline Markdown (links, bold, line breaks)
+        without a wrapping block element, for values shown inside a sentence,
+        table cell or list item."""
+        return Markup(md_to_html_inline(s))
 
     @app.template_filter("slug")
     def _slug(s):
