@@ -434,6 +434,12 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
     var q = state.q.toLowerCase().trim();
     var visible = 0;
     var totalMatching = 0;
+    // Events that exist for the user regardless of the discretionary filters,
+    // i.e. excluding the ones the rejected-state mode hides. Used as the
+    // "without filter" total and the per-source badge counts, so they stay
+    // consistent with totalMatching (which also drops rejected events).
+    var activeTotal = 0;
+    var sourceActiveCounts = {};
     var todayStr = new Date().toISOString().slice(0, 10);
     var cutoffStr = state.dateFilter !== 'none' ? getDateCutoff(state.dateFilter) : '';
 
@@ -446,10 +452,16 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
       var orgc = row.dataset.orgc || '';
       var date = row.dataset.date || '';
 
+      var rejectedHidden = state.hideRejected && tagSet.has('workflow:state="rejected"');
+      if (!rejectedHidden) {
+        activeTotal++;
+        sourceActiveCounts[srcId] = (sourceActiveCounts[srcId] || 0) + 1;
+      }
+
       var ok = true;
       if (!state.activeSources.has(srcId)) ok = false;
       if (ok && q && title.indexOf(q) === -1) ok = false;
-      if (ok && state.hideRejected && tagSet.has('workflow:state="rejected"')) ok = false;
+      if (ok && rejectedHidden) ok = false;
       if (ok) state.include.forEach(function(t) { if (!tagSet.has(t)) ok = false; });
       if (ok) state.exclude.forEach(function(t) { if (tagSet.has(t)) ok = false; });
       if (ok && state.includeOrgs.size && !state.includeOrgs.has(orgc)) ok = false;
@@ -547,11 +559,19 @@ if (window.marked) { marked.setOptions({ breaks: true, gfm: true }); }
 
     var ofTotalEl = document.getElementById('table-count-of-total');
     if (ofTotalEl) {
-      if (totalMatching < rows.length) {
-        ofTotalEl.textContent = '(' + rows.length + ' without filter)';
+      if (totalMatching < activeTotal) {
+        ofTotalEl.textContent = '(' + activeTotal + ' without filter)';
         ofTotalEl.style.display = '';
       } else { ofTotalEl.style.display = 'none'; }
     }
+
+    // Keep each source badge in sync with its active (non-rejected) event count,
+    // so rejecting an event updates the badge without a reload. Error sources
+    // show a warning badge instead of a count and are left untouched.
+    document.querySelectorAll('#style-current .source-toggle').forEach(function(toggle) {
+      var badge = toggle.querySelector('.source-toggle-badge.text-bg-light');
+      if (badge) badge.textContent = sourceActiveCounts[toggle.dataset.sourceId] || 0;
+    });
 
     var loadMoreContainer = document.getElementById('load-more-container');
     var loadMoreHint = document.getElementById('load-more-hint');
