@@ -180,6 +180,7 @@ def _read() -> dict:
         "MISP_WEBAPP_URL": _config.MISP_WEBAPP_URL,
         "MISP_WEBAPP_KEY": _config.MISP_WEBAPP_KEY,
         "MISP_WEBAPP_VERIFYCERT": _config.MISP_WEBAPP_VERIFYCERT,
+        "MISP_EVENT_DISTRIBUTION": getattr(_config, "MISP_EVENT_DISTRIBUTION", 0),
         "OPENAI_API_KEY": openai_api_key,
         "OPENAI_MODEL": openai_model,
         "NOTIFICATION_CHANNELS": _read_notification_channels(),
@@ -352,6 +353,11 @@ MISP_VERIFYCERT = {bool(values['MISP_VERIFYCERT'])}
 MISP_WEBAPP_URL = {values['MISP_WEBAPP_URL']!r}
 MISP_WEBAPP_KEY = {values['MISP_WEBAPP_KEY']!r}
 MISP_WEBAPP_VERIFYCERT = {bool(values['MISP_WEBAPP_VERIFYCERT'])}
+
+# Distribution level for MISP events the backend creates (stakeholders, PIRs,
+# GIRs, RFIs and products). 0 = your organisation only (default and safest),
+# 1 = this community, 2 = connected communities, 3 = all communities.
+MISP_EVENT_DISTRIBUTION = {int(values.get('MISP_EVENT_DISTRIBUTION') or 0)}
 
 # OpenAI
 OPENAI_API_KEY = {values['OPENAI_API_KEY']!r}
@@ -554,6 +560,7 @@ def index():
             "MISP_WEBAPP_URL": request.form.get("MISP_WEBAPP_URL", ""),
             "MISP_WEBAPP_KEY": request.form.get("MISP_WEBAPP_KEY", ""),
             "MISP_WEBAPP_VERIFYCERT": request.form.get("MISP_WEBAPP_VERIFYCERT") == "true",
+            "MISP_EVENT_DISTRIBUTION": int(request.form.get("MISP_EVENT_DISTRIBUTION", 0) or 0),
             "OPENAI_API_KEY": request.form.get("OPENAI_API_KEY", ""),
             "OPENAI_MODEL": getattr(_config, "OPENAI_MODEL", getattr(_config, "ANTHROPIC_MODEL", "")),
             "NOTIFICATION_CHANNELS": _read_notification_channels(),

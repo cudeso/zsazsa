@@ -29,10 +29,11 @@
         </span>
       </div>
       <div class="card-body">
-        <p class="lead mb-3">{{ rfi.question }}</p>
+        <div class="lead mb-3 report-md-body" data-md="{{ rfi.question | e }}"></div>
         {% if rfi.context %}
-        <div class="text-muted small" style="white-space: pre-wrap;">
-          <strong>Context:</strong> {{ rfi.context }}
+        <div class="text-muted small">
+          <strong>Context:</strong>
+          <div class="report-md-body" data-md="{{ rfi.context | e }}"></div>
         </div>
         {% endif %}
       </div>
@@ -42,7 +43,7 @@
       <div class="card-header"><i class="fas fa-paper-plane me-2"></i>Response</div>
       <div class="card-body">
         {% if rfi.response %}
-        <div style="white-space: pre-wrap;">{{ rfi.response }}</div>
+        <div class="report-md-body" data-md="{{ rfi.response | e }}"></div>
         {% else %}
         <p class="text-muted mb-0"><em>No response recorded yet.</em></p>
         {% endif %}
@@ -131,7 +132,7 @@
             </form>
           </div>
           {% if note.content %}
-          <div class="text-muted small mt-1" style="white-space:pre-wrap;">{{ note.content }}</div>
+          <div class="text-muted small mt-1 report-md-body" data-md="{{ note.content | e }}"></div>
           {% endif %}
         </div>
         {% endfor %}

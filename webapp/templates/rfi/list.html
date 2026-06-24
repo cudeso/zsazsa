@@ -69,7 +69,7 @@
                data-update-url="{{ url_for('rfi.rfi_status_update', id=rfi.id) }}"
                style="cursor:grab;font-size:.75rem;">
             <div class="fw-semibold"><a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="text-decoration-none">{{ rfi.rfi_id }}</a></div>
-            <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ rfi.question }}">{{ rfi.question | truncate(30) }}</div>
+            <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ rfi.question }}">{{ rfi.question | truncate(30) | md_inline }}</div>
           </div>
           {% endif %}
           {% endfor %}
@@ -107,7 +107,7 @@
           </td>
           <td>
             <a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="fw-semibold text-decoration-none">
-              {{ rfi.question | truncate(80) }}
+              {{ rfi.question | truncate(80) | md_inline }}
             </a>
           </td>
           <td class="text-muted small">

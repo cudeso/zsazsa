@@ -4,7 +4,7 @@
 {% block page_title %}Configuration{% endblock %}
 
 {% block content %}
-<form method="post">
+<form method="post" id="cfg-form">
   <input type="hidden" name="active_tab" id="cfg-active-tab-input" value="{{ active_tab }}">
 
   <ul class="nav nav-tabs mb-4" id="cfg-tabs" role="tablist">
@@ -239,6 +239,28 @@
         <button type="submit" class="btn btn-primary">
           <i class="fas fa-floppy-disk me-1"></i> Save configuration
         </button>
+      </div>
+
+      <div class="card content-card mb-4">
+        <div class="card-header"><i class="fas fa-share-nodes me-2"></i>MISP event distribution</div>
+        <div class="card-body">
+          <label class="form-label">Distribution for events zsazsa creates</label>
+          <select name="MISP_EVENT_DISTRIBUTION" class="form-select">
+            <option value="0" {{ 'selected' if cfg.MISP_EVENT_DISTRIBUTION == 0 }}>Your organisation only (default)</option>
+            <option value="1" {{ 'selected' if cfg.MISP_EVENT_DISTRIBUTION == 1 }}>This community only</option>
+            <option value="2" {{ 'selected' if cfg.MISP_EVENT_DISTRIBUTION == 2 }}>Connected communities</option>
+            <option value="3" {{ 'selected' if cfg.MISP_EVENT_DISTRIBUTION == 3 }}>All communities</option>
+          </select>
+          <div class="alert alert-warning mt-3 mb-0" role="alert">
+            <i class="fas fa-triangle-exclamation me-1"></i>
+            <strong>Use with care.</strong> This sets who can see the stakeholders, requirements,
+            RFIs and products zsazsa stores in MISP. Anything above <em>Your organisation only</em>
+            can push this internal CTI programme data to other organisations or communities through
+            MISP synchronisation, and that sharing cannot be undone once events have propagated.
+            Only change this if you understand your MISP sharing topology. It applies to newly
+            created events; existing events keep their current distribution.
+          </div>
+        </div>
       </div>
 
       <div class="card content-card mb-4">
@@ -1412,6 +1434,7 @@
         savePromptsBtn.disabled = false;
         if (data.ok) {
           showPromptAlert('Prompts saved.', 'success');
+          window.cfgDirty?.clean('prompts');
         } else {
           showPromptAlert('Error: ' + (data.error || 'unknown'), 'warning');
         }
@@ -1458,6 +1481,7 @@
         saveAiBtn.disabled = false;
         if (data.ok) {
           showAiAlert('AI settings saved.', 'success');
+          window.cfgDirty?.clean('ai');
         } else {
           showAiAlert('Error: ' + (data.error || 'unknown'), 'warning');
         }
@@ -2468,6 +2492,51 @@
 })();
 
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+
+// ── Unsaved-change tracking ────────────────────────────────────────────────
+// Each tab's save button starts disabled and only enables once something on
+// that tab changes; leaving the page with unsaved edits prompts a warning.
+// The prompts and AI tabs save over AJAX and have their own buttons, so they
+// are tracked as separate groups from the main "Save configuration" form.
+window.cfgDirty = (function() {
+  const form = document.getElementById('cfg-form');
+  const groups = {
+    form: { dirty: false, buttons: () => form ? form.querySelectorAll('button[type="submit"]') : [] },
+    prompts: { dirty: false, buttons: () => [document.getElementById('save-prompts-btn')].filter(Boolean) },
+    ai: { dirty: false, buttons: () => [document.getElementById('save-ai-btn')].filter(Boolean) },
+  };
+  let submitting = false;
+
+  function setDirty(name, dirty) {
+    const g = groups[name];
+    if (!g) return;
+    g.dirty = dirty;
+    g.buttons().forEach((b) => { b.disabled = !dirty; });
+  }
+  Object.keys(groups).forEach((name) => setDirty(name, false));
+
+  function groupFor(target) {
+    if (!target || !target.closest) return null;
+    if (target.closest('#tab-prompts')) return 'prompts';
+    if (target.closest('#tab-ai')) return 'ai';
+    if (form && form.contains(target)) return 'form';
+    return null;
+  }
+  ['input', 'change'].forEach((evt) => {
+    document.addEventListener(evt, (e) => {
+      const name = groupFor(e.target);
+      if (name) setDirty(name, true);
+    }, true);
+  });
+
+  if (form) form.addEventListener('submit', () => { submitting = true; });
+  window.addEventListener('beforeunload', (e) => {
+    if (submitting) return;
+    if (Object.values(groups).some((g) => g.dirty)) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  return { clean: (name) => setDirty(name, false) };
+})();
 
 </script>
 {% endblock %}

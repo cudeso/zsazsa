@@ -447,7 +447,10 @@ def test_webapp_misp():
 def _make_event(info, extra_tags=None):
     e = MISPEvent()
     e.info = info
-    e.distribution = 0
+    # Default to "Your organisation only" (0); an admin can widen this from the
+    # System config tab. Guard against a hand-edited config holding a bad value.
+    dist = int(getattr(config, "MISP_EVENT_DISTRIBUTION", 0) or 0)
+    e.distribution = dist if dist in (0, 1, 2, 3) else 0
     e.threat_level_id = 4
     e.analysis = 2
     for t in extra_tags or []:
