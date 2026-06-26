@@ -1,0 +1,56 @@
+{# Inline PIR triage form. Expects `pir`, `triage_checklist` (list of
+   (value, label) tuples) and `merge_targets`. #}
+<form method="post" action="{{ url_for('requirements.pir_triage', id=pir.id) }}" class="triage-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div class="small fw-semibold mb-2"><i class="fas fa-clipboard-check me-1"></i>Triage checklist</div>
+      {% set saved = pir.triage_checklist or [] %}
+      {% for value, label in triage_checklist %}
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="triage_checklist" value="{{ value }}"
+               id="pir-chk-{{ pir.id }}-{{ loop.index }}" {{ 'checked' if value in saved }}>
+        <label class="form-check-label small" for="pir-chk-{{ pir.id }}-{{ loop.index }}">{{ label }}</label>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="col-lg-6">
+      <div class="small fw-semibold mb-2"><i class="fas fa-gavel me-1"></i>Decision</div>
+      {% set decisions = [
+        ('acknowledged', 'Acknowledge', 'Record receipt. The PIR stays Pending until a final decision.'),
+        ('approved', 'Approve', 'Accept into the program. Moves to Active.'),
+        ('rejected', 'Reject', 'Outside scope or not actionable. Reason required.'),
+        ('deferred', 'Defer', 'Hold for later review. Reason required.'),
+        ('merged', 'Merge into another PIR', 'Duplicate or subset of an existing requirement.'),
+      ] %}
+      {% for value, label, help in decisions %}
+      <div class="form-check">
+        <input class="form-check-input triage-decision" type="radio" name="decision" value="{{ value }}"
+               id="pir-dec-{{ pir.id }}-{{ value }}" required
+               {{ 'data-needs-reason=1' if value in ['rejected', 'deferred'] }}
+               {{ 'data-needs-merge=1' if value == 'merged' }}>
+        <label class="form-check-label small" for="pir-dec-{{ pir.id }}-{{ value }}">
+          <strong>{{ label }}</strong>
+          <span class="text-muted d-block">{{ help }}</span>
+        </label>
+      </div>
+      {% endfor %}
+      <div class="mt-2 triage-merge-wrap" style="display:none;">
+        <label class="form-label small mb-1">Merge into</label>
+        <select name="linked_pir_uuid" class="form-select form-select-sm">
+          <option value="">- select PIR -</option>
+          {% for t in merge_targets if t.id != pir.id %}
+          <option value="{{ t.uuid }}">{{ t.pir_id }}: {{ t.question | truncate(50) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mt-2 triage-reason-wrap" style="display:none;">
+        <label class="form-label small mb-1">Reason</label>
+        <textarea name="reason" class="form-control form-control-sm" rows="2" placeholder="Explain the decision to the requester."></textarea>
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-check me-1"></i>Confirm decision</button>
+      </div>
+    </div>
+  </div>
+</form>

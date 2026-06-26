@@ -5,10 +5,14 @@
 
 {% block misp_object_url %}{{ rfi.misp_url }}{% endblock %}
 {% block topbar_actions %}
+{% if rfi.status != 'New' %}
 <button class="btn btn-sm btn-outline-warning" id="notify-btn"
         data-notify-url="{{ url_for('rfi.rfi_notify', id=rfi.id) }}">
   <i class="fas fa-bell me-1"></i> Notify stakeholders
 </button>
+{% else %}
+<span class="text-muted small"><i class="fas fa-gavel me-1"></i>Triage this RFI before notifying.</span>
+{% endif %}
 {% endblock %}
 
 {% block content %}

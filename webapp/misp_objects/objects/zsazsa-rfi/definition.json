@@ -136,6 +136,30 @@
       "ui-priority": 20,
       "description": "User who created this RFI (set at creation, not editable)",
       "disable_correlation": true
+    },
+    "triaged-by": {
+      "misp-attribute": "text",
+      "ui-priority": 21,
+      "description": "User who triaged this RFI out of the New state",
+      "disable_correlation": true
+    },
+    "triaged-at": {
+      "misp-attribute": "text",
+      "ui-priority": 22,
+      "description": "Date the RFI was triaged (ISO 8601)",
+      "disable_correlation": true
+    },
+    "triage-checklist": {
+      "misp-attribute": "text",
+      "ui-priority": 23,
+      "description": "JSON array of triage checklist items that were confirmed",
+      "disable_correlation": true
+    },
+    "rejection-reason": {
+      "misp-attribute": "text",
+      "ui-priority": 24,
+      "description": "If the RFI was rejected at triage, why",
+      "disable_correlation": true
     }
   }
 }

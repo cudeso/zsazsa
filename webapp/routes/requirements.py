@@ -230,6 +230,15 @@ def _sub_questions(form):
 
 # ── PIRs ──────────────────────────────────────────────────────────────────────
 
+PIR_TRIAGE_CHECKLIST = [
+    ("clear_question", "The intelligence question is clearly stated and answerable within the program's scope."),
+    ("requester_identified", "The requester and the decision it supports are identified."),
+    ("not_duplicate", "This question is not already answered by an existing active PIR or GIR."),
+    ("priority_realistic", "The priority level and time sensitivity are realistic given current team capacity."),
+    ("sources_available", "Collection sources are available or can be identified to address the question."),
+]
+
+
 @bp.route("/pirs")
 def pir_list():
     pirs = misp_store.list_pirs()
@@ -237,12 +246,20 @@ def pir_list():
     if intel_filter:
         pirs = [p for p in pirs if intel_filter in (p.intel_level or [])]
     scope_counts = {p.uuid: _scope_item_count(p) for p in pirs}
+    # Viable merge targets for the inline triage form: any PIR not itself
+    # rejected or already merged away.
+    not_viable = {"rejected", "merged"}
+    merge_targets = [
+        p for p in pirs if getattr(p, "intake_status", "submitted") not in not_viable
+    ]
     return render_template(
         "requirements/pir_list.html",
         pirs=pirs,
         scope_counts=scope_counts,
         intel_levels=INTEL_LEVELS,
         intel_filter=intel_filter,
+        merge_targets=merge_targets,
+        triage_checklist=PIR_TRIAGE_CHECKLIST,
     )
 
 
@@ -452,70 +469,47 @@ def pir_delete(id):
     return redirect(url_for("requirements.pir_list"))
 
 
-@bp.route("/pirs/triage")
-def pir_triage_queue():
-    pirs = misp_store.list_pirs()
-    pending = [p for p in pirs if getattr(p, "intake_status", "submitted") in ("submitted", "acknowledged", "triaged", "deferred")]
-    return render_template(
-        "requirements/pir_triage_queue.html",
-        pirs=pending,
-    )
-
-
-@bp.route("/pirs/<string:id>/triage", methods=["GET", "POST"])
+@bp.route("/pirs/<string:id>/triage", methods=["POST"])
 def pir_triage(id):
     pir = misp_store.get_pir(id)
     if pir is None:
         return "PIR not found", 404
 
-    if request.method == "POST":
-        decision = request.form.get("decision", "").strip()
-        valid_decisions = [s for s in PIR_INTAKE_STATUSES if s not in ("submitted", "triaged")]
-        if decision not in valid_decisions:
-            flash("Select a valid decision.", "warning")
-            return redirect(url_for("requirements.pir_triage", id=id))
+    decision = request.form.get("decision", "").strip()
+    valid_decisions = [s for s in PIR_INTAKE_STATUSES if s not in ("submitted", "triaged")]
+    if decision not in valid_decisions:
+        flash("Select a valid decision.", "warning")
+        return redirect(url_for("requirements.pir_list"))
 
-        reason = request.form.get("reason", "").strip()
-        if decision in ("rejected", "deferred") and not reason:
-            flash("A reason is required when rejecting or deferring.", "warning")
-            return redirect(url_for("requirements.pir_triage", id=id))
+    reason = request.form.get("reason", "").strip()
+    if decision in ("rejected", "deferred") and not reason:
+        flash("A reason is required when rejecting or deferring.", "warning")
+        return redirect(url_for("requirements.pir_list"))
 
-        linked_uuid = request.form.get("linked_pir_uuid", "").strip()
-        if decision == "merged" and not linked_uuid:
-            flash("Select the PIR to merge into.", "warning")
-            return redirect(url_for("requirements.pir_triage", id=id))
+    linked_uuid = request.form.get("linked_pir_uuid", "").strip()
+    if decision == "merged" and not linked_uuid:
+        flash("Select the PIR to merge into.", "warning")
+        return redirect(url_for("requirements.pir_list"))
 
-        checklist = request.form.getlist("triage_checklist")
+    checklist = request.form.getlist("triage_checklist")
+    try:
+        misp_store.update_pir_intake(
+            id,
+            decision,
+            reason=reason or None,
+            linked_pir_uuid=linked_uuid or None,
+            checklist=checklist,
+        )
+        audit.record("triage", "pir", entity_id=id, entity_label=pir.pir_id)
         try:
-            misp_store.update_pir_intake(
-                id,
-                decision,
-                reason=reason or None,
-                linked_pir_uuid=linked_uuid or None,
-                checklist=checklist,
-            )
-            audit.record("triage", "pir", entity_id=id, entity_label=pir.pir_id)
-            try:
-                from notifier import mattermost as mm
-                mm.send_pir_intake_notification(pir, decision, reason or None)
-            except Exception as exc:
-                logger.warning("PIR intake notification failed for %s: %s", pir.pir_id, exc)
-            flash(f"{pir.pir_id} marked as {decision}.", "success")
+            from notifier import mattermost as mm
+            mm.send_pir_intake_notification(pir, decision, reason or None)
         except Exception as exc:
-            flash(f"Could not update intake status: {exc}", "warning")
-        return redirect(url_for("requirements.pir_detail", id=id))
-
-    # Exclude the current PIR and those already rejected/merged as merge targets
-    not_viable = {"rejected", "merged"}
-    all_pirs = [
-        p for p in misp_store.list_pirs()
-        if p.uuid != id and getattr(p, "intake_status", "submitted") not in not_viable
-    ]
-    return render_template(
-        "requirements/pir_triage.html",
-        pir=pir,
-        all_pirs=all_pirs,
-    )
+            logger.warning("PIR intake notification failed for %s: %s", pir.pir_id, exc)
+        flash(f"{pir.pir_id} marked as {decision}.", "success")
+    except Exception as exc:
+        flash(f"Could not update intake status: {exc}", "warning")
+    return redirect(url_for("requirements.pir_list"))
 
 
 @bp.route("/pirs/<string:id>/focus_points", methods=["POST"])
@@ -863,9 +857,14 @@ def pir_status_update(id):
     new_status = request.form.get("status", "").strip()
     if new_status not in PIR_STATUSES:
         return jsonify({"error": "Invalid status"}), 400
-    intake_status = getattr(pir, "intake_status", "submitted") or "submitted"
-    if pir.status == "Pending" and intake_status not in ("acknowledged", "approved"):
-        return jsonify({"error": "Triage must be completed (acknowledged or approved) before moving this PIR."}), 400
+    # Pending is the untriaged state; a PIR only leaves it through a terminal
+    # triage decision (which itself changes the status). Acknowledge and Defer
+    # keep it Pending, so any drag of a Pending card is blocked, and nothing may
+    # be dragged back into Pending.
+    if pir.status == "Pending":
+        return jsonify({"error": "Triage this PIR before moving it."}), 400
+    if new_status == "Pending":
+        return jsonify({"error": "A PIR cannot be moved back to Pending."}), 400
     data = misp_store.pir_to_data(pir)
     data["status"] = new_status
     try:

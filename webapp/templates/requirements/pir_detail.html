@@ -9,11 +9,6 @@
 <a href="{{ url_for('requirements.pir_list') }}" class="btn btn-sm btn-light border shadow-sm">
   <i class="fas fa-arrow-left me-1"></i> Back to list
 </a>
-{% if pir.intake_status in ('submitted', 'acknowledged', 'triaged', 'deferred') %}
-<a href="{{ url_for('requirements.pir_triage', id=pir.id) }}" class="btn btn-sm btn-outline-primary">
-  <i class="fas fa-gavel me-1"></i> Triage
-</a>
-{% endif %}
 <button class="btn btn-sm btn-outline-warning" id="notify-btn"
         data-notify-url="{{ url_for('requirements.pir_notify', id=pir.id) }}">
   <i class="fas fa-bell me-1"></i> Notify stakeholders
@@ -349,10 +344,6 @@
     <div class="card content-card mb-4">
       <div class="card-header d-flex align-items-center">
         <i class="fas fa-clipboard-list me-2"></i>Intake
-        {% if pir.intake_status in ('submitted', 'acknowledged', 'triaged') %}
-        <a href="{{ url_for('requirements.pir_triage', id=pir.id) }}"
-           class="btn btn-xs btn-outline-primary ms-auto">Triage</a>
-        {% endif %}
       </div>
       <div class="card-body small">
         <dl class="detail-list mb-0">

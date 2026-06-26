@@ -1,0 +1,42 @@
+{# Shared by pir_list and rfi_list: the inline triage accordion toggle, the
+   untriaged-row highlight, and showing the reason / merge inputs based on the
+   selected decision. Decisions that need a reason carry data-needs-reason="1";
+   the PIR merge option carries data-needs-merge="1". #}
+<style>
+  .triage-pending-row > td { background-color: var(--triage-pending-bg, #fff7e6); }
+</style>
+<script>
+(function() {
+  document.querySelectorAll('.triage-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var row = document.getElementById(btn.dataset.target);
+      if (!row) return;
+      var hidden = row.classList.toggle('d-none');
+      btn.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+      btn.classList.toggle('active', !hidden);
+    });
+  });
+
+  document.addEventListener('change', function(e) {
+    var radio = e.target.closest ? e.target.closest('.triage-decision') : null;
+    if (!radio) return;
+    var form = radio.closest('.triage-form');
+    if (!form) return;
+    var sel = form.querySelector('.triage-decision:checked');
+    var needsReason = !!(sel && sel.dataset.needsReason === '1');
+    var needsMerge = !!(sel && sel.dataset.needsMerge === '1');
+    var reasonWrap = form.querySelector('.triage-reason-wrap');
+    var mergeWrap = form.querySelector('.triage-merge-wrap');
+    if (reasonWrap) {
+      reasonWrap.style.display = needsReason ? '' : 'none';
+      var ta = reasonWrap.querySelector('textarea');
+      if (ta) ta.required = needsReason;
+    }
+    if (mergeWrap) {
+      mergeWrap.style.display = needsMerge ? '' : 'none';
+      var msel = mergeWrap.querySelector('select');
+      if (msel) msel.required = needsMerge;
+    }
+  });
+})();
+</script>

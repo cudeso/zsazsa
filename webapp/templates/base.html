@@ -61,8 +61,7 @@
           <i class="fas fa-clipboard-list fa-fw"></i> Requirements
         </a>
         <ul class="dropdown-menu topnav-dropdown-menu">
-          <li><a href="{{ url_for('requirements.pir_list') }}" class="dropdown-item {{ 'active' if request.endpoint and 'pir' in request.endpoint and 'triage' not in request.endpoint }}"><i class="fas fa-star fa-fw"></i> PIRs <span class="sidebar-hint">Priority</span></a></li>
-          <li><a href="{{ url_for('requirements.pir_triage_queue') }}" class="dropdown-item {{ 'active' if request.endpoint and request.endpoint.startswith('requirements.') and 'triage' in request.endpoint }}"><i class="fas fa-gavel fa-fw"></i> PIR Triage <span class="sidebar-hint">Queue</span></a></li>
+          <li><a href="{{ url_for('requirements.pir_list') }}" class="dropdown-item {{ 'active' if request.endpoint and 'pir' in request.endpoint }}"><i class="fas fa-star fa-fw"></i> PIRs <span class="sidebar-hint">Priority</span></a></li>
           <li><a href="{{ url_for('requirements.gir_list') }}" class="dropdown-item {{ 'active' if request.endpoint and 'gir' in request.endpoint }}"><i class="fas fa-list-check fa-fw"></i> GIRs <span class="sidebar-hint">General</span></a></li>
           <li><a href="{{ url_for('rfi.rfi_list') }}" class="dropdown-item {{ 'active' if request.blueprint == 'rfi' }}"><i class="fas fa-circle-question fa-fw"></i> RFIs <span class="sidebar-hint">Requests</span></a></li>
         </ul>
@@ -177,15 +176,9 @@
     <div class="sidebar-section-label">Requirements</div>
     <ul class="sidebar-nav">
       <li>
-        <a href="{{ url_for('requirements.pir_list') }}" class="{{ 'active' if request.endpoint and 'pir' in request.endpoint and 'triage' not in request.endpoint }}">
+        <a href="{{ url_for('requirements.pir_list') }}" class="{{ 'active' if request.endpoint and 'pir' in request.endpoint }}">
           <i class="fas fa-star fa-fw"></i> PIRs
           <span class="sidebar-hint">Priority</span>
-        </a>
-      </li>
-      <li>
-        <a href="{{ url_for('requirements.pir_triage_queue') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('requirements.') and 'triage' in request.endpoint }}">
-          <i class="fas fa-gavel fa-fw"></i> PIR Triage
-          <span class="sidebar-hint">Queue</span>
         </a>
       </li>
       <li>

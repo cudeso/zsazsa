@@ -424,19 +424,12 @@
         </div>
         <div class="mb-3">
           <label class="form-label">Status</label>
-          {% if is_edit %}
-          <select name="status" class="form-select">
-            {% for s in statuses %}
-            <option value="{{ s }}" {{ 'selected' if pir.status == s }}>{{ s }}</option>
-            {% endfor %}
-          </select>
-          {% else %}
-          <input type="hidden" name="status" value="Pending">
+          {% set _status = pir.status if is_edit else 'Pending' %}
+          <input type="hidden" name="status" value="{{ _status }}">
           <div class="form-control-plaintext ps-0">
-            <span class="badge status-badge status-pending">Pending</span>
+            <span class="badge status-badge status-{{ _status | slug }}">{{ _status }}</span>
           </div>
-          <div class="form-text">New PIRs start as Pending. Status changes after triage.</div>
-          {% endif %}
+          <div class="form-text">New PIRs start as Pending. Status changes through triage and the status board, not here.</div>
         </div>
         <div class="mb-3">
           <label class="form-label">Time sensitivity</label>

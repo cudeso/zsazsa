@@ -13,7 +13,7 @@ from urllib.parse import quote
 import config
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 
-from webapp import audit, misp_store
+from webapp import audit, misp_session, misp_store
 from webapp.models import cti_products, TLP_LEVELS
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,7 @@ def rfi_list():
         sla_map=sla_map,
         statuses=RFI_STATUSES,
         status_filter=status_filter,
+        triage_checklist=RFI_TRIAGE_CHECKLIST,
     )
 
 
@@ -289,6 +290,51 @@ def rfi_delete(id):
     return redirect(url_for("rfi.rfi_list"))
 
 
+RFI_TRIAGE_CHECKLIST = [
+    ("clear_question", "The request is a clear, answerable question."),
+    ("requester_identified", "The requester and the decision it supports are identified."),
+    ("not_duplicate", "It is not a duplicate of an existing RFI or product."),
+    ("priority_realistic", "The priority and due date are realistic."),
+    ("sources_available", "Sources or data to answer it are plausibly available."),
+]
+
+
+@bp.route("/<string:id>/triage", methods=["POST"])
+def rfi_triage(id):
+    rfi = misp_store.get_rfi(id)
+    if rfi is None:
+        return "RFI not found", 404
+    if rfi.status != "New":
+        flash("This RFI has already been triaged.", "warning")
+        return redirect(url_for("rfi.rfi_list"))
+    decision = request.form.get("decision", "").strip()
+    if decision not in ("acknowledge", "reject"):
+        flash("Select a triage decision.", "warning")
+        return redirect(url_for("rfi.rfi_list"))
+    reason = request.form.get("reason", "").strip()
+    if decision == "reject" and not reason:
+        flash("A reason is required to reject an RFI.", "warning")
+        return redirect(url_for("rfi.rfi_list"))
+
+    data = _rfi_data_from_store(
+        rfi, status="Acknowledged" if decision == "acknowledge" else "Closed"
+    )
+    data["triaged_by"] = misp_session.current_user_email()
+    data["triaged_at"] = date.today().isoformat()
+    data["triage_checklist"] = request.form.getlist("triage_checklist")
+    data["rejection_reason"] = reason if decision == "reject" else ""
+    try:
+        misp_store.update_rfi(id, data)
+        # Record the rejection reason as a note so it is visible on the RFI.
+        if decision == "reject":
+            misp_store.add_rfi_note(id, "Rejection reason", reason)
+        audit.record("triage", "rfi", entity_id=id, entity_label=rfi.rfi_id)
+        flash(f"{rfi.rfi_id} {'acknowledged' if decision == 'acknowledge' else 'rejected'}.", "success")
+    except Exception as exc:
+        flash(f"Could not triage RFI: {exc}", "warning")
+    return redirect(url_for("rfi.rfi_list"))
+
+
 @bp.route("/<string:id>/status", methods=["POST"])
 def rfi_status_update(id):
     from flask import jsonify
@@ -298,6 +344,10 @@ def rfi_status_update(id):
     new_status = request.form.get("status", "").strip()
     if new_status not in RFI_STATUSES:
         return jsonify({"error": "Invalid status"}), 400
+    if rfi.status == "New":
+        return jsonify({"error": "Triage this RFI before moving it."}), 400
+    if new_status == "New":
+        return jsonify({"error": "An RFI cannot be moved back to New."}), 400
     data = _rfi_data_from_store(rfi, status=new_status)
     try:
         misp_store.update_rfi(id, data)
@@ -314,6 +364,11 @@ def rfi_notify(id):
     rfi = misp_store.get_rfi(id)
     if rfi is None:
         return "RFI not found", 404
+    if rfi.status == "New":
+        if request.method == "POST":
+            flash("Triage this RFI before notifying stakeholders.", "warning")
+            return redirect(url_for("rfi.rfi_detail", id=id))
+        return jsonify({"error": "Triage this RFI before notifying stakeholders."}), 400
     preview_url = url_for("rfi.rfi_detail", id=id, _external=True)
     today = date.today().strftime('%d-%m-%Y')
     lines = [
@@ -353,16 +408,6 @@ def rfi_notify(id):
                 stakeholders=recipients,
             )
             if result["sent_types"]:
-                if rfi.status == "New":
-                    misp_store.update_rfi(id, _rfi_data_from_store(rfi, status="Acknowledged"))
-                    logger.info("RFI auto-acknowledged after notify: rfi=%s", rfi.rfi_id)
-                    audit.record(
-                        "acknowledge",
-                        "rfi",
-                        entity_id=id,
-                        entity_label=rfi.rfi_id,
-                        details="auto via notify",
-                    )
                 logger.info(
                     "RFI notify sent: rfi=%s sent_types=%s recipients=%d",
                     rfi.rfi_id,

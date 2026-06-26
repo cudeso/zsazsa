@@ -64,7 +64,7 @@
           {% for pir in pirs %}
           {% if pir.status == col_status %}
           {% if col_status != 'Pending' or pir.intake_status not in rd_intakes %}
-          {% set can_drag = col_status != 'Pending' or pir.intake_status in ['acknowledged', 'approved'] %}
+          {% set can_drag = col_status != 'Pending' %}
           <div class="kanban-card card mb-1 p-1 shadow-sm"
                draggable="{{ 'true' if can_drag else 'false' }}"
                data-id="{{ pir.id }}"
@@ -89,11 +89,9 @@
             {% endif %}
             {% if not can_drag %}
             <div class="mt-1">
-              <a href="{{ url_for('requirements.pir_triage', id=pir.id) }}"
-                 class="btn btn-xs btn-outline-warning" title="Triage required before moving"
-                 style="font-size:.65rem;padding:1px 5px;">
-                <i class="fas fa-gavel me-1"></i>Triage
-              </a>
+              <span class="badge" style="font-size:.6rem;background:var(--accent-orange);color:var(--text-on-accent);" title="Triage from the table below before moving">
+                <i class="fas fa-gavel me-1"></i>Triage in list
+              </span>
             </div>
             {% endif %}
           </div>
@@ -152,7 +150,8 @@
       </thead>
       <tbody>
         {% for pir in pirs %}
-        <tr class="req-row" data-req-id="{{ pir.id }}">
+        {% set untriaged = pir.status == 'Pending' and pir.intake_status != 'rejected' %}
+        <tr class="req-row {{ 'triage-pending-row' if untriaged }}" data-req-id="{{ pir.id }}">
           <td>
             <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="text-decoration-none">
               <span class="req-id-badge">{{ pir.pir_id }}</span>
@@ -210,6 +209,14 @@
             {% elif pir.intake_status == 'merged' %}
             <i class="fas fa-code-branch fa-xs ms-1" style="color:var(--neutral-600);" title="Triage: merged"></i>
             {% endif %}
+            {% if untriaged %}
+            <div class="mt-1">
+              <button type="button" class="btn btn-xs btn-outline-warning triage-toggle"
+                      data-target="triage-row-{{ pir.id }}" aria-expanded="false" title="Triage this PIR">
+                <i class="fas fa-gavel me-1"></i>Triage
+              </button>
+            </div>
+            {% endif %}
           </td>
           <td>
             {% set n = scope_counts.get(pir.id, 0) %}
@@ -249,6 +256,13 @@
             </div>
           </td>
         </tr>
+        {% if untriaged %}
+        <tr id="triage-row-{{ pir.id }}" class="triage-row d-none">
+          <td colspan="9" class="bg-body-secondary p-3">
+            {% include "requirements/_pir_triage_form.html" %}
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -313,5 +327,6 @@
   });
 })();
 </script>
+{% include "requirements/_triage_js.html" %}
 {% include "requirements/_list_scope_js.html" %}
 {% endblock %}

@@ -64,12 +64,20 @@
         <div class="kanban-cards" style="min-height:60px;">
           {% for rfi in rfis %}
           {% if rfi.status == col_status %}
-          <div class="kanban-card card mb-1 p-1 shadow-sm" draggable="true"
+          {% set can_drag = rfi.status != 'New' %}
+          <div class="kanban-card card mb-1 p-1 shadow-sm" draggable="{{ 'true' if can_drag else 'false' }}"
                data-id="{{ rfi.id }}"
                data-update-url="{{ url_for('rfi.rfi_status_update', id=rfi.id) }}"
-               style="cursor:grab;font-size:.75rem;">
+               style="{{ 'cursor:grab' if can_drag else 'cursor:default' }};font-size:.75rem;">
             <div class="fw-semibold"><a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="text-decoration-none">{{ rfi.rfi_id }}</a></div>
             <div class="text-muted" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ rfi.question }}">{{ rfi.question | truncate(30) | md_inline }}</div>
+            {% if not can_drag %}
+            <div class="mt-1">
+              <span class="badge" style="font-size:.6rem;background:var(--accent-orange, #d97706);color:#fff;" title="Triage from the table below before moving">
+                <i class="fas fa-gavel me-1"></i>Triage in list
+              </span>
+            </div>
+            {% endif %}
           </div>
           {% endif %}
           {% endfor %}
@@ -99,7 +107,8 @@
       <tbody>
         {% for rfi in rfis %}
         {% set sla_state, days = sla_map.get(rfi.id, ('amber', None)) %}
-        <tr>
+        {% set untriaged = rfi.status == 'New' %}
+        <tr class="{{ 'triage-pending-row' if untriaged }}">
           <td>
             <a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="text-decoration-none">
               <span class="req-id-badge">{{ rfi.rfi_id }}</span>
@@ -118,7 +127,17 @@
           <td>
             <span class="badge priority-badge priority-{{ rfi_priority_class.get(rfi.priority, 'should-have') }}">{{ rfi.priority }}</span>
           </td>
-          <td><span class="badge status-badge status-{{ rfi_status_class.get(rfi.status, 'pending') }}">{{ rfi.status }}</span></td>
+          <td>
+            <span class="badge status-badge status-{{ rfi_status_class.get(rfi.status, 'pending') }}">{{ rfi.status }}</span>
+            {% if untriaged %}
+            <div class="mt-1">
+              <button type="button" class="btn btn-xs btn-outline-warning triage-toggle"
+                      data-target="rfi-triage-row-{{ rfi.id }}" aria-expanded="false" title="Triage this RFI">
+                <i class="fas fa-gavel me-1"></i>Triage
+              </button>
+            </div>
+            {% endif %}
+          </td>
           <td>
             {% if sla_state == 'done' %}
               <span class="badge text-bg-success">Done</span>
@@ -131,16 +150,25 @@
             {% endif %}
           </td>
           <td class="text-end">
-            <a href="{{ url_for('rfi.rfi_edit', id=rfi.id) }}" class="btn btn-xs btn-outline-secondary me-1" title="Edit">
-              <i class="fas fa-pen"></i>
-            </a>
-            <form method="post" action="{{ url_for('rfi.rfi_delete', id=rfi.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ rfi.rfi_id }}?')">
-              <button class="btn btn-xs btn-outline-danger" title="Delete">
-                <i class="fas fa-trash"></i>
-              </button>
-            </form>
+            <div class="d-inline-flex flex-nowrap gap-1 justify-content-end">
+              <a href="{{ url_for('rfi.rfi_edit', id=rfi.id) }}" class="btn btn-xs btn-outline-secondary" title="Edit">
+                <i class="fas fa-pen"></i>
+              </a>
+              <form method="post" action="{{ url_for('rfi.rfi_delete', id=rfi.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ rfi.rfi_id }}?')">
+                <button class="btn btn-xs btn-outline-danger" title="Delete">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
+        {% if untriaged %}
+        <tr id="rfi-triage-row-{{ rfi.id }}" class="triage-row d-none">
+          <td colspan="8" class="bg-body-secondary p-3">
+            {% include "rfi/_rfi_triage_form.html" %}
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -162,6 +190,7 @@
 (function() {
   var dragging = null;
   document.querySelectorAll('.kanban-card').forEach(function(card) {
+    if (card.getAttribute('draggable') !== 'true') return;
     card.addEventListener('dragstart', function(e) { dragging = card; card.style.opacity = '0.5'; });
     card.addEventListener('dragend', function() { card.style.opacity = ''; dragging = null; });
   });
@@ -183,4 +212,5 @@
   });
 })();
 </script>
+{% include "requirements/_triage_js.html" %}
 {% endblock %}

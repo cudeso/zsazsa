@@ -1652,6 +1652,10 @@ def _rfi_obj(data):
     _oa(obj, "feedback-usefulness", data.get("feedback_usefulness"))
     _oa(obj, "feedback-suggestions", data.get("feedback_suggestions"))
     _oa(obj, "creator", data.get("creator"))
+    _oa(obj, "triaged-by", data.get("triaged_by"))
+    _oa(obj, "triaged-at", data.get("triaged_at"))
+    _oa_json(obj, "triage-checklist", data.get("triage_checklist", []))
+    _oa(obj, "rejection-reason", data.get("rejection_reason"))
     return obj
 
 
@@ -1703,6 +1707,12 @@ def _rfi_ns(event):
         feedback_usefulness=_obj_attr(obj, "feedback-usefulness") or "",
         feedback_suggestions=_obj_attr(obj, "feedback-suggestions") or "",
         creator=_obj_attr(obj, "creator") or "",
+        triaged_by=_obj_attr(obj, "triaged-by") or "",
+        triaged_at=_obj_attr(obj, "triaged-at") or "",
+        triage_checklist=_json_list(_obj_attr(obj, "triage-checklist")),
+        rejection_reason=_obj_attr(obj, "rejection-reason") or "",
+        # A New RFI has not been triaged; any other status means it has.
+        triaged=(_obj_attr(obj, "status") or "New") != "New",
         created_at=_parse_dt(event_date.isoformat() if event_date else None),
         attachments=attachments,
         notes=notes,
@@ -1755,6 +1765,13 @@ def update_rfi(uuid, data):
     old = _get_obj(event, "zsazsa-rfi")
     if old:
         data["creator"] = _obj_attr(old, "creator") or ""
+        # Triage fields are set only through update_rfi_triage; a plain content
+        # edit or a Kanban move must not wipe them, so carry them over unless the
+        # caller supplied a value.
+        for key, rel in (("triaged_by", "triaged-by"), ("triaged_at", "triaged-at"),
+                         ("rejection_reason", "rejection-reason")):
+            data.setdefault(key, _obj_attr(old, rel) or "")
+        data.setdefault("triage_checklist", _json_list(_obj_attr(old, "triage-checklist")))
     _sync_object_attributes(misp, event, "zsazsa-rfi", _rfi_obj(data), "RFI")
     rfi_id = data.get("rfi_id", "")
     info = f"[zsazsa:rfi] {rfi_id}: {data.get('question', '')[:80]}"
