@@ -5,6 +5,16 @@
 
 {% block content %}
 
+{% if ui_theme == 'default' %}
+<div class="d-flex justify-content-end mb-3">
+  <div class="alert alert-info py-1 px-3 mb-0 small d-inline-flex align-items-center">
+    <i class="fas fa-palette me-2"></i>
+    Did you know zsazsa also supports the UiBeta and Overmind themes?
+    <a href="{{ url_for('config_page.index') }}" class="alert-link ms-1">Change theme</a>
+  </div>
+</div>
+{% endif %}
+
 {# Action bar: quick-action tiles (left) and collection-pipeline controls (right). #}
 <style>
   .action-bar { margin-bottom: 1.5rem; }

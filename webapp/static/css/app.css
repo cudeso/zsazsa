@@ -295,6 +295,63 @@
   --sidebar-brand-fg: #212529;
 }
 
+/* MISP Overmind theme: a Bootstrap-5 light theme built around Overmind's teal
+   primary (#1892b1) with lime/green/coral accents. Reuses the UiBeta top-nav
+   layout (see the layout rules further down). */
+[data-theme="overmind"] {
+  --misp-blue:        #1892b1;
+  --misp-cyan:        #1aa9cc;
+  --misp-deep:        #136f88;
+  --misp-navy:        #0f5970;
+
+  /* Light top-nav chrome */
+  --sidebar-bg:       #ffffff;
+  --sidebar-text:     #495057;
+  --sidebar-active:   #ffffff;  /* text on the teal active/hover background */
+  --sidebar-hover:    #e9f4f7;
+  --sidebar-accent:   #1892b1;
+  --sidebar-section-label-fg: rgba(73,80,87,.6);
+  --sidebar-hover-tint: var(--sidebar-hover);
+  --sidebar-hover-fg: #0f5970;
+  --sidebar-divider:  #e3e9ec;
+  --sidebar-footer-fg: rgba(73,80,87,.55);
+  --sidebar-brand-fg: #0f5970;
+
+  --body-bg:          #f4f7f8;
+  --card-bg:          #ffffff;
+  --topbar-bg:        #ffffff;
+  --topbar-border:    #dde5e8;
+  --text-primary:     #1d2b30;
+  --text-muted:       #5d7079;
+
+  --accent-blue:        #1892b1;
+  --accent-blue-hover:  #136f88;
+  --accent-green:       #4da167;
+  --accent-orange:      #e67f0d;
+  --accent-red:         #dc3545;
+  --accent-cyan:        #1892b1;
+
+  --card-shadow: 0 1px 3px rgba(24,146,177,.08), 0 0 1px rgba(0,0,0,.06);
+  --topbar-shadow: 0 1px 6px rgba(0,0,0,.06);
+
+  --border-subtle:  #e4eaec;
+  --border-light:   #dde5e8;
+  --border-faint:   #eef2f4;
+  --surface-tint:   #e9f4f7;
+  --surface-hover:  #f2f6f7;
+  --surface-muted:  #f6f9fa;
+  --misp-status-bg: #f4f7f8;
+  --misp-status-hover-border: #b9ccd2;
+  --form-border:    #ccd7db;
+  --checklist-row-border: #eef2f4;
+  --scope-group-border: #e6eef0;
+
+  --brand-gradient:           linear-gradient(135deg, #1aa9cc 0%, #136f88 100%);
+  --sidebar-brand-gradient:   linear-gradient(180deg, color-mix(in srgb, var(--misp-blue) 8%, transparent) 0%, transparent 100%);
+  --dist-avatar-gradient:     linear-gradient(135deg, #1892b1, #136f88);
+  --admiralty-modal-gradient: linear-gradient(135deg, #136f88 0%, #1892b1 100%);
+}
+
 /* ─── Reset & base ──────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -600,15 +657,21 @@ body {
   margin-left: auto;
 }
 
-/* UiBeta: top nav replaces the sidebar; topbar no longer sticks to the top. */
-[data-theme="uibeta"] #sidebar { display: none; }
-[data-theme="uibeta"] #topnav  { display: flex; }
-[data-theme="uibeta"] #topbar  { position: static; }
+/* UiBeta / Overmind: top nav replaces the sidebar; topbar no longer sticks. */
+[data-theme="uibeta"] #sidebar,
+[data-theme="overmind"] #sidebar { display: none; }
+[data-theme="uibeta"] #topnav,
+[data-theme="overmind"] #topnav  { display: flex; }
+[data-theme="uibeta"] #topbar,
+[data-theme="overmind"] #topbar  { position: static; }
 
-/* UiBeta: MISP status, intel reference and user are now in #topnav. */
+/* Top-nav themes: MISP status, intel reference and user move into #topnav. */
 [data-theme="uibeta"] #topbar .misp-status-badge,
 [data-theme="uibeta"] #topbar .admiralty-ref-btn,
-[data-theme="uibeta"] #topbar .topbar-user {
+[data-theme="uibeta"] #topbar .topbar-user,
+[data-theme="overmind"] #topbar .misp-status-badge,
+[data-theme="overmind"] #topbar .admiralty-ref-btn,
+[data-theme="overmind"] #topbar .topbar-user {
   display: none;
 }
 

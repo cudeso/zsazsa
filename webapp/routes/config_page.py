@@ -491,7 +491,8 @@ BRAND_COLOR_2    = {values.get('BRAND_COLOR_2', '#0078f1')!r}
 BRAND_COLOR_3    = {values.get('BRAND_COLOR_3', '#64748b')!r}
 BRAND_LOGO       = {values.get('BRAND_LOGO', '')!r}
 
-# UI theme: 'default' (zsazsa navy) or 'uibeta' (MISP UiBeta-style light theme)
+# UI theme: 'default' (zsazsa navy), 'uibeta' (MISP UiBeta-style light) or
+# 'overmind' (MISP Overmind teal)
 THEME = {values.get('THEME', 'default')!r}
 """
     cfg_path = str(_CONFIG_FILE)
@@ -617,7 +618,7 @@ def index():
             "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
             "THEME": request.form.get("THEME", "default").strip() or "default",
         }
-        if values["THEME"] not in ("default", "uibeta"):
+        if values["THEME"] not in ("default", "uibeta", "overmind"):
             values["THEME"] = "default"
         active_tab = request.form.get("active_tab", "tab-connections")
         if active_tab not in _CONFIG_TABS:

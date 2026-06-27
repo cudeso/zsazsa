@@ -1281,11 +1281,13 @@
           <select name="THEME" class="form-select" style="max-width:320px;">
             <option value="default" {{ 'selected' if cfg.THEME == 'default' }}>Default (zsazsa navy)</option>
             <option value="uibeta" {{ 'selected' if cfg.THEME == 'uibeta' }}>UiBeta (MISP-style light)</option>
+            <option value="overmind" {{ 'selected' if cfg.THEME == 'overmind' }}>Overmind (MISP teal)</option>
           </select>
           <div class="form-text">
-            Re-colours the entire interface. "UiBeta" mirrors MISP's UiBeta theme: a top
-            navigation bar instead of the side menu, MISP blue accents, and neutral grey
-            surfaces. Takes effect on the next page load.
+            Re-colours the entire interface. "UiBeta" mirrors MISP's UiBeta theme and
+            "Overmind" mirrors MISP's Overmind theme (teal primary, lime/coral accents):
+            both use a top navigation bar instead of the side menu. Takes effect on the
+            next page load.
           </div>
         </div>
       </div>
