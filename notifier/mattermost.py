@@ -229,6 +229,15 @@ def send_daily_briefing_notification(briefing, markdown: str, stakeholders: list
     return _chunk_and_send(targets, body, label)
 
 
+def send_indicator_feed_notification(feed, markdown: str, channel_ids: list[str] | None = None) -> bool:
+    """Post an indicator feed (summary + values) to the given Mattermost channels."""
+    headline = f"### :satellite: {getattr(feed, 'feed_id', '')}: {getattr(feed, 'name', '') or 'Indicator feed'}"
+    body = f"{headline}\n{markdown}"
+    label = f"Indicator feed {getattr(feed, 'feed_id', '')}"
+    targets = _active_webhooks(channel_ids)
+    return _chunk_and_send(targets, body, label)
+
+
 def send_vea_notification(vea, markdown: str, stakeholders: list | None = None,
                           channel_ids: list[str] | None = None) -> bool:
     """Send a detailed VEA notification to subscribed stakeholders.

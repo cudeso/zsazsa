@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+{% from "_macros.html" import tag_input, galaxy_multiselect %}
+
+{% block title %}Indicator feed | zsazsa CTI{% endblock %}
+{% block page_title %}{{ feed.name if feed else 'Indicator feed' }}{% endblock %}
+
+{% block topbar_actions %}
+{% if feed %}
+<a href="{{ url_for('indicator_feed.index') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-magnifying-glass me-1"></i> New search
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<style>
+  .qf-section {
+    font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted); display: flex; align-items: center; gap: .5rem; margin: 1.1rem 0 .6rem;
+  }
+  .qf-section:first-child { margin-top: 0; }
+  .qf-section .qf-rule { flex: 1; height: 1px; background: var(--border-faint); }
+  .qf-field-label { font-size: .8rem; font-weight: 600; margin-bottom: .3rem; }
+  .qf-hint { font-size: .72rem; color: var(--text-muted); }
+  .qf-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .2rem 0; }
+  .qf-seg-label { font-size: .8rem; font-weight: 600; width: 10.5rem; flex-shrink: 0; }
+  .qf-opt-label { font-size: .8rem; color: var(--text-muted); }
+  /* Include / exclude split control wrapping the tag_input chips */
+  .qf-inex { border: 1px solid var(--border-light); border-radius: var(--border-radius); }
+  .qf-inex-row { display: flex; gap: .5rem; padding: .45rem .6rem; align-items: flex-start; }
+  .qf-inex-row + .qf-inex-row { border-top: 1px solid var(--border-faint); }
+  .qf-inex-row.inc { border-left: 3px solid var(--accent-green); }
+  .qf-inex-row.exc { border-left: 3px solid var(--accent-orange); }
+  .qf-inex-row [data-ti-field] { flex: 1; min-width: 0; }
+  .qf-inex-tag { font-weight: 700; width: 1rem; text-align: center; flex-shrink: 0; padding-top: .3rem; }
+  .qf-inex-row.inc .qf-inex-tag { color: var(--accent-green); }
+  .qf-inex-row.exc .qf-inex-tag { color: var(--accent-orange); }
+</style>
+{% if feed %}
+<div class="card content-card mb-3">
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2 py-2">
+    <div>
+      <span class="req-id-badge">{{ feed.feed_id }}</span>
+      <span class="fw-semibold ms-1">{{ feed.name }}</span>
+      {% if feed.description %}<div class="text-muted small">{{ feed.description }}</div>{% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <form method="post" action="{{ url_for('indicator_feed.notify', id=feed.id) }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-warning" type="submit">
+          <i class="fas fa-bell me-1"></i> Notify subscribers
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('indicator_feed.delete', id=feed.id) }}" class="d-inline"
+            onsubmit="return confirm('Delete {{ feed.feed_id }}?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fas fa-trash me-1"></i> Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# Toolbar (outside the query form): metadata refresh + clear filters. #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <form method="post" action="{{ url_for('indicator_feed.refresh_metadata') }}" class="d-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-sm btn-outline-secondary" type="submit"
+            title="Pull organisations and tags from the MISP servers">
+      <i class="fas fa-arrows-rotate me-1"></i> Refresh orgs/tags
+    </button>
+  </form>
+  <a href="{{ url_for('indicator_feed.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="fas fa-eraser me-1"></i> Clear all filters
+  </a>
+  {% if metadata_refreshed_at %}
+  <span class="text-muted small ms-auto"><i class="fas fa-clock me-1"></i>Org/tag lists refreshed {{ metadata_refreshed_at }}</span>
+  {% else %}
+  <span class="text-warning small ms-auto"><i class="fas fa-triangle-exclamation me-1"></i>No org/tag lists yet — click Refresh.</span>
+  {% endif %}
+</div>
+
+<form method="get" action="{{ url_for('indicator_feed.index') }}" class="row g-4" id="indicator-form">
+  {# Carried so the Save/Save changes POST buttons pass CSRF (the form itself is GET). #}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="col-lg-8">
+
+    <div class="card content-card mb-4">
+      <div class="card-header">
+        <img src="{{ url_for('static', filename='misp-logo.png') }}" alt="MISP" style="height:15px;width:auto;vertical-align:middle;margin-right:6px;opacity:.8;">MISP servers
+      </div>
+      <div class="card-body">
+        {% if servers %}
+        <div class="d-flex flex-column gap-2">
+          {% for s in servers %}
+          <label class="d-flex align-items-center gap-2 border rounded px-3 py-2 mb-0" style="cursor:pointer;">
+            <input class="form-check-input mt-0" type="checkbox" name="servers" value="{{ s.id }}"
+                   {{ 'checked' if (not filters.servers) or (s.id in filters.servers) }}>
+            <i class="fas fa-server text-muted"></i>
+            <span class="fw-semibold">{{ s.label }}</span>
+            <span class="text-muted small font-monospace">{{ s.url }}</span>
+            {% if s.enabled %}
+            <span class="badge source-enabled ms-auto" style="font-size:.7rem;"><i class="fas fa-circle-check me-1"></i>Enabled</span>
+            {% else %}
+            <span class="badge source-disabled ms-auto" style="font-size:.7rem;"><i class="fas fa-circle-pause me-1"></i>Disabled</span>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">No MISP servers configured. Add them under Settings → Collection sources.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="fas fa-filter me-2"></i>Query</span>
+        <a href="{{ url_for('indicator_feed.index') }}" class="small text-decoration-none"><i class="fas fa-eraser me-1"></i>Clear all</a>
+      </div>
+      <div class="card-body">
+
+        <div class="qf-section"><i class="fas fa-fingerprint"></i> Indicators <span class="qf-rule"></span></div>
+
+        <div class="mb-3">
+          <div class="qf-field-label">Attribute types</div>
+          {{ galaxy_multiselect('types', values=filters.types, items=attribute_types, dom_id='types') }}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="qf-field-label">Tags <span class="qf-hint fw-normal">(event or attribute)</span></div>
+            <div class="qf-inex">
+              <div class="qf-inex-row inc">
+                <span class="qf-inex-tag" title="Must have">&plus;</span>
+                {{ tag_input('tags_include', values=filters.tags_include, datalist_id='dl-tags_include', placeholder='must have…') }}
+              </div>
+              <div class="qf-inex-row exc">
+                <span class="qf-inex-tag" title="Must not have">&minus;</span>
+                {{ tag_input('tags_exclude', values=filters.tags_exclude, datalist_id='dl-tags_exclude', placeholder='must not have…') }}
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="qf-field-label">Organisations</div>
+            <div class="qf-inex">
+              <div class="qf-inex-row inc">
+                <span class="qf-inex-tag" title="From">&plus;</span>
+                {{ tag_input('orgs_include', values=filters.orgs_include, datalist_id='dl-orgs_include', placeholder='from…') }}
+              </div>
+              <div class="qf-inex-row exc">
+                <span class="qf-inex-tag" title="Not from">&minus;</span>
+                {{ tag_input('orgs_exclude', values=filters.orgs_exclude, datalist_id='dl-orgs_exclude', placeholder='not from…') }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qf-section"><i class="fas fa-clock"></i> Time <span class="qf-rule"></span></div>
+
+        <div class="qf-row">
+          <span class="qf-seg-label">Attribute last change</span>
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="attr_last" id="last-none" value=""
+                   {{ 'checked' if not filters.attr_last }} autocomplete="off">
+            <label class="btn btn-outline-secondary" for="last-none">Any</label>
+            {% for value, label in attr_ranges %}
+            <input type="radio" class="btn-check" name="attr_last" id="last-{{ value }}" value="{{ value }}"
+                   {{ 'checked' if filters.attr_last == value }} autocomplete="off">
+            <label class="btn btn-outline-secondary" for="last-{{ value }}">{{ label }}</label>
+            {% endfor %}
+          </div>
+          <span class="qf-hint">or</span>
+          <input type="date" name="attr_after" class="form-control form-control-sm" style="max-width:9.5rem;" value="{{ filters.attr_after }}" title="After">
+          <span class="qf-hint">→</span>
+          <input type="date" name="attr_before" class="form-control form-control-sm" style="max-width:9.5rem;" value="{{ filters.attr_before }}" title="Before">
+        </div>
+
+        <div class="qf-row">
+          <span class="qf-seg-label">Event date</span>
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="event_last" id="elast-none" value=""
+                   {{ 'checked' if not filters.event_last }} autocomplete="off">
+            <label class="btn btn-outline-secondary" for="elast-none">Any</label>
+            {% for value, label in event_ranges %}
+            <input type="radio" class="btn-check" name="event_last" id="elast-{{ value }}" value="{{ value }}"
+                   {{ 'checked' if filters.event_last == value }} autocomplete="off">
+            <label class="btn btn-outline-secondary" for="elast-{{ value }}">{{ label }}</label>
+            {% endfor %}
+          </div>
+          <span class="qf-hint">or</span>
+          <input type="date" name="event_after" class="form-control form-control-sm" style="max-width:9.5rem;" value="{{ filters.event_after }}" title="After">
+          <span class="qf-hint">→</span>
+          <input type="date" name="event_before" class="form-control form-control-sm" style="max-width:9.5rem;" value="{{ filters.event_before }}" title="Before">
+        </div>
+
+        <div class="qf-section"><i class="fas fa-sliders"></i> Options <span class="qf-rule"></span></div>
+
+        <div class="qf-row">
+          <span class="qf-opt-label">to_ids</span>
+          <div class="btn-group btn-group-sm" role="group">
+            {% for choice in to_ids_choices %}
+            <input type="radio" class="btn-check" name="to_ids" id="toids-{{ choice }}" value="{{ choice }}"
+                   {{ 'checked' if filters.to_ids == choice }} autocomplete="off">
+            <label class="btn btn-outline-secondary" for="toids-{{ choice }}">{{ {'any': 'Any', 'yes': 'True', 'no': 'False'}[choice] }}</label>
+            {% endfor %}
+          </div>
+          <span class="qf-opt-label ms-2">Published</span>
+          <div class="btn-group btn-group-sm" role="group">
+            {% for choice in published_choices %}
+            <input type="radio" class="btn-check" name="published" id="pub-{{ choice }}" value="{{ choice }}"
+                   {{ 'checked' if filters.published == choice }} autocomplete="off">
+            <label class="btn btn-outline-secondary" for="pub-{{ choice }}">{{ {'any': 'Any', 'yes': 'Yes', 'no': 'No'}[choice] }}</label>
+            {% endfor %}
+          </div>
+          <span class="vr mx-1"></span>
+          <label class="d-inline-flex align-items-center gap-1 mb-0" style="font-size:.82rem;">
+            <input class="form-check-input mt-0" type="checkbox" name="enforce_warninglist" value="yes" id="enforce-wl"
+                   {{ 'checked' if filters.enforce_warninglist == 'yes' }}>
+            Exclude warninglist
+          </label>
+          <span class="vr mx-1"></span>
+          <span class="qf-opt-label">Limit</span>
+          <input type="number" name="limit" id="limit-input" class="form-control form-control-sm" style="max-width:6rem;"
+                 min="1" max="10000" value="{{ filters.limit }}">
+        </div>
+        <div id="limit-warning" class="form-text text-warning {{ 'd-none' if filters.limit <= 500 }}">
+          <i class="fas fa-triangle-exclamation me-1"></i>A limit above 500 (per server) can make the query very slow.
+        </div>
+
+        <div class="mt-3">
+          <a class="small text-decoration-none" data-bs-toggle="collapse" href="#qf-advanced" role="button" aria-expanded="false">
+            <i class="fas fa-chevron-right me-1"></i>Advanced — specific events
+          </a>
+          <div class="collapse {{ 'show' if filters.events_include or filters.events_exclude }}" id="qf-advanced">
+            <div class="row g-3 mt-0">
+              <div class="col-md-6">
+                <div class="qf-field-label">Include event UUIDs</div>
+                {{ tag_input('events_include', values=filters.events_include, placeholder='Event UUID, then Enter') }}
+              </div>
+              <div class="col-md-6">
+                <div class="qf-field-label">Exclude event UUIDs</div>
+                {{ tag_input('events_exclude', values=filters.events_exclude, placeholder='Event UUID, then Enter') }}
+              </div>
+            </div>
+            <div class="qf-hint mt-1">Tip: use the &plus; / &minus; icons next to a result row to fill these.</div>
+          </div>
+        </div>
+
+        <div class="form-text mt-3">MISP cannot sort attribute search, so the table only sorts the fetched page. Use <strong>Show total</strong> on the results to see how many match — to sort across all of them, raise the limit to at least the total.</div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-floppy-disk me-2"></i>{{ 'Feed details' if feed else 'Save as feed' }}</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required-label">Name</label>
+          <input type="text" name="name" class="form-control" value="{{ feed.name if feed else '' }}"
+                 placeholder="e.g. High-confidence ransomware IPs">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="3">{{ feed.description if feed else '' }}</textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">TLP</label>
+          {% set sel_tlp = feed.tlp if feed else 'clear' %}
+          <select name="tlp" class="form-select">
+            {% for lvl in tlp_levels %}
+            <option value="{{ lvl }}" {{ 'selected' if sel_tlp == lvl }}>TLP:{{ lvl | upper }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Audience</label>
+          {% set sel_aud = (feed.audience.split(',') | map('trim') | list) if feed and feed.audience else [] %}
+          <div class="d-flex flex-wrap gap-2">
+            {% for a in audiences %}
+            <div class="form-check form-check-inline me-0">
+              <input class="form-check-input" type="checkbox" name="audience" value="{{ a }}"
+                     id="aud-{{ loop.index }}" {{ 'checked' if a in sel_aud }}>
+              <label class="form-check-label small" for="aud-{{ loop.index }}">{{ a }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="form-text">Roles that should receive this feed (drives the recipients).</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Author</label>
+          <input type="text" name="author" class="form-control" value="{{ feed.author if feed else '' }}" placeholder="Optional">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Feedback by</label>
+          <input type="date" name="feedback_by" class="form-control" value="{{ feed.feedback_by.isoformat() if feed and feed.feedback_by else '' }}">
+        </div>
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-magnifying-glass me-1"></i> Run search
+          </button>
+          {% if feed %}
+          <button type="submit" class="btn btn-outline-primary"
+                  formmethod="post" formaction="{{ url_for('indicator_feed.edit', id=feed.id) }}">
+            <i class="fas fa-floppy-disk me-1"></i> Save changes
+          </button>
+          {% else %}
+          <button type="submit" class="btn btn-outline-primary"
+                  formmethod="post" formaction="{{ url_for('indicator_feed.save') }}">
+            <i class="fas fa-floppy-disk me-1"></i> Save as feed
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if feed %}
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <strong>Metadata</strong>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                data-bs-toggle="modal" data-bs-target="#recipientsModal" title="Preview recipients">
+          <i class="fas fa-users me-1"></i> Recipients
+        </button>
+      </div>
+      <div class="card-body small">
+        <p class="mb-1"><strong>Feed:</strong> {{ feed.feed_id }}</p>
+        <p class="mb-1"><strong>TLP:</strong> <span class="tlp-badge tlp-{{ feed.tlp | slug }}">TLP:{{ feed.tlp | upper }}</span></p>
+        <p class="mb-1"><strong>Audience:</strong> {{ feed.audience or '-' }}</p>
+        <p class="mb-1"><strong>Author:</strong> {{ feed.author or '-' }}</p>
+        <p class="mb-1"><strong>Created:</strong> {{ feed.created_at.strftime('%Y-%m-%d') if feed.created_at else '-' }}</p>
+        <p class="mb-1"><strong>Created by:</strong> {{ feed.creator or '-' }}</p>
+        {% if feed.feedback_by %}<p class="mb-0"><strong>Feedback by:</strong> {{ feed.feedback_by.strftime('%d-%m-%Y') }}</p>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-code me-2"></i>PyMISP query</span>
+        <button type="button" class="btn btn-xs btn-outline-secondary" id="copy-query"><i class="fas fa-copy me-1"></i>Copy</button>
+      </div>
+      <div class="card-body p-0">
+        <pre class="mb-0 p-3" id="pymisp-query" style="font-size:.78rem;white-space:pre-wrap;">{{ pymisp_query }}</pre>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-layer-group me-2"></i>Saved feeds</span>
+        <span class="text-muted small">{{ feeds | length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if feeds %}
+        <ul class="list-group list-group-flush">
+          {% for f in feeds %}
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+              <a href="{{ url_for('indicator_feed.detail', id=f.id) }}" class="text-decoration-none text-truncate">
+                <span class="req-id-badge">{{ f.feed_id }}</span> {{ f.name }}
+              </a>
+              {% if feed and feed.id == f.id %}<i class="fas fa-circle-dot text-primary mt-1" title="Open"></i>{% endif %}
+            </div>
+            <div class="text-muted small mt-1">
+              <span class="tlp-badge tlp-{{ f.tlp | slug }}">TLP:{{ f.tlp | upper }}</span>
+              <span class="ms-1">{{ f.created_at.strftime('%d-%m-%Y') if f.created_at else '-' }}{% if f.creator %} · {{ f.creator }}{% endif %}</span>
+            </div>
+            {% if f.token %}
+            <div class="input-group input-group-sm mt-1">
+              <span class="input-group-text" title="Public feed URL (no login)"><i class="fas fa-link fa-xs"></i></span>
+              <input type="text" class="form-control public-url font-monospace" style="font-size:.68rem;" readonly
+                     value="{{ url_for('indicator_feed.public_feed', token=f.token, _external=True) }}">
+              <button type="button" class="btn btn-outline-secondary copy-url" title="Copy URL"><i class="fas fa-copy"></i></button>
+            </div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="px-3 py-3 text-muted small"><em>No saved feeds yet.</em></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if run %}
+{% include "indicator_feed/_results.html" %}
+{% endif %}
+
+{# Autocomplete datalists are filled on demand from /suggest. #}
+{% for field in ['orgs_include', 'orgs_exclude', 'tags_include', 'tags_exclude'] %}
+<datalist id="dl-{{ field }}"></datalist>
+{% endfor %}
+
+{% if feed %}
+<div class="modal fade" id="recipientsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users me-2"></i>Who gets this feed?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Delivery eligibility based on subscription to <strong>Indicator feed</strong>, TLP clearance and audience role.
+          TLP: <strong>{{ feed.tlp | upper }}</strong> &middot; Audience: <strong>{{ feed.audience or '(none)' }}</strong>
+        </p>
+        {% set green_recipients = recipients | selectattr("status", "eq", "green") | list %}
+        {% set yellow_recipients = recipients | selectattr("status", "eq", "yellow") | list %}
+        {% set grey_recipients = recipients | selectattr("status", "eq", "grey") | list %}
+        {% if green_recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle-check text-success me-1"></i>Will receive <span class="badge bg-success rounded-pill">{{ green_recipients | length }}</span></h6>
+        <div class="d-flex flex-wrap gap-2 mb-4">
+          {% for r in green_recipients %}
+          <span class="badge rounded-pill delivery-ok px-3 py-2" style="font-size:.82rem;" title="{{ r.reason }}">
+            {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if yellow_recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle-exclamation text-warning me-1"></i>Subscribed but blocked <span class="badge bg-warning text-dark rounded-pill">{{ yellow_recipients | length }}</span></h6>
+        <ul class="list-unstyled mb-4">
+          {% for r in yellow_recipients %}
+          <li class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge rounded-pill delivery-blocked px-3 py-2 flex-shrink-0" style="font-size:.82rem;">
+              {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+            </span>
+            <span class="text-muted small">{{ r.reason }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if grey_recipients %}
+        <h6 class="mb-2"><i class="fas fa-circle text-secondary me-1"></i>Not subscribed <span class="badge bg-secondary rounded-pill">{{ grey_recipients | length }}</span></h6>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          {% for r in grey_recipients %}
+          <span class="badge rounded-pill delivery-none px-3 py-2" style="font-size:.82rem;" title="{{ r.reason }}">
+            {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if not recipients %}
+        <p class="text-muted mb-0">No stakeholders configured.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Chip-style add/remove for the org/tag/event pickers (shared tag_input behaviour).
+function tiRender(field) {
+  var display = document.getElementById('ti-display-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!display || !store) return;
+  display.innerHTML = '';
+  store.querySelectorAll('input[type="hidden"]').forEach(function(inp) {
+    var pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    pill.appendChild(document.createTextNode(inp.value));
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tag-pill-remove';
+    btn.textContent = '×';
+    btn.title = 'Remove';
+    btn.onclick = function() { inp.remove(); tiRender(field); buildQuery(); };
+    pill.appendChild(btn);
+    display.appendChild(pill);
+  });
+}
+function tiAdd(field) {
+  var text = document.getElementById('ti-text-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!text || !store) return;
+  var val = text.value.trim();
+  if (!val) return;
+  addChip(field, val);
+  text.value = '';
+  text.focus();
+}
+function addChip(field, value) {
+  var store = document.getElementById('ti-store-' + field);
+  if (!store || !value) return;
+  var existing = Array.from(store.querySelectorAll('input[type="hidden"]')).map(function(i){ return i.value; });
+  if (!existing.includes(value)) {
+    var h = document.createElement('input');
+    h.type = 'hidden'; h.name = field; h.value = value;
+    store.appendChild(h);
+    tiRender(field);
+    buildQuery();
+    markStale();
+  }
+}
+function markStale() {
+  var el = document.getElementById('results-stale');
+  if (el) el.classList.remove('d-none');
+}
+
+// Live PyMISP query preview (mirrors misp_store.pymisp_query_string).
+function pyStr(s) { return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"; }
+function pyList(a) { return '[' + a.map(pyStr).join(', ') + ']'; }
+function chipVals(field) {
+  return Array.from(document.querySelectorAll('#ti-store-' + field + ' input[type="hidden"]')).map(function(i){ return i.value; });
+}
+function radioVal(name) { var el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : ''; }
+function checkedVals(name) { return Array.from(document.querySelectorAll('input[name="' + name + '"]:checked')).map(function(i){ return i.value; }); }
+function namedVal(name) { var el = document.querySelector('[name="' + name + '"]'); return el ? el.value.trim() : ''; }
+function buildQuery() {
+  var L = ["misp.search(", "    controller='attributes',"];
+  var types = checkedVals('types'); if (types.length) L.push("    type_attribute=" + pyList(types) + ",");
+  var toids = radioVal('to_ids'); if (toids === 'yes') L.push("    to_ids=1,"); else if (toids === 'no') L.push("    to_ids=0,");
+  var pub = radioVal('published'); if (pub === 'yes') L.push("    published=True,"); else if (pub === 'no') L.push("    published=False,");
+  if (document.querySelector('input[name="enforce_warninglist"]:checked')) L.push("    enforce_warninglist=True,");
+  var org = chipVals('orgs_include').concat(chipVals('orgs_exclude').map(function(x){ return '!' + x; }));
+  if (org.length) L.push("    org=" + pyList(org) + ",");
+  var tags = chipVals('tags_include').concat(chipVals('tags_exclude').map(function(x){ return '!' + x; }));
+  if (tags.length) L.push("    tags=" + pyList(tags) + ",");
+  var ev = chipVals('events_include').concat(chipVals('events_exclude').map(function(x){ return '!' + x; }));
+  if (ev.length) L.push("    eventid=" + pyList(ev) + ",");
+  var last = radioVal('attr_last'), aa = namedVal('attr_after'), ab = namedVal('attr_before');
+  if (last) L.push("    timestamp=" + pyStr(last) + ",");
+  else if (aa && ab) L.push("    timestamp=" + pyList([aa, ab]) + ",");
+  else if (aa) L.push("    timestamp=" + pyStr(aa) + ",");
+  else if (ab) L.push("    timestamp=" + pyList(['1970-01-01', ab]) + ",");
+  var elast = radioVal('event_last'), ea = namedVal('event_after'), eb = namedVal('event_before');
+  if (elast !== '') {
+    var d = new Date(); d.setDate(d.getDate() - parseInt(elast, 10));
+    L.push("    date_from=" + pyStr(d.toISOString().slice(0, 10)) + ",");
+  } else {
+    if (ea) L.push("    date_from=" + pyStr(ea) + ",");
+    if (eb) L.push("    date_to=" + pyStr(eb) + ",");
+  }
+  L.push("    limit=" + (parseInt(namedVal('limit'), 10) || 100) + ",");
+  L.push("    include_context=True,");
+  L.push("    pythonify=False,");
+  L.push(")");
+  var el = document.getElementById('pymisp-query');
+  if (el) el.textContent = L.join('\n');
+}
+
+var SUGGEST_URL = SCRIPT_ROOT + '/products/indicator-feed/suggest';
+function attachAutocomplete(field, input) {
+  var dl = document.getElementById('dl-' + field);
+  if (!dl) return;
+  var timer = null;
+  input.addEventListener('input', function() {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    timer = setTimeout(function() {
+      fetch(SUGGEST_URL + '?field=' + encodeURIComponent(field) + '&q=' + encodeURIComponent(q))
+        .then(function(r) { return r.json(); })
+        .then(function(items) {
+          dl.innerHTML = '';
+          (items || []).forEach(function(v) { var o = document.createElement('option'); o.value = v; dl.appendChild(o); });
+        }).catch(function() {});
+    }, 200);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-ti-field]').forEach(function(w) {
+    var f = w.dataset.tiField;
+    tiRender(f);
+    var t = document.getElementById('ti-text-' + f);
+    if (t) {
+      t.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); tiAdd(f); }
+      });
+      if (document.getElementById('dl-' + f)) attachAutocomplete(f, t);
+    }
+  });
+
+  // Live query preview on any filter change.
+  var form = document.getElementById('indicator-form');
+  if (form) {
+    form.addEventListener('input', function() { buildQuery(); markStale(); });
+    form.addEventListener('change', function() { buildQuery(); markStale(); });
+  }
+  buildQuery();
+
+  // Slow-query warning for large limits.
+  var limit = document.getElementById('limit-input');
+  var warn = document.getElementById('limit-warning');
+  if (limit && warn) {
+    limit.addEventListener('input', function() {
+      warn.classList.toggle('d-none', !(parseInt(limit.value, 10) > 500));
+    });
+  }
+
+  // Copy the PyMISP query.
+  var copyBtn = document.getElementById('copy-query');
+  var queryEl = document.getElementById('pymisp-query');
+  if (copyBtn && queryEl) {
+    copyBtn.addEventListener('click', function() {
+      copyText(queryEl.textContent).then(function() {
+        var orig = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>Copied';
+        setTimeout(function() { copyBtn.innerHTML = orig; }, 1500);
+      }).catch(function() {});
+    });
+  }
+
+  // Clipboard copy that also works on non-HTTPS origins (e.g. a LAN IP), where
+  // navigator.clipboard is unavailable; falls back to a temporary textarea.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function(resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject();
+    });
+  }
+  function flashCopied(btn) {
+    var i = btn.querySelector('i');
+    if (!i) return;
+    var prev = i.className;
+    i.className = 'fas fa-check';
+    setTimeout(function() { i.className = prev; }, 1200);
+  }
+
+  // Copy a saved feed's public URL.
+  document.querySelectorAll('.copy-url').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var inp = btn.parentElement.querySelector('.public-url');
+      if (!inp) return;
+      copyText(inp.value).then(function() { flashCopied(btn); }).catch(function() {});
+    });
+  });
+
+  // On-demand total count (MISP has no count API, so this is a separate query
+  // the analyst triggers rather than running on every search).
+  var countBtn = document.getElementById('count-total-btn');
+  if (countBtn) {
+    countBtn.addEventListener('click', function() {
+      var resultEl = document.getElementById('count-total-result');
+      var shown = parseInt(countBtn.dataset.shown, 10) || 0;
+      countBtn.disabled = true;
+      countBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Counting…';
+      fetch(countBtn.dataset.url)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          countBtn.classList.add('d-none');
+          if (d.error) { resultEl.innerHTML = '<span class="text-danger">count failed</span>'; return; }
+          var html = '· ' + d.total + (d.capped ? '+' : '') + ' match the query';
+          if (d.total > shown) {
+            html += ' <span class="text-warning ms-1" title="Raise the limit to at least ' + d.total +
+                    ' to sort across the full result set"><i class="fas fa-triangle-exclamation me-1"></i>limit truncates the set</span>';
+          }
+          resultEl.innerHTML = html;
+        })
+        .catch(function() {
+          countBtn.disabled = false;
+          countBtn.innerHTML = '<i class="fas fa-calculator me-1"></i>Show total';
+          resultEl.innerHTML = '<span class="text-danger">count failed</span>';
+        });
+    });
+  }
+
+  // Per-row "include/exclude" buttons add the event UUID or creator org to a filter.
+  var table = document.getElementById('results-table');
+  if (table) {
+    table.addEventListener('click', function(e) {
+      var btn = e.target.closest('.add-filter');
+      if (!btn) return;
+      addChip(btn.dataset.field, btn.dataset.value);
+      var icon = btn.querySelector('i');
+      if (icon) {
+        var prev = icon.className;
+        icon.className = 'fas fa-check';
+        setTimeout(function() { icon.className = prev; }, 900);
+      }
+    });
+
+    // Client-side column sorting (no re-query).
+    table.querySelectorAll('th[data-sort]').forEach(function(th) {
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', function() {
+        var idx = parseInt(th.dataset.sort, 10);
+        var numeric = th.dataset.numeric === '1';
+        var asc = th.dataset.dir !== 'asc';
+        var tbody = table.tBodies[0];
+        var rows = Array.prototype.slice.call(tbody.rows);
+        rows.sort(function(a, b) {
+          var x = a.cells[idx].getAttribute('data-v') || a.cells[idx].textContent.trim();
+          var y = b.cells[idx].getAttribute('data-v') || b.cells[idx].textContent.trim();
+          if (numeric) { x = parseFloat(x) || 0; y = parseFloat(y) || 0; return asc ? x - y : y - x; }
+          return asc ? x.localeCompare(y) : y.localeCompare(x);
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+        table.querySelectorAll('th[data-sort]').forEach(function(o) {
+          o.removeAttribute('data-dir');
+          var i = o.querySelector('i.sort-ind'); if (i) i.className = 'fas fa-sort fa-xs sort-idle sort-ind';
+        });
+        th.dataset.dir = asc ? 'asc' : 'desc';
+        var ind = th.querySelector('i.sort-ind');
+        if (ind) ind.className = 'fas fa-sort-' + (asc ? 'up' : 'down') + ' fa-xs sort-ind';
+      });
+    });
+  }
+});
+</script>
+{% endblock %}

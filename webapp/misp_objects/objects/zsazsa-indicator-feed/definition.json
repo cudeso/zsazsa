@@ -1,0 +1,69 @@
+{
+  "name": "zsazsa-indicator-feed",
+  "meta-category": "intelligence",
+  "description": "Saved MISP indicator search (indicator feed) managed by the zsazsa CTI program",
+  "uuid": "3f2c1a8e-6b4d-4f9a-9c1e-2d7b8a4f6c91",
+  "version": 1,
+  "attributes": {
+    "feed-id": {
+      "misp-attribute": "text",
+      "ui-priority": 0,
+      "description": "Unique indicator feed identifier (e.g. FEED-001)",
+      "disable_correlation": true
+    },
+    "name": {
+      "misp-attribute": "text",
+      "ui-priority": 1,
+      "description": "Human-readable name of the indicator feed",
+      "disable_correlation": true
+    },
+    "description": {
+      "misp-attribute": "text",
+      "ui-priority": 2,
+      "description": "What this feed collects and why",
+      "disable_correlation": true
+    },
+    "query": {
+      "misp-attribute": "text",
+      "ui-priority": 3,
+      "description": "JSON-encoded indicator search filters",
+      "disable_correlation": true
+    },
+    "tlp": {
+      "misp-attribute": "text",
+      "ui-priority": 4,
+      "description": "TLP label for the feed output (clear/green/amber/amber+strict/red)",
+      "disable_correlation": true
+    },
+    "audience": {
+      "misp-attribute": "text",
+      "ui-priority": 7,
+      "description": "Target audience roles (comma-separated)",
+      "disable_correlation": true
+    },
+    "author": {
+      "misp-attribute": "text",
+      "ui-priority": 8,
+      "description": "Author of the feed",
+      "disable_correlation": true
+    },
+    "feedback-by": {
+      "misp-attribute": "text",
+      "ui-priority": 9,
+      "description": "Optional date by which feedback is requested",
+      "disable_correlation": true
+    },
+    "token": {
+      "misp-attribute": "text",
+      "ui-priority": 5,
+      "description": "Capability token for the unguessable public export URL",
+      "disable_correlation": true
+    },
+    "creator": {
+      "misp-attribute": "text",
+      "ui-priority": 6,
+      "description": "User who created the feed",
+      "disable_correlation": true
+    }
+  }
+}

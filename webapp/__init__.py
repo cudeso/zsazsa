@@ -12,7 +12,7 @@ from requests.exceptions import RequestException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
-from webapp import audit, misp_session, org_store, sso_users, collection_cache
+from webapp import audit, misp_session, org_store, sso_users, collection_cache, indicator_meta_store
 from webapp.utils import md_to_html_inline
 from webapp.version import APP_VERSION
 
@@ -50,6 +50,7 @@ def create_app():
     audit.init()
     org_store.init_db()
     sso_users.init_db()
+    indicator_meta_store.init_db()
     from core.db import init_db as _init_core_db
     _init_core_db()
     collection_cache.start_worker()
@@ -67,9 +68,12 @@ def create_app():
             if not token or not expected or not hmac.compare_digest(token, expected):
                 abort(403)
 
+    # Endpoints reachable without a MISP login (capability-URL / public APIs).
+    _PUBLIC_ENDPOINTS = {"static", "indicator_feed.public_feed"}
+
     @app.before_request
     def _load_misp_user():
-        if request.endpoint == "static":
+        if request.endpoint in _PUBLIC_ENDPOINTS:
             return
         misp_session.load_request_user()
         if g.misp_user:
@@ -120,6 +124,7 @@ def create_app():
     from webapp.routes.data_collection import bp as data_collection_bp
     from webapp.routes.rfi import bp as rfi_bp
     from webapp.routes.products import bp as products_bp
+    from webapp.routes.indicator_feed import bp as indicator_feed_bp
     from webapp.routes.flash_intel import bp as flash_intel_bp
     from webapp.routes.community import bp as community_bp
     from webapp.routes.vea import bp as vea_bp
@@ -139,6 +144,7 @@ def create_app():
     app.register_blueprint(data_collection_bp)
     app.register_blueprint(rfi_bp)
     app.register_blueprint(products_bp)
+    app.register_blueprint(indicator_feed_bp)
     app.register_blueprint(flash_intel_bp)
     app.register_blueprint(vea_bp)
     app.register_blueprint(daily_briefing_bp)

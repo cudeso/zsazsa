@@ -19,6 +19,7 @@ attribute.
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 import urllib3
@@ -1833,6 +1834,396 @@ def delete_rfi_note(report_id):
     # so the note would keep appearing after deletion.
     misp = _misp()
     misp.delete_event_report(report_id, hard=True)
+
+
+# ── Indicator feeds (saved MISP indicator searches) ──────────────────────────
+
+def _indicator_feed_obj(data):
+    obj = _build_obj("zsazsa-indicator-feed")
+    _oa(obj, "feed-id", data.get("feed_id"))
+    _oa(obj, "name", data.get("name"))
+    _oa(obj, "description", data.get("description"))
+    _oa(obj, "query", json.dumps(data.get("query") or {}))
+    _oa(obj, "tlp", data.get("tlp", "clear"))
+    _oa(obj, "audience", data.get("audience"))
+    _oa(obj, "author", data.get("author"))
+    _oa(obj, "feedback-by", data.get("feedback_by"))
+    _oa(obj, "token", data.get("token"))
+    _oa(obj, "creator", data.get("creator"))
+    return obj
+
+
+def _indicator_feed_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-indicator-feed")
+    event_date = event.date
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        history_url=f"{config.MISP_WEBAPP_URL}/audit_logs/eventIndex/{uuid}",
+        feed_id=_obj_attr(obj, "feed-id") or "",
+        name=_obj_attr(obj, "name") or "",
+        description=_obj_attr(obj, "description") or "",
+        query=_json_dict(_obj_attr(obj, "query")),
+        tlp=_obj_attr(obj, "tlp") or "clear",
+        audience=_obj_attr(obj, "audience") or "",
+        author=_obj_attr(obj, "author") or "",
+        feedback_by=_parse_date(_obj_attr(obj, "feedback-by")),
+        token=_obj_attr(obj, "token") or "",
+        creator=_obj_attr(obj, "creator") or "",
+        created_at=_parse_dt(event_date.isoformat() if event_date else None),
+    )
+
+
+def next_indicator_feed_id():
+    return _next_id(config.TAG_INDICATOR_FEED, "FEED")
+
+
+def list_indicator_feeds():
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_INDICATOR_FEED], limit=500, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_indicator_feed_ns(e) for e in events]
+    result.sort(key=lambda f: f.name.lower())
+    return result
+
+
+def get_indicator_feed(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        return None
+    return _indicator_feed_ns(event)
+
+
+def create_indicator_feed(data):
+    data["creator"] = misp_session.current_user_email()
+    data.setdefault("tlp", "clear")
+    # Unguessable capability token for the public export URL.
+    data["token"] = data.get("token") or secrets.token_urlsafe(16)
+    misp = _misp()
+    with _id_lock:
+        data["feed_id"] = _sequence_id(misp, config.TAG_INDICATOR_FEED, "FEED", data.get("feed_id"))
+        info = f"[zsazsa:indicator-feed] {data['feed_id']}: {(data.get('name') or '')[:80]}"
+        event = _make_event(info)
+        result = _add_event(misp, event, [config.TAG_INDICATOR_FEED], "create indicator feed")
+    _check(misp.add_object(_event_ref(result), _indicator_feed_obj(data)), "add indicator feed object")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create indicator feed: missing UUID in MISP response")
+    return uuid
+
+
+def update_indicator_feed(uuid, data):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        logger.warning("Indicator feed event %s not found; recreating", uuid)
+        return create_indicator_feed(data)
+    old = _get_obj(event, "zsazsa-indicator-feed")
+    if old:
+        data.setdefault("creator", _obj_attr(old, "creator") or "")
+        # Keep the capability token stable across edits so saved URLs keep working.
+        data.setdefault("token", _obj_attr(old, "token") or secrets.token_urlsafe(16))
+    _sync_object_attributes(misp, event, "zsazsa-indicator-feed", _indicator_feed_obj(data), "indicator feed")
+    info = f"[zsazsa:indicator-feed] {data.get('feed_id', '')}: {(data.get('name') or '')[:80]}"
+    misp.update_event({"Event": {"id": event.id, "info": info}})
+    return uuid
+
+
+def delete_indicator_feed(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
+
+
+def get_indicator_feed_by_token(token):
+    """Look up a feed by its public capability token, or None."""
+    token = (token or "").strip()
+    if not token:
+        return None
+    return next((f for f in list_indicator_feeds() if f.token == token), None)
+
+
+# ── Indicator-feed MISP servers (the data-collection sources) ────────────────
+
+def indicator_feed_servers():
+    """Selectable MISP servers for the indicator feed: the configured data
+    collection servers (config.MISP_SERVERS) that have a URL and API key.
+
+    Returns dicts with id, label, url and enabled (no secrets).
+    """
+    servers = []
+    for s in getattr(config, "MISP_SERVERS", []) or []:
+        if not (s.get("url") and s.get("api_key")):
+            continue
+        servers.append({
+            "id": s.get("id") or s.get("label") or s.get("url"),
+            "label": s.get("label") or s.get("url"),
+            "url": s.get("url"),
+            "enabled": bool(s.get("enabled", True)),
+        })
+    return servers
+
+
+def _indicator_feed_clients(server_ids=None):
+    """Build (id, label, url, client) for the selected servers.
+
+    `server_ids` selects specific servers; when falsy, all enabled servers are
+    used. Servers that cannot be reached are skipped (logged).
+    """
+    wanted = set(server_ids or [])
+    clients = []
+    for s in getattr(config, "MISP_SERVERS", []) or []:
+        sid = s.get("id") or s.get("label") or s.get("url")
+        if not (s.get("url") and s.get("api_key")):
+            continue
+        if wanted:
+            if sid not in wanted:
+                continue
+        elif not s.get("enabled", True):
+            continue
+        try:
+            client = PyMISP(s["url"], s["api_key"], s.get("verify_tls", True), False, timeout=HTTP_TIMEOUT)
+        except Exception as exc:
+            logger.warning("Indicator feed: cannot connect to MISP server %r (%s): %s", sid, s.get("url"), exc)
+            continue
+        clients.append((sid, s.get("label") or s["url"], s["url"].rstrip("/"), client))
+    return clients
+
+
+# ── MISP metadata pulls for the indicator-feed query builder ──────────────────
+
+def _union_over_servers(extract):
+    """Apply `extract(client)` to every enabled indicator-feed server and union
+    the resulting iterables into one sorted, de-duplicated list."""
+    values = set()
+    for _sid, _label, _url, client in _indicator_feed_clients():
+        try:
+            values.update(v for v in (extract(client) or []) if v)
+        except Exception:
+            logger.exception("Indicator feed metadata pull failed for a server")
+    return sorted(values, key=str.lower)
+
+
+def fetch_misp_organisations():
+    """Organisation names across all enabled indicator-feed MISP servers."""
+    def _orgs(client):
+        orgs = client.organisations(scope="all", pythonify=True)
+        return [] if not orgs or isinstance(orgs, dict) else [getattr(o, "name", "") for o in orgs]
+    return _union_over_servers(_orgs)
+
+
+def fetch_misp_tags():
+    """Tag names across all enabled indicator-feed MISP servers."""
+    def _tags(client):
+        tags = client.tags(pythonify=True)
+        return [] if not tags or isinstance(tags, dict) else [getattr(t, "name", "") for t in tags]
+    return _union_over_servers(_tags)
+
+
+def local_attribute_types():
+    """MISP attribute types from the PyMISP-bundled describeTypes.json (no network)."""
+    import pymisp as _pymisp
+    path = os.path.join(os.path.dirname(_pymisp.__file__), "data", "describeTypes.json")
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+        types = (data.get("result", data) or {}).get("types", [])
+        return sorted(set(types), key=str.lower)
+    except Exception:
+        logger.exception("Could not load local MISP attribute types")
+        return []
+
+
+def _attr_tag_names(attr, event):
+    names = [t.get("name", "") for t in (attr.get("Tag") or [])]
+    names += [t.get("name", "") for t in (event.get("Tag") or [])]
+    return [n for n in names if n]
+
+
+def _indicator_search_kwargs(filters):
+    """Build the PyMISP attribute-search kwargs from a feed's filter dict.
+
+    Shared by search_indicators (execution) and pymisp_query_string (display)
+    so the query shown to the user is exactly the one that runs.
+    """
+    kwargs = {
+        "controller": "attributes",
+        "pythonify": False,
+        "include_context": True,
+        "limit": max(1, min(int(filters.get("limit") or 100), 10000)),
+    }
+    if filters.get("types"):
+        kwargs["type_attribute"] = list(filters["types"])
+    if filters.get("to_ids") in ("yes", "no"):
+        kwargs["to_ids"] = 1 if filters["to_ids"] == "yes" else 0
+    if filters.get("published") in ("yes", "no"):
+        kwargs["published"] = filters["published"] == "yes"
+    if filters.get("enforce_warninglist") == "yes":
+        kwargs["enforce_warninglist"] = True
+    org_terms = list(filters.get("orgs_include") or []) + [f"!{o}" for o in filters.get("orgs_exclude") or []]
+    if org_terms:
+        kwargs["org"] = org_terms
+    tag_terms = list(filters.get("tags_include") or []) + [f"!{t}" for t in filters.get("tags_exclude") or []]
+    if tag_terms:
+        kwargs["tags"] = tag_terms
+    event_terms = list(filters.get("events_include") or []) + [f"!{e}" for e in filters.get("events_exclude") or []]
+    if event_terms:
+        kwargs["eventid"] = event_terms
+
+    # Attribute timestamp window: a relative quick value wins; otherwise a date range.
+    quick = filters.get("attr_last") or ""
+    attr_after = filters.get("attr_after") or ""
+    attr_before = filters.get("attr_before") or ""
+    if quick:
+        kwargs["timestamp"] = quick
+    elif attr_after and attr_before:
+        kwargs["timestamp"] = [attr_after, attr_before]
+    elif attr_after:
+        kwargs["timestamp"] = attr_after
+    elif attr_before:
+        kwargs["timestamp"] = ["1970-01-01", attr_before]
+
+    # Event date window (the event's `date` field). Unlike `timestamp`, MISP's
+    # event-date `from`/`to` do NOT accept relative shorthand, so a quick range
+    # (number of days back) is converted to an absolute date here.
+    event_last = filters.get("event_last")
+    if event_last:
+        try:
+            kwargs["date_from"] = (date.today() - timedelta(days=int(event_last))).isoformat()
+        except (TypeError, ValueError):
+            pass
+    else:
+        if filters.get("event_after"):
+            kwargs["date_from"] = filters["event_after"]
+        if filters.get("event_before"):
+            kwargs["date_to"] = filters["event_before"]
+
+    # No sort/direction: MISP attribute restSearch does not honour them, so the
+    # newest-first ordering is applied to the fetched rows in search_indicators.
+    return kwargs
+
+
+def pymisp_query_string(filters):
+    """A copy-pasteable representation of the PyMISP call the feed will run."""
+    kwargs = _indicator_search_kwargs(filters)
+    order = ["controller", "type_attribute", "to_ids", "published", "enforce_warninglist",
+             "org", "tags", "eventid", "timestamp", "date_from", "date_to",
+             "limit", "include_context", "pythonify"]
+    lines = ["misp.search("]
+    for key in order:
+        if key in kwargs:
+            lines.append(f"    {key}={kwargs[key]!r},")
+    lines.append(")")
+    return "\n".join(lines)
+
+
+def _parse_attribute_rows(raw, server_id, server_label, server_url, filters):
+    if isinstance(raw, dict):
+        attrs = raw.get("Attribute")
+        if attrs is None and "response" in raw:
+            attrs = (raw["response"] or {}).get("Attribute", [])
+        attrs = attrs or []
+    else:
+        attrs = raw or []
+
+    tags_inc = filters.get("tags_include") or []
+    tags_exc = filters.get("tags_exclude") or []
+    rows = []
+    for a in attrs:
+        if isinstance(a, dict) and "Attribute" in a:
+            a = a["Attribute"]
+        event = a.get("Event") or {}
+        tag_names = _attr_tag_names(a, event)
+        # MISP tag filtering is OR, so enforce "must have all" and exclusion here.
+        if tags_inc and not all(t in tag_names for t in tags_inc):
+            continue
+        if tags_exc and any(t in tag_names for t in tags_exc):
+            continue
+        ts = a.get("timestamp")
+        try:
+            ts_epoch = int(ts) if ts else 0
+            ts_display = datetime.utcfromtimestamp(ts_epoch).strftime("%Y-%m-%d %H:%M") if ts_epoch else ""
+        except (TypeError, ValueError):
+            ts_epoch, ts_display = 0, ""
+        event_id = a.get("event_id") or event.get("id", "")
+        event_uuid = event.get("uuid", "")
+        rows.append({
+            "server_id": server_id,
+            "server_label": server_label,
+            "attribute_id": a.get("id", ""),
+            "event_id": event_id,
+            "event_uuid": event_uuid,
+            "event_url": f"{server_url}/events/view/{event_uuid or event_id}" if (event_uuid or event_id) else "",
+            "event_title": event.get("info", ""),
+            "creator_org": (event.get("Orgc") or {}).get("name", ""),
+            "event_date": event.get("date", ""),
+            "attribute_timestamp": ts_display,
+            "_ts": ts_epoch,
+            "type": a.get("type", ""),
+            "value": a.get("value", ""),
+            "to_ids": str(a.get("to_ids")).lower() in ("1", "true"),
+            "tags": tag_names,
+        })
+    return rows
+
+
+def search_indicators(filters, server_ids=None):
+    """Run the attribute search across the selected MISP servers and merge.
+
+    `server_ids` selects which configured servers to query (default: all
+    enabled). Rows from every server are merged and sorted by attribute
+    timestamp, newest first. Each row carries its originating server and a
+    server-specific event URL.
+    """
+    kwargs = _indicator_search_kwargs(filters)
+    rows = []
+    for sid, label, url, client in _indicator_feed_clients(server_ids):
+        try:
+            raw = client.search(**kwargs)
+        except Exception:
+            logger.exception("Indicator search failed on server %s", sid)
+            continue
+        rows.extend(_parse_attribute_rows(raw, sid, label, url, filters))
+    rows.sort(key=lambda r: r["_ts"], reverse=True)
+    return rows
+
+
+def count_indicators(filters, server_ids=None, cap=100000):
+    """Total attributes matching the query across the selected servers.
+
+    MISP cannot sort attribute search, so the result table only sorts the
+    fetched page. This count tells the analyst how many match in total (so they
+    know whether the limit truncates the set). It counts attributes (not unique
+    values - the `text` format de-duplicates) without the heavier event context,
+    bounded by `cap`; returns (total, capped). Server-side filters only (the
+    local tag AND/exclude refinement isn't applied), so it is the MISP-level total.
+    """
+    kwargs = _indicator_search_kwargs(filters)
+    for key in ("include_context", "limit"):
+        kwargs.pop(key, None)
+    kwargs["limit"] = cap
+    total, capped = 0, False
+    for sid, _label, _url, client in _indicator_feed_clients(server_ids):
+        try:
+            raw = client.search(**kwargs)
+        except Exception:
+            logger.exception("Indicator count failed on server %s", sid)
+            continue
+        if isinstance(raw, dict):
+            attrs = raw.get("Attribute")
+            if attrs is None and "response" in raw:
+                attrs = (raw["response"] or {}).get("Attribute", [])
+            attrs = attrs or []
+        else:
+            attrs = raw or []
+        n = len(attrs)
+        total += n
+        if n >= cap:
+            capped = True
+    return total, capped
 
 
 # ── Feedback (event reports tagged curation:feedback) ────────────────────────

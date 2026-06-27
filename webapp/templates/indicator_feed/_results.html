@@ -1,0 +1,86 @@
+{# Indicator search results. Expects `rows`, `feed` (or None) and `query_string`
+   (the current ad-hoc filters for the download links). Sorting is client-side
+   (see index.html) so re-sorting never re-queries MISP. Rows arrive sorted by
+   attribute timestamp, newest first. #}
+{% set dl_csv = url_for('indicator_feed.download_feed', id=feed.id, fmt='csv') if feed else url_for('indicator_feed.download', fmt='csv') ~ '?' ~ query_string %}
+{% set dl_txt = url_for('indicator_feed.download_feed', id=feed.id, fmt='txt') if feed else url_for('indicator_feed.download', fmt='txt') ~ '?' ~ query_string %}
+<div id="results-stale" class="alert alert-warning d-none mt-4 mb-0">
+  <i class="fas fa-triangle-exclamation me-1"></i>Filters changed — these results may be outdated. Run the search again.
+</div>
+<div class="card content-card mt-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <i class="fas fa-table me-2"></i><span id="count-shown">{{ rows | length }}</span> shown
+      <button type="button" class="btn btn-xs btn-outline-secondary ms-2" id="count-total-btn"
+              data-url="{{ url_for('indicator_feed.count') }}?{{ query_string }}" data-shown="{{ rows | length }}">
+        <i class="fas fa-calculator me-1"></i>Show total
+      </button>
+      <span id="count-total-result" class="ms-1"></span>
+    </span>
+    <div class="d-flex gap-2">
+      <a href="{{ dl_csv }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-file-csv me-1"></i>Download CSV</a>
+      <a href="{{ dl_txt }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-list me-1"></i>Download values</a>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {% if rows %}
+    <div class="table-responsive">
+      <table class="table table-hover zsazsa-table mb-0" id="results-table" style="font-size:.85rem;">
+        <thead>
+          <tr>
+            <th data-sort="0">Server <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th data-sort="1" data-numeric="1">Event ID <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th data-sort="2">Event title <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th data-sort="3">Creator org <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th data-sort="4">Event date <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th data-sort="5" data-numeric="1" data-dir="desc">Attribute timestamp <i class="fas fa-sort-down fa-xs sort-ind"></i></th>
+            <th data-sort="6">Type <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th data-sort="7">Value <i class="fas fa-sort fa-xs sort-idle sort-ind"></i></th>
+            <th>to_ids</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="text-muted">{{ r.server_label }}</td>
+            <td style="white-space:nowrap;">
+              {% if r.event_url %}<a href="{{ r.event_url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ r.event_id }}</a>
+              {% else %}{{ r.event_id }}{% endif %}
+              {% if r.event_uuid %}
+              <button type="button" class="btn btn-link btn-xs p-0 ms-1 add-filter text-success" title="Include this event UUID"
+                      data-field="events_include" data-value="{{ r.event_uuid }}"><i class="fas fa-circle-plus"></i></button>
+              <button type="button" class="btn btn-link btn-xs p-0 add-filter text-danger" title="Exclude this event UUID"
+                      data-field="events_exclude" data-value="{{ r.event_uuid }}"><i class="fas fa-circle-minus"></i></button>
+              {% endif %}
+            </td>
+            <td class="text-truncate" style="max-width:240px;" title="{{ r.event_title }}">{{ r.event_title }}</td>
+            <td class="text-muted" style="white-space:nowrap;">
+              {{ r.creator_org }}
+              {% if r.creator_org %}
+              <button type="button" class="btn btn-link btn-xs p-0 ms-1 add-filter text-success" title="Include this organisation"
+                      data-field="orgs_include" data-value="{{ r.creator_org }}"><i class="fas fa-circle-plus"></i></button>
+              <button type="button" class="btn btn-link btn-xs p-0 add-filter text-danger" title="Exclude this organisation"
+                      data-field="orgs_exclude" data-value="{{ r.creator_org }}"><i class="fas fa-circle-minus"></i></button>
+              {% endif %}
+            </td>
+            <td class="text-muted">{{ r.event_date }}</td>
+            <td class="text-muted" data-v="{{ r._ts }}">{{ r.attribute_timestamp }}</td>
+            <td><span class="badge text-bg-light text-muted">{{ r.type }}</span></td>
+            <td><strong>{{ r.value }}</strong></td>
+            <td>
+              {% if r.to_ids %}<i class="fas fa-check text-success" title="to_ids"></i>
+              {% else %}<i class="fas fa-xmark text-muted" title="not to_ids"></i>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state p-4">
+      <i class="fas fa-magnifying-glass text-muted"></i>
+      <p class="text-muted mb-0">No indicators match this query.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>

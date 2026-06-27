@@ -207,6 +207,19 @@ def send_vea(vea, markdown: str, stakeholders: list) -> dict:
     return _dispatch(stakeholders, senders, "VEA", getattr(vea, "vea_id", ""))
 
 
+def send_indicator_feed(feed, markdown: str, csv_bytes: bytes, stakeholders: list) -> dict:
+    """Deliver an indicator feed (summary + values, plus CSV by email) to channels."""
+    senders = {
+        "mattermost": lambda channel_ids: bool(
+            mattermost.send_indicator_feed_notification(feed, markdown, channel_ids=channel_ids)
+        ),
+        "email": lambda channel_ids: bool(
+            email.send_indicator_feed_notification(feed, markdown, channel_ids=channel_ids, csv_bytes=csv_bytes)
+        ),
+    }
+    return _dispatch(stakeholders, senders, "indicator feed", getattr(feed, "feed_id", ""))
+
+
 def send_flash_intel(product_event, fia_id: str, content: str, stakeholders: list) -> dict:
     """Deliver a Flash Intel Alert to stakeholder channels across all channel types."""
     senders = {
