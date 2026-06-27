@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sort.html" import sort_th %}
 
 {% block title %}RFIs | zsazsa CTI{% endblock %}
 {% block page_title %}Requests for Information{% endblock %}
@@ -6,6 +7,9 @@
 {% block topbar_actions %}
 <a href="{{ url_for('rfi.rfi_new') }}" class="btn btn-sm btn-primary">
   <i class="fas fa-plus me-1"></i> New RFI
+</a>
+<a href="{{ url_for('export.rfis') }}" class="btn btn-sm btn-outline-secondary ms-2" title="Export as Markdown">
+  <i class="fas fa-download me-1"></i> Export
 </a>
 {% endblock %}
 
@@ -94,13 +98,13 @@
     <table class="table table-hover zsazsa-table mb-0">
       <thead>
         <tr>
-          <th style="width:90px">ID</th>
-          <th>Question</th>
-          <th>Requester</th>
+          {{ sort_th('ID', 'id', width='90px') }}
+          {{ sort_th('Question', 'question') }}
+          {{ sort_th('Requester', 'requester') }}
           <th>Owner</th>
           <th>Priority</th>
-          <th>Status</th>
-          <th>SLA</th>
+          {{ sort_th('Status', 'status') }}
+          {{ sort_th('SLA', 'sla') }}
           <th class="text-end">Actions</th>
         </tr>
       </thead>
@@ -108,7 +112,7 @@
         {% for rfi in rfis %}
         {% set sla_state, days = sla_map.get(rfi.id, ('amber', None)) %}
         {% set untriaged = rfi.status == 'New' %}
-        <tr class="{{ 'triage-pending-row' if untriaged }}">
+        <tr class="req-row {{ 'triage-pending-row' if untriaged }}" data-req-id="{{ rfi.id }}">
           <td>
             <a href="{{ url_for('rfi.rfi_detail', id=rfi.id) }}" class="text-decoration-none">
               <span class="req-id-badge">{{ rfi.rfi_id }}</span>
@@ -212,5 +216,6 @@
   });
 })();
 </script>
+{% include "_kanban_hover.html" %}
 {% include "requirements/_triage_js.html" %}
 {% endblock %}

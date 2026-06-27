@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sort.html" import sort_th %}
 
 {% block title %}Stakeholders | zsazsa CTI{% endblock %}
 {% block page_title %}Stakeholders{% endblock %}
@@ -16,14 +17,44 @@
 {% endblock %}
 
 {% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Type</label>
+        <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All</option>
+          <option value="Internal" {{ 'selected' if type_filter == 'Internal' }}>Internal</option>
+          <option value="External" {{ 'selected' if type_filter == 'External' }}>External</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Organisation</label>
+        <select name="organization" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All organisations</option>
+          {% for value, label in org_options %}
+          <option value="{{ value }}" {{ 'selected' if org_filter == value }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if type_filter or org_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('stakeholders.list') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ stakeholders | length }} stakeholder{{ 's' if stakeholders|length != 1 }}</div>
+    </form>
+  </div>
+</div>
+
 <div class="card content-card">
   <div class="card-body p-0">
     {% if stakeholders %}
     <table class="table table-hover zsazsa-table mb-0">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Role</th>
+          {{ sort_th('Name', 'name') }}
+          {{ sort_th('Role', 'role') }}
           <th>Organisation</th>
           <th>TLP clearance</th>
           <th>Products</th>

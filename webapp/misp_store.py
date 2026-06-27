@@ -1217,8 +1217,9 @@ def get_pir(uuid):
 
 
 def create_pir(data):
-    if "intake_status" not in data:
-        data = dict(data, intake_status="submitted")
+    # Mutate the caller's dict in place (don't rebind) so the pir_id allocated
+    # below is visible to the caller for the confirmation message.
+    data.setdefault("intake_status", "submitted")
     data["creator"] = misp_session.current_user_email()
     misp = _misp()
     with _id_lock:
@@ -1828,8 +1829,10 @@ def add_rfi_note(event_uuid, title, content):
 
 
 def delete_rfi_note(report_id):
+    # Hard delete: a soft-deleted event report is still returned by get_event,
+    # so the note would keep appearing after deletion.
     misp = _misp()
-    misp.delete_event_report(report_id)
+    misp.delete_event_report(report_id, hard=True)
 
 
 # ── Feedback (event reports tagged curation:feedback) ────────────────────────

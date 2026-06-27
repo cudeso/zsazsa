@@ -6,7 +6,11 @@
 {% block page_title %}{{ 'Edit ' + gir.gir_id if is_edit else 'New GIR' }}{% endblock %}
 
 {% block misp_object_url %}{% if is_edit %}{{ gir.misp_url }}{% else %}{{ misp_webapp_url }}{% endif %}{% endblock %}
-{% block topbar_actions %}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('requirements.gir_list') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
 
 {% block content %}
 <form method="post" class="row g-4">

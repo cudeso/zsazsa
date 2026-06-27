@@ -239,12 +239,33 @@ PIR_TRIAGE_CHECKLIST = [
 ]
 
 
+PIR_STATUS_ORDER = ["Pending", "Active", "In Development", "Under Evaluation", "Implemented", "Retired"]
+GIR_STATUS_ORDER = ["Pending", "Active", "Retired"]
+
+
+def _sort_requirements(items, sort, direction, id_attr, text_attr, status_order):
+    keys = {
+        "id": lambda x: getattr(x, id_attr),
+        "text": lambda x: (getattr(x, text_attr) or "").lower(),
+        "status": lambda x: status_order.index(x.status) if x.status in status_order else len(status_order),
+        "next_review": lambda x: x.next_review or date.max,
+    }
+    keyfn = keys.get((sort or "").strip())
+    if keyfn:
+        items = sorted(items, key=keyfn, reverse=(direction == "desc"))
+    return items
+
+
 @bp.route("/pirs")
 def pir_list():
     pirs = misp_store.list_pirs()
     intel_filter = (request.args.get("intel_level") or "").strip()
     if intel_filter:
         pirs = [p for p in pirs if intel_filter in (p.intel_level or [])]
+    pirs = _sort_requirements(
+        pirs, request.args.get("sort"), request.args.get("dir"),
+        "pir_id", "question", PIR_STATUS_ORDER,
+    )
     scope_counts = {p.uuid: _scope_item_count(p) for p in pirs}
     # Viable merge targets for the inline triage form: any PIR not itself
     # rejected or already merged away.
@@ -600,6 +621,10 @@ def gir_list():
     intel_filter = (request.args.get("intel_level") or "").strip()
     if intel_filter:
         girs = [g for g in girs if intel_filter in (g.intel_level or [])]
+    girs = _sort_requirements(
+        girs, request.args.get("sort"), request.args.get("dir"),
+        "gir_id", "topic", GIR_STATUS_ORDER,
+    )
     scope_counts = {g.uuid: _scope_item_count(g) for g in girs}
     return render_template(
         "requirements/gir_list.html",

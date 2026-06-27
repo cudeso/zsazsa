@@ -125,10 +125,45 @@ def _spread_overlapping(stakeholders):
             s.influence_pct = min(95, max(5, s.influence_pct + offset))
 
 
+def _sort_stakeholders(items, sort, direction):
+    keys = {
+        "name": lambda s: (s.name or "").lower(),
+        "role": lambda s: (s.role or "").lower(),
+    }
+    keyfn = keys.get((sort or "").strip())
+    if keyfn:
+        items = sorted(items, key=keyfn, reverse=(direction == "desc"))
+    return items
+
+
 @bp.route("/", endpoint="list")
 def list_stakeholders():
     stakeholders = misp_store.list_stakeholders()
-    return render_template("stakeholders/list.html", stakeholders=stakeholders, org_map=org_store.org_map())
+    org_map = org_store.org_map()
+    # Organisation options for the filter: distinct organisations actually in use,
+    # labelled via org_map and sorted by display name.
+    org_values = sorted(
+        {s.organization for s in stakeholders if s.organization},
+        key=lambda v: (org_map.get(v, v) or "").lower(),
+    )
+    org_options = [(v, org_map.get(v, v)) for v in org_values]
+
+    type_filter = (request.args.get("type") or "").strip()
+    org_filter = (request.args.get("organization") or "").strip()
+    if type_filter:
+        stakeholders = [s for s in stakeholders if s.stakeholder_type == type_filter]
+    if org_filter:
+        stakeholders = [s for s in stakeholders if s.organization == org_filter]
+    stakeholders = _sort_stakeholders(stakeholders, request.args.get("sort"), request.args.get("dir"))
+
+    return render_template(
+        "stakeholders/list.html",
+        stakeholders=stakeholders,
+        org_map=org_map,
+        org_options=org_options,
+        type_filter=type_filter,
+        org_filter=org_filter,
+    )
 
 
 @bp.route("/matrix")

@@ -215,18 +215,25 @@ def _pipeline_status():
 
     # Pending scraper events (workflow incomplete). MISP tag filters are OR,
     # so search by the scraper marker and AND-filter the workflow tag locally.
+    # pythonify=False keeps this to plain dicts instead of building up to 500
+    # MISPEvent objects, which is the bulk of the cost for this count.
     try:
         misp = misp_store._scraper_misp()
         pending = misp.search(
             tags=[config.SCRAPER_MARKER_TAG],
-            limit=getattr(config, "MISP_SCRAPER_LIMIT", 500), metadata=True, pythonify=True,
+            limit=getattr(config, "MISP_SCRAPER_LIMIT", 500), metadata=True, pythonify=False,
         )
-        if pending and not isinstance(pending, dict):
+        if isinstance(pending, dict):
+            pending = pending.get("response", [])
+        if isinstance(pending, list):
             needed = 'workflow:state="incomplete"'
-            status["pending"] = sum(
-                1 for e in pending
-                if any(getattr(t, "name", "") == needed for t in (getattr(e, "tags", []) or []))
-            )
+            count = 0
+            for item in pending:
+                event = item.get("Event", item) if isinstance(item, dict) else {}
+                tags = event.get("Tag") or []
+                if any(t.get("name") == needed for t in tags):
+                    count += 1
+            status["pending"] = count
     except Exception:
         logger.exception("Failed to query pending scraper events from MISP")
 
@@ -235,22 +242,31 @@ def _pipeline_status():
 
 @bp.route("/")
 def index():
-    try:
-        c = misp_store.counts()
-        pir_count = c["pir"]
-        gir_count = c["gir"]
-        stakeholder_count = c["stakeholder"]
+    # Render only the static shell (action bar + placeholders). All the
+    # MISP-backed widgets are loaded afterwards via /dashboard/widgets so the
+    # page paints immediately instead of waiting on a chain of MISP queries.
+    return render_template("dashboard.html")
 
+
+@bp.route("/dashboard/widgets")
+def widgets():
+    """Render the data-heavy dashboard sections as an HTML fragment plus the
+    pipeline status, fetched asynchronously by the dashboard shell."""
+    try:
+        pirs = misp_store.list_pirs()
+        girs = misp_store.list_girs()
+        stakeholder_count = len(misp_store.list_stakeholders())
+        pir_count = len(pirs)
+        gir_count = len(girs)
         active_pirs = [
-            p for p in misp_store.list_pirs()
+            p for p in pirs
             if p.status in ("Active", "In Development", "Under Evaluation")
         ]
-        active_girs = [g for g in misp_store.list_girs() if g.status == "Active"]
+        active_girs = [g for g in girs if g.status == "Active"]
     except Exception:
+        logger.exception("Failed to load requirements for dashboard")
         pir_count = gir_count = stakeholder_count = 0
         active_pirs = active_girs = []
-
-    pipeline = _pipeline_status()
 
     try:
         pending_email_sources = len(misp_store.list_pending_newsletters())
@@ -264,26 +280,46 @@ def index():
         pending_feedback = []
 
     # Both summary charts show the eight busiest entries, most active first.
-    actor_type_products = sorted(
-        misp_store.product_counts_by_threat_actor_type(),
-        key=lambda r: r["total"], reverse=True,
-    )[:8]
-    # Live per-source counts from MISP (the authoritative store), not the local log.
-    throughput_by_source = misp_store.data_collection_source_counts()[:8]
+    try:
+        actor_type_products = sorted(
+            misp_store.product_counts_by_threat_actor_type(),
+            key=lambda r: r["total"], reverse=True,
+        )[:8]
+    except Exception:
+        logger.exception("Failed to load product counts by threat actor type")
+        actor_type_products = []
+    try:
+        # Live per-source counts from MISP (the authoritative store), not the local log.
+        throughput_by_source = misp_store.data_collection_source_counts()[:8]
+    except Exception:
+        logger.exception("Failed to load throughput by collection source")
+        throughput_by_source = []
 
-    return render_template(
-        "dashboard.html",
+    html = render_template(
+        "_dashboard_content.html",
         pir_count=pir_count,
         gir_count=gir_count,
         stakeholder_count=stakeholder_count,
         active_pirs=active_pirs,
         active_girs=active_girs,
-        pipeline=pipeline,
         pending_email_sources=pending_email_sources,
         pending_feedback=pending_feedback,
         actor_type_products=actor_type_products,
         throughput_by_source=throughput_by_source,
     )
+
+    pl = _pipeline_status()
+    pipeline = {
+        "has_run": pl["last_run"] is not None,
+        "stale": pl["stale"],
+        "minutes_since": pl["minutes_since"],
+        "last_run_title": pl["last_run"].strftime("%d-%m-%Y %H:%M UTC") if pl["last_run"] else "never",
+        "pending": pl["pending"],
+        "total_24h": pl["total_24h"],
+        "processed_24h": pl["processed_24h"],
+    }
+
+    return jsonify({"html": html, "pipeline": pipeline})
 
 
 @bp.route("/pipeline/run", methods=["POST"])

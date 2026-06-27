@@ -3,207 +3,191 @@
 {% block title %}Dashboard | zsazsa CTI{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
-{% block topbar_actions %}
-<a href="{{ url_for('data_collection.manual_new') }}" class="btn btn-sm btn-outline-primary">
-  <i class="fas fa-newspaper me-1"></i> Add news story
-</a>
-{% endblock %}
-
 {% block content %}
 
-{# Onboarding helper: appears until both a stakeholder and a PIR exist #}
-{% if stakeholder_count == 0 or pir_count == 0 %}
-<div class="card content-card mb-4 border-primary">
-  <div class="card-header bg-primary text-white">
-    <i class="fas fa-rocket me-2"></i>Get started
-  </div>
-  <div class="card-body">
-    <ol class="onboarding-steps mb-0" style="list-style:none;padding:0;display:flex;gap:1.5rem;flex-wrap:wrap;margin:0;">
-      <li class="d-flex align-items-start gap-3" style="flex:1 1 280px;">
-        <div style="font-size:1.5rem;color:{{ 'var(--accent-green)' if stakeholder_count > 0 else 'var(--accent-blue)' }};">
-          {% if stakeholder_count > 0 %}
-            <i class="fas fa-circle-check"></i>
-          {% else %}
-            <span class="badge rounded-circle bg-primary" style="width:2rem;height:2rem;line-height:1.5rem;font-size:1rem;">1</span>
-          {% endif %}
-        </div>
-        <div>
-          <div class="fw-semibold">{{ 'Have you not forgotten someone?' if stakeholder_count > 0 else 'Create your first stakeholder' }}</div>
-          <p class="text-muted small mb-2">Stakeholders are the people who consume your CTI output and who own intelligence requirements.</p>
-          {% if stakeholder_count == 0 %}
-          <a href="{{ url_for('stakeholders.new') }}" class="btn btn-sm btn-primary">
-            <i class="fas fa-plus me-1"></i> New stakeholder
-          </a>
-          {% else %}
-          <a href="{{ url_for('stakeholders.list') }}" class="text-success small"><i class="fas fa-check me-1"></i>{{ stakeholder_count }} stakeholder{{ 's' if stakeholder_count != 1 }} registered</a>
-          {% endif %}
-        </div>
-      </li>
-      <li class="d-flex align-items-start gap-3" style="flex:1 1 280px;">
-        <div style="font-size:1.5rem;color:{{ 'var(--accent-green)' if pir_count > 0 else ('var(--accent-blue)' if stakeholder_count > 0 else 'var(--icon-muted-grey)') }};">
-          {% if pir_count > 0 %}
-            <i class="fas fa-circle-check"></i>
-          {% else %}
-            <span class="badge rounded-circle {{ 'bg-primary' if stakeholder_count > 0 else 'bg-secondary' }}" style="width:2rem;height:2rem;line-height:1.5rem;font-size:1rem;">2</span>
-          {% endif %}
-        </div>
-        <div>
-          <div class="fw-semibold">Define one or more PIRs for those stakeholders</div>
-          <p class="text-muted small mb-2">A Priority Intelligence Requirement frames a specific intelligence question tied to a stakeholder decision.</p>
-          {% if pir_count == 0 %}
-            {% if stakeholder_count > 0 %}
-            <a href="{{ url_for('requirements.pir_new') }}" class="btn btn-sm btn-primary">
-              <i class="fas fa-plus me-1"></i> New PIR
-            </a>
-            {% else %}
-            <span class="text-muted small">Add a stakeholder first.</span>
-            {% endif %}
-          {% else %}
-          <a href="{{ url_for('requirements.pir_list') }}" class="text-success small"><i class="fas fa-check me-1"></i>{{ pir_count }} PIR{{ 's' if pir_count != 1 }} defined</a>
-          {% endif %}
-        </div>
-      </li>
-    </ol>
-  </div>
-</div>
-{% endif %}
+{# Action bar: quick-action tiles (left) and collection-pipeline controls (right). #}
+<style>
+  .action-bar { margin-bottom: 1.5rem; }
+  .action-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--border-radius);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .action-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .65rem .9rem;
+    border-bottom: 1px solid var(--border-faint);
+  }
+  .action-panel-title {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .action-panel-body { padding: .9rem; flex: 1; }
 
-{% if pending_email_sources %}
-<a href="{{ url_for('data_collection.newsletter_pending') }}"
-   class="alert alert-warning d-flex align-items-center justify-content-between text-decoration-none mb-4">
-  <span class="text-dark">
-    <i class="fas fa-inbox me-2"></i>
-    {{ pending_email_sources }} email source{{ 's' if pending_email_sources != 1 }} awaiting review
-  </span>
-  <span class="btn btn-sm btn-warning">Review</span>
-</a>
-{% endif %}
+  /* Primary action tiles (left, 75%) */
+  .action-tiles { display: flex; flex-wrap: wrap; gap: .75rem; }
+  .action-tile {
+    flex: 1 1 180px;
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    padding: .9rem 1rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-light);
+    background: var(--surface-muted);
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+  }
+  .action-tile:hover {
+    transform: translateY(-2px);
+    background: var(--card-bg);
+    border-color: var(--tile-accent);
+    box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--tile-accent) 55%, transparent);
+  }
+  .action-tile-icon {
+    flex-shrink: 0;
+    width: 42px; height: 42px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 10px;
+    font-size: 1.05rem;
+    color: #fff;
+    background: var(--tile-accent);
+    box-shadow: 0 4px 10px -4px color-mix(in srgb, var(--tile-accent) 70%, transparent);
+  }
+  .action-tile-text { display: flex; flex-direction: column; line-height: 1.2; }
+  .action-tile-label { font-weight: 600; font-size: .95rem; }
+  .action-tile-sub { font-size: .76rem; color: var(--text-muted); margin-top: 1px; }
 
-{% if pipeline %}
-<!-- Collection pipeline status -->
-<div class="card content-card mb-4">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="fas fa-arrows-rotate me-2"></i>Collection pipeline</span>
-    <div class="d-flex align-items-center gap-2">
-      <div class="btn-group">
-        <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="fas fa-play me-1"></i>Start analyser
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-          <li>
-            <button class="dropdown-item pipeline-action-btn d-flex align-items-center justify-content-between gap-3" type="button" data-action="daily-briefing">
-              Daily briefing
-              <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" style="flex-shrink:0;"
-                 data-bs-toggle="tooltip" data-bs-placement="left"
-                 title="Scans today&apos;s scraper events with workflow:state=incomplete. Applies title exclusions, then uses the LLM to judge relevance against your configured focus points. Relevant events are summarised and assembled into a daily briefing draft."></i>
-            </button>
-          </li>
-          <li>
-            <button class="dropdown-item pipeline-action-btn d-flex align-items-center justify-content-between gap-3" type="button" data-action="flash-intel">
-              Flash intel alert
-              <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" style="flex-shrink:0;"
-                 data-bs-toggle="tooltip" data-bs-placement="left"
-                 title="Scans today&apos;s scraper events with workflow:state=incomplete. Matches each event against active PIRs and GIRs. Events with a requirement match are turned into flash intel alert drafts for analyst review."></i>
-            </button>
-          </li>
-          <li>
-            <button class="dropdown-item pipeline-action-btn d-flex align-items-center justify-content-between gap-3" type="button" data-action="vea">
-              Vuln advisory
-              <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" style="flex-shrink:0;"
-                 data-bs-toggle="tooltip" data-bs-placement="left"
-                 title="Scans today&apos;s scraper events with workflow:state=incomplete. Detects CVE identifiers in event titles and attributes. Events with a CVE match are turned into vulnerability advisory drafts for analyst review."></i>
-            </button>
-          </li>
-        </ul>
+  /* Pipeline panel (right, 25%) */
+  .pipeline-actions { display: flex; flex-wrap: nowrap; gap: .35rem; }
+  .pipeline-actions .btn-group { flex: 0 1 auto; }
+  .pipeline-actions .btn {
+    padding: .2rem .5rem;
+    font-size: .72rem;
+    white-space: nowrap;
+  }
+  .pipeline-dot {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .72rem; font-weight: 600;
+  }
+  .pipeline-dot::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-green) 22%, transparent);
+  }
+  .pipeline-stats {
+    margin-top: .75rem;
+    padding-top: .65rem;
+    border-top: 1px solid var(--border-faint);
+    display: flex; flex-wrap: wrap; gap: .2rem .9rem;
+    font-size: .78rem;
+  }
+  .pipeline-stat { display: inline-flex; align-items: baseline; gap: .3rem; white-space: nowrap; }
+  .pipeline-stat .label { color: var(--text-muted); }
+  .pipeline-stat .value { font-weight: 600; }
+  .pipeline-stat.full { flex-basis: 100%; }
+  .pipeline-stat .sub { color: var(--text-muted); font-weight: 400; font-size: .72rem; }
+
+  @media (max-width: 575.98px) {
+    .action-tiles { flex-direction: column; }
+  }
+</style>
+
+<div class="row g-3 action-bar">
+  <!-- Left 75%: primary actions -->
+  <div class="col-lg-9">
+    <div class="action-panel">
+      <div class="action-panel-head">
+        <span class="action-panel-title"><i class="fas fa-bolt me-1"></i> Quick actions</span>
       </div>
-      <button class="btn btn-sm btn-outline-secondary" id="pipeline-progress-open" type="button" data-bs-toggle="modal" data-bs-target="#pipelineProgressModal" disabled>
-        <i class="fas fa-list-check me-1"></i>Progress
-      </button>
-      <a href="{{ url_for('pipeline.index') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-clock-rotate-left me-1"></i>History
-      </a>
-      <a href="{{ url_for('data_collection.index') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-layer-group me-1"></i>Review data collection
-      </a>
-      {% if pipeline.last_run %}
-        {% if pipeline.stale %}
-          <span class="badge text-bg-warning" title="Stale: the automation pipeline has not run in over 90 minutes. Check that the analyser process is running."><i class="fas fa-triangle-exclamation me-1"></i>Stale</span>
-        {% else %}
-          <span class="badge text-bg-success"><i class="fas fa-circle-check me-1"></i>Healthy</span>
-        {% endif %}
-      {% else %}
-        <span class="badge text-bg-secondary">No runs yet</span>
-      {% endif %}
+      <div class="action-panel-body">
+        <div class="action-tiles">
+          <a href="{{ url_for('data_collection.index') }}" class="action-tile" style="--tile-accent: var(--accent-blue);">
+            <span class="action-tile-icon"><i class="fas fa-layer-group"></i></span>
+            <span class="action-tile-text">
+              <span class="action-tile-label">Review data collection</span>
+              <span class="action-tile-sub">Triage incoming events</span>
+            </span>
+          </a>
+          <a href="{{ url_for('data_collection.manual_new') }}" class="action-tile" style="--tile-accent: var(--accent-green);">
+            <span class="action-tile-icon"><i class="fas fa-newspaper"></i></span>
+            <span class="action-tile-text">
+              <span class="action-tile-label">Add news story</span>
+              <span class="action-tile-sub">Capture a source manually</span>
+            </span>
+          </a>
+          <a href="{{ url_for('rfi.rfi_new') }}" class="action-tile" style="--tile-accent: var(--accent-orange);">
+            <span class="action-tile-icon"><i class="fas fa-circle-question"></i></span>
+            <span class="action-tile-text">
+              <span class="action-tile-label">New RFI</span>
+              <span class="action-tile-sub">Log a request for information</span>
+            </span>
+          </a>
+          <a href="{{ url_for('requirements.pir_new') }}" class="action-tile" style="--tile-accent: #7c5cd6;">
+            <span class="action-tile-icon"><i class="fas fa-star"></i></span>
+            <span class="action-tile-text">
+              <span class="action-tile-label">New PIR</span>
+              <span class="action-tile-sub">Define an intelligence requirement</span>
+            </span>
+          </a>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="card-body py-2">
-    <div id="pipeline-action-status" class="alert alert-info py-2 px-3 mb-2 d-none" role="status"></div>
-    <div class="d-flex flex-wrap align-items-center gap-2 gap-md-4 small">
-      <span>
-        <span class="text-muted">Last run</span>
-        <span class="fw-semibold ms-1"
-              title="{{ pipeline.last_run.strftime('%d-%m-%Y %H:%M UTC') if pipeline.last_run else 'never' }}">
-          {{ (pipeline.minutes_since ~ ' min ago') if pipeline.last_run else 'never' }}
-        </span>
-      </span>
-      <span class="text-muted">|</span>
-      <span>
-        <span class="text-muted">Pending</span>
-        <span class="fw-semibold ms-1">{{ pipeline.pending if pipeline.pending is not none else '-' }}</span>
-        <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
-           title="Scraper events still tagged workflow:state=&quot;incomplete&quot;, i.e. not yet picked up by the analyser. Counted live from MISP (first 500 matching events)."></i>
-      </span>
-      <span class="text-muted">|</span>
-      <span>
-        <span class="text-muted">Processed 24h</span>
-        <span class="fw-semibold ms-1">{{ pipeline.total_24h }}</span>
-        {% set p = pipeline.processed_24h %}
-        <span class="text-muted">({{ p.get('product_created', 0) }} product,
-          {{ p.get('not_relevant', 0) }} skipped,
-          {{ (p.get('http_error', 0) + p.get('no_content', 0) + p.get('error', 0)) }} errors)</span>
-        <i class="fas fa-circle-info fa-xs text-muted analyser-info-icon" data-bs-toggle="tooltip" data-bs-placement="top"
-           title="Outcomes logged in the last 24 hours by the scheduled analyser and by manual dashboard actions (daily briefing, flash intel, vuln advisory). Product = a draft was created; skipped = event judged not relevant; errors = HTTP, content or processing errors. An event processed by more than one action is counted once per action."></i>
-      </span>
-    </div>
-  </div>
-</div>
-{% endif %}
 
-{% if pending_feedback %}
-<!-- Products awaiting feedback -->
-<div class="card content-card mb-4">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="fas fa-comment-dots me-2 text-primary"></i>Awaiting feedback</span>
-    <span class="badge rounded-pill bg-primary">{{ pending_feedback | length }}</span>
-  </div>
-  <div class="list-group list-group-flush">
-    {% for p in pending_feedback %}
-    <a href="{{ url_for('flash_intel.detail', id=p.uuid) if p.kind == 'flash-intel' else url_for('vea.detail', id=p.uuid) }}"
-       class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-3">
-      <span class="d-flex align-items-center gap-2 text-truncate">
-        {% if p.kind == 'flash-intel' %}
-        <span class="badge rounded-pill text-bg-danger flex-shrink-0"><i class="fas fa-bolt me-1"></i>FIA</span>
-        {% else %}
-        <span class="badge rounded-pill text-bg-warning text-dark flex-shrink-0"><i class="fas fa-bug me-1"></i>VEA</span>
-        {% endif %}
-        <span class="fw-semibold flex-shrink-0">{{ p.product_id }}</span>
-        <span class="text-muted text-truncate">{{ p.title }}</span>
-      </span>
-      <span class="d-flex align-items-center gap-2 flex-shrink-0">
-        {% if p.overdue %}
-        <span class="badge text-bg-danger"><i class="fas fa-triangle-exclamation me-1"></i>Overdue {{ -p.days_left }}d</span>
-        {% elif p.days_left == 0 %}
-        <span class="badge text-bg-warning text-dark">Due today</span>
-        {% else %}
-        <span class="badge text-bg-light text-dark border">Due in {{ p.days_left }}d</span>
-        {% endif %}
-        <span class="small text-muted d-none d-md-inline">{{ p.deadline.strftime('%d-%m-%Y') }}</span>
-      </span>
-    </a>
-    {% endfor %}
+  <!-- Right 25%: collection pipeline -->
+  <div class="col-lg-3">
+    <div class="action-panel">
+      <div class="action-panel-head">
+        <span class="action-panel-title"><i class="fas fa-arrows-rotate me-1"></i> Collection pipeline</span>
+        <span id="pipeline-health"></span>
+      </div>
+      <div class="action-panel-body">
+        <div class="pipeline-actions">
+          <div class="btn-group">
+            <button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-play me-1"></i> Start analyser
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="daily-briefing">Daily briefing</button></li>
+              <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="flash-intel">Flash intel alert</button></li>
+              <li><button class="dropdown-item pipeline-action-btn" type="button" data-action="vea">Vuln advisory</button></li>
+            </ul>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary" id="pipeline-progress-open" type="button" data-bs-toggle="modal" data-bs-target="#pipelineProgressModal">
+            <i class="fas fa-list-check me-1"></i> Progress
+          </button>
+          <a href="{{ url_for('pipeline.index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-clock-rotate-left me-1"></i> History
+          </a>
+        </div>
+        <div id="pipeline-action-status" class="alert alert-info py-1 px-2 mt-2 mb-0 small d-none" role="status"></div>
+        <div id="pipeline-stats-mount" class="pipeline-stats">
+          <div class="pipeline-stat"><span class="label">Last run</span><span class="value text-muted">&hellip;</span></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-{% endif %}
+
+{# Data-dependent sections load asynchronously so the action bar paints
+   immediately; see /dashboard/widgets and the loader script below. #}
+<div id="dashboard-data">
+  <div class="text-center text-muted py-5">
+    <i class="fas fa-circle-notch fa-spin fa-lg"></i>
+    <div class="small mt-2">Loading dashboard…</div>
+  </div>
+</div>
 
 <div class="modal fade" id="pipelineProgressModal" tabindex="-1" aria-labelledby="pipelineProgressModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -237,192 +221,6 @@
   </div>
 </div>
 
-<div class="row g-3 mb-4">
-  <div class="col-sm-4">
-    <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: var(--accent-blue);">
-        <i class="fas fa-star"></i>
-      </div>
-      <div class="stat-body">
-        <div class="stat-number">{{ pir_count }}</div>
-        <div class="stat-label">Priority Intelligence Requirements</div>
-      </div>
-      <a href="{{ url_for('requirements.pir_list') }}" class="stat-link">View all <i class="fas fa-arrow-right fa-xs"></i></a>
-    </div>
-  </div>
-  <div class="col-sm-4">
-    <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: var(--accent-green);">
-        <i class="fas fa-list-check"></i>
-      </div>
-      <div class="stat-body">
-        <div class="stat-number">{{ gir_count }}</div>
-        <div class="stat-label">General Intelligence Requirements</div>
-      </div>
-      <a href="{{ url_for('requirements.gir_list') }}" class="stat-link">View all <i class="fas fa-arrow-right fa-xs"></i></a>
-    </div>
-  </div>
-  <div class="col-sm-4">
-    <div class="stat-card">
-      <div class="stat-icon" style="--icon-color: var(--accent-orange);">
-        <i class="fas fa-users"></i>
-      </div>
-      <div class="stat-body">
-        <div class="stat-number">{{ stakeholder_count }}</div>
-        <div class="stat-label">Stakeholders</div>
-      </div>
-      <a href="{{ url_for('stakeholders.list') }}" class="stat-link">View all <i class="fas fa-arrow-right fa-xs"></i></a>
-    </div>
-  </div>
-</div>
-
-<div class="row g-4">
-
-  <!-- Active PIRs -->
-  <div class="col-lg-6">
-    <div class="card content-card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-star me-2 text-primary"></i>Active PIRs</span>
-        <a href="{{ url_for('requirements.pir_new') }}" class="btn btn-xs btn-outline-primary">
-          <i class="fas fa-plus"></i>
-        </a>
-      </div>
-      <div class="card-body p-0">
-        {% if active_pirs %}
-        <ul class="req-list">
-          {% for pir in active_pirs %}
-          <li class="req-item">
-            <a href="{{ url_for('requirements.pir_detail', id=pir.id) }}" class="req-link">
-              <span class="req-id">{{ pir.pir_id }}</span>
-              <span class="req-text">{{ pir.question | truncate(80) }}</span>
-            </a>
-            <div class="req-meta">
-              <span class="badge priority-badge priority-{{ pir.priority | slug }}">{{ pir.priority }}</span>
-              <span class="badge status-badge status-{{ pir.status | slug }}">{{ pir.status }}</span>
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <div class="empty-state p-4">
-          <i class="fas fa-star-half-stroke text-muted"></i>
-          <p class="text-muted mb-0">No active PIRs yet.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Active GIRs -->
-  <div class="col-lg-6">
-    <div class="card content-card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-list-check me-2 text-success"></i>Active GIRs</span>
-        <a href="{{ url_for('requirements.gir_new') }}" class="btn btn-xs btn-outline-success">
-          <i class="fas fa-plus"></i>
-        </a>
-      </div>
-      <div class="card-body p-0">
-        {% if active_girs %}
-        <ul class="req-list">
-          {% for gir in active_girs %}
-          <li class="req-item">
-            <a href="{{ url_for('requirements.gir_detail', id=gir.id) }}" class="req-link">
-              <span class="req-id">{{ gir.gir_id }}</span>
-              <span class="req-text">{{ gir.topic | truncate(80) }}</span>
-            </a>
-            <div class="req-meta">
-              <span class="badge status-badge status-active">{{ gir.status }}</span>
-              <span class="text-muted small">{{ gir.review_cycle }}</span>
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <div class="empty-state p-4">
-          <i class="fas fa-list text-muted"></i>
-          <p class="text-muted mb-0">No active GIRs yet.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<div class="row g-4 mt-0">
-
-  <!-- Products by threat actor type -->
-  <div class="col-lg-6">
-    <div class="card content-card h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-user-shield me-2 text-primary"></i>Products by threat actor type</span>
-        <a href="{{ url_for('stats.index') }}" class="btn btn-xs btn-outline-secondary">Stats</a>
-      </div>
-      <div class="card-body">
-        {% if actor_type_products %}
-        {% set max_total = actor_type_products[0].total %}
-        {% set swatch = "display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle;" %}
-        <div class="d-flex gap-3 mb-3 small text-muted">
-          <span><span style="{{ swatch }}background:var(--accent-blue);"></span>Daily briefings</span>
-          <span><span style="{{ swatch }}background:var(--accent-orange);"></span>Flash intel</span>
-        </div>
-        {% for row in actor_type_products %}
-        <div class="mb-2">
-          <div class="d-flex justify-content-between small mb-1">
-            <span class="fw-semibold">{{ row.actor_type }}</span>
-            <span class="text-muted">{{ row.total }}</span>
-          </div>
-          <div class="progress" style="height:8px;border-radius:4px;">
-            <div class="progress-bar" style="width:{{ (row.daily_briefings / max_total * 100) | round(1) }}%;background:var(--accent-blue);"
-                 title="{{ row.daily_briefings }} daily briefing(s)"></div>
-            <div class="progress-bar" style="width:{{ (row.flash_intel_alerts / max_total * 100) | round(1) }}%;background:var(--accent-orange);"
-                 title="{{ row.flash_intel_alerts }} flash intel alert(s)"></div>
-          </div>
-        </div>
-        {% endfor %}
-        {% else %}
-        <div class="empty-state p-4">
-          <i class="fas fa-user-shield text-muted"></i>
-          <p class="text-muted mb-0">No products published yet.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Throughput by collection source -->
-  <div class="col-lg-6">
-    <div class="card content-card h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-satellite-dish me-2 text-success"></i>Throughput by collection source</span>
-        <a href="{{ url_for('pipeline.index') }}" class="btn btn-xs btn-outline-secondary">Details</a>
-      </div>
-      <div class="card-body">
-        {% if throughput_by_source %}
-        {% set max_n = throughput_by_source[0].n %}
-        {% for row in throughput_by_source %}
-        <div class="mb-2">
-          <div class="d-flex justify-content-between small mb-1">
-            <span class="fw-semibold">{{ row.source_feed or 'Unknown' }}</span>
-            <span class="text-muted">{{ row.n }}</span>
-          </div>
-          <div class="progress" style="height:8px;border-radius:4px;">
-            <div class="progress-bar" style="width:{{ (row.n / max_n * 100) | round(1) }}%;background:var(--accent-green);"></div>
-          </div>
-        </div>
-        {% endfor %}
-        {% else %}
-        <div class="empty-state p-4">
-          <i class="fas fa-satellite-dish text-muted"></i>
-          <p class="text-muted mb-0">No events processed yet.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -604,6 +402,69 @@ document.querySelectorAll('.analyser-info-icon').forEach(function(el) {
       }
     });
   }
+})();
+</script>
+
+<script>
+// Lazy-load the data-heavy dashboard sections and the pipeline panel stats so
+// the action bar paints immediately. One request to /dashboard/widgets returns
+// the rendered content fragment plus the pipeline status.
+(function() {
+  var mount = document.getElementById('dashboard-data');
+  var healthEl = document.getElementById('pipeline-health');
+  var statsEl = document.getElementById('pipeline-stats-mount');
+
+  function humanizeMinutes(mins) {
+    if (mins === null || mins === undefined) return 'never';
+    if (mins < 60) return mins + 'm ago';
+    if (mins < 1440) return Math.round(mins / 60) + 'h ago';
+    return Math.round(mins / 1440) + 'd ago';
+  }
+
+  function renderPipeline(p) {
+    if (!p) return;
+    if (healthEl) {
+      if (p.has_run && !p.stale) {
+        healthEl.innerHTML = '<span class="pipeline-dot text-success">Healthy</span>';
+      } else if (p.has_run && p.stale) {
+        healthEl.innerHTML = '<span class="pipeline-dot text-warning" style="--accent-green: var(--accent-orange);">Stale</span>';
+      } else {
+        healthEl.innerHTML = '<span class="text-muted small">No runs yet</span>';
+      }
+    }
+    if (statsEl) {
+      var pr = p.processed_24h || {};
+      var errors = (pr.http_error || 0) + (pr.no_content || 0) + (pr.error || 0);
+      var lastRun = p.has_run ? humanizeMinutes(p.minutes_since) : 'never';
+      var pending = (p.pending === null || p.pending === undefined) ? '-' : p.pending;
+      statsEl.innerHTML =
+        '<div class="pipeline-stat"><span class="label">Last run</span>'
+        + '<span class="value" title="' + (p.last_run_title || '') + '">' + lastRun + '</span></div>'
+        + '<div class="pipeline-stat"><span class="label">Pending</span><span class="value">' + pending + '</span></div>'
+        + '<div class="pipeline-stat"><span class="label">Processed 24h</span><span class="value">' + (p.total_24h || 0) + '</span></div>'
+        + '<div class="pipeline-stat full"><span class="sub">' + (pr.product_created || 0) + ' product, '
+        + (pr.not_relevant || 0) + ' skipped, ' + errors + ' errors</span></div>';
+    }
+  }
+
+  fetch(SCRIPT_ROOT + '/dashboard/widgets')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (mount && data.html) mount.innerHTML = data.html;
+      renderPipeline(data.pipeline);
+      // Native title tooltips on chart bars are fine; init Bootstrap tooltips
+      // for any info icons that arrived with the fragment.
+      if (mount) {
+        mount.querySelectorAll('[data-bs-toggle="tooltip"], .analyser-info-icon').forEach(function(el) {
+          new bootstrap.Tooltip(el, {trigger: 'hover focus'});
+        });
+      }
+    })
+    .catch(function(err) {
+      if (mount) {
+        mount.innerHTML = '<div class="alert alert-warning">Could not load dashboard data: ' + err + '</div>';
+      }
+    });
 })();
 </script>
 {% endblock %}

@@ -5,6 +5,9 @@
 
 {% block misp_object_url %}{{ rfi.misp_url }}{% endblock %}
 {% block topbar_actions %}
+<a href="{{ url_for('rfi.rfi_list') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
 {% if rfi.status != 'New' %}
 <button class="btn btn-sm btn-outline-warning" id="notify-btn"
         data-notify-url="{{ url_for('rfi.rfi_notify', id=rfi.id) }}">
@@ -54,97 +57,7 @@
       </div>
     </div>
 
-    <div class="card content-card mb-4">
-      <div class="card-header d-flex align-items-center">
-        <i class="fas fa-paperclip me-2"></i>Attachments
-        <button class="btn btn-sm btn-outline-secondary ms-auto" type="button"
-                data-bs-toggle="collapse" data-bs-target="#attach-add-form">
-          <i class="fas fa-plus me-1"></i>Add
-        </button>
-      </div>
-      <div class="collapse" id="attach-add-form">
-        <div class="card-body border-bottom">
-          <form method="post" action="{{ url_for('rfi.rfi_attachment_add', id=rfi.id) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-end">
-            <div class="flex-grow-1">
-              <label class="form-label small mb-1">File</label>
-              <input type="file" name="attachment" class="form-control form-control-sm" required>
-            </div>
-            <button class="btn btn-sm btn-primary" type="submit">Upload</button>
-          </form>
-        </div>
-      </div>
-      <div class="card-body p-0">
-        {% if rfi.attachments %}
-        <table class="table table-sm mb-0">
-          <tbody>
-            {% for att in rfi.attachments %}
-            <tr>
-              <td><i class="fas fa-file me-2 text-muted"></i>{{ att.filename }}</td>
-              <td class="text-end">
-                <a href="{{ url_for('rfi.rfi_attachment_download', id=rfi.id, attr_uuid=att.uuid) }}"
-                   class="btn btn-xs btn-outline-secondary me-1" title="Download">
-                  <i class="fas fa-download"></i>
-                </a>
-                <form method="post" action="{{ url_for('rfi.rfi_attachment_delete', id=rfi.id, attr_uuid=att.uuid) }}"
-                      class="d-inline" onsubmit="return confirm('Delete attachment?')">
-                  <button class="btn btn-xs btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="px-3 py-2 text-muted small"><em>No attachments.</em></div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="card content-card mb-4">
-      <div class="card-header d-flex align-items-center">
-        <i class="fas fa-sticky-note me-2"></i>Notes
-        <button class="btn btn-sm btn-outline-secondary ms-auto" type="button"
-                data-bs-toggle="collapse" data-bs-target="#note-add-form">
-          <i class="fas fa-plus me-1"></i>Add
-        </button>
-      </div>
-      <div class="collapse" id="note-add-form">
-        <div class="card-body border-bottom">
-          <form method="post" action="{{ url_for('rfi.rfi_note_add', id=rfi.id) }}">
-            <div class="mb-2">
-              <label class="form-label small mb-1">Title</label>
-              <input type="text" name="note_title" class="form-control form-control-sm" required placeholder="Note title">
-            </div>
-            <div class="mb-2">
-              <label class="form-label small mb-1">Content (Markdown)</label>
-              <textarea name="note_content" class="form-control form-control-sm" rows="6"
-                        placeholder="Markdown content…"></textarea>
-            </div>
-            <button class="btn btn-sm btn-primary" type="submit">Add note</button>
-          </form>
-        </div>
-      </div>
-      <div class="card-body p-0">
-        {% if rfi.notes %}
-        {% for note in rfi.notes %}
-        <div class="border-bottom px-3 py-2">
-          <div class="d-flex align-items-start">
-            <strong class="small">{{ note.title }}</strong>
-            <form method="post" action="{{ url_for('rfi.rfi_note_delete', id=rfi.id, report_id=note.id) }}"
-                  class="ms-auto d-inline" onsubmit="return confirm('Delete note?')">
-              <button class="btn btn-xs btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
-            </form>
-          </div>
-          {% if note.content %}
-          <div class="text-muted small mt-1 report-md-body" data-md="{{ note.content | e }}"></div>
-          {% endif %}
-        </div>
-        {% endfor %}
-        {% else %}
-        <div class="px-3 py-2 text-muted small"><em>No notes.</em></div>
-        {% endif %}
-      </div>
-    </div>
+    {% include "rfi/_attachments_notes.html" %}
 
     <div class="card content-card mb-4">
       <div class="card-header d-flex justify-content-between align-items-center">

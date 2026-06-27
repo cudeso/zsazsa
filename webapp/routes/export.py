@@ -137,6 +137,44 @@ def _girs_markdown():
     return "\n".join(lines)
 
 
+def _rfis_markdown():
+    rfis = misp_store.list_rfis()
+    lines = [
+        "# Requests for Information",
+        f"Exported: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
+    ]
+    for rfi in rfis:
+        lines += [f"## {rfi.rfi_id}", "", f"**Question:** {rfi.question}", ""]
+        if rfi.context:
+            lines += [f"**Context:** {rfi.context}", ""]
+        lines += [
+            f"**Priority:** {rfi.priority}",
+            f"**Status:** {rfi.status}",
+            f"**Requester:** {rfi.requester_name or '-'}" + (f" ({rfi.requester_team})" if rfi.requester_team else ""),
+            f"**Stakeholder:** {rfi.owner_name or '-'}",
+            f"**Assigned analyst:** {rfi.assigned_analyst or '-'}",
+            f"**Due date:** {_fmt_date(rfi.due_date)}",
+        ]
+        if rfi.output_format_list:
+            fmts = ", ".join(f"{item['format']} (TLP:{item['tlp'].upper()})" for item in rfi.output_format_list)
+            lines.append(f"**Output formats:** {fmts}")
+        if rfi.response:
+            lines += ["", "**Response:**", "", rfi.response]
+        if any([rfi.feedback_requirement_met, rfi.feedback_on_time, rfi.feedback_usefulness, rfi.feedback_suggestions]):
+            lines += ["", "**Feedback:**"]
+            if rfi.feedback_requirement_met:
+                lines.append(f"- Met the requirement: {rfi.feedback_requirement_met}")
+            if rfi.feedback_on_time:
+                lines.append(f"- Delivered on time: {rfi.feedback_on_time}")
+            if rfi.feedback_usefulness:
+                lines.append(f"- Usefulness: {rfi.feedback_usefulness}")
+            if rfi.feedback_suggestions:
+                lines.append(f"- Suggestions: {rfi.feedback_suggestions}")
+        lines += ["", "---", ""]
+    return "\n".join(lines)
+
+
 def _stakeholders_markdown():
     stakeholders = misp_store.list_stakeholders()
     lines = [
@@ -204,6 +242,13 @@ def girs():
     ts = datetime.utcnow().strftime("%Y%m%d")
     audit.record("export", "girs", details=f"girs-{ts}.md")
     return _dl(_girs_markdown(), f"girs-{ts}.md")
+
+
+@bp.route("/rfis")
+def rfis():
+    ts = datetime.utcnow().strftime("%Y%m%d")
+    audit.record("export", "rfis", details=f"rfis-{ts}.md")
+    return _dl(_rfis_markdown(), f"rfis-{ts}.md")
 
 
 @bp.route("/stakeholders")

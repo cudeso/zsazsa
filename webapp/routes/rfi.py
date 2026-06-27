@@ -111,12 +111,27 @@ def _rfi_notify_recipients(rfi):
     return []
 
 
+def _sort_rfis(rfis, sort, direction):
+    keys = {
+        "id": lambda r: r.rfi_id,
+        "question": lambda r: (r.question or "").lower(),
+        "status": lambda r: RFI_STATUSES.index(r.status) if r.status in RFI_STATUSES else len(RFI_STATUSES),
+        "requester": lambda r: (r.requester_name or "").lower(),
+        "sla": lambda r: r.due_date or date.max,
+    }
+    keyfn = keys.get((sort or "").strip())
+    if keyfn:
+        rfis = sorted(rfis, key=keyfn, reverse=(direction == "desc"))
+    return rfis
+
+
 @bp.route("/")
 def rfi_list():
     rfis = misp_store.list_rfis()
     status_filter = (request.args.get("status") or "").strip()
     if status_filter:
         rfis = [r for r in rfis if r.status == status_filter]
+    rfis = _sort_rfis(rfis, request.args.get("sort"), request.args.get("dir"))
     sla_map = {r.id: _sla_status(r) for r in rfis}
     return render_template(
         "rfi/list.html",
@@ -167,7 +182,6 @@ def rfi_new():
         feedback_on_time=FEEDBACK_ON_TIME,
         feedback_usefulness=FEEDBACK_USEFULNESS,
         sla_days=misp_store.RFI_SLA_DAYS,
-        is_edit=False,
     )
 
 
@@ -270,7 +284,6 @@ def rfi_edit(id):
         feedback_on_time=FEEDBACK_ON_TIME,
         feedback_usefulness=FEEDBACK_USEFULNESS,
         sla_days=misp_store.RFI_SLA_DAYS,
-        is_edit=True,
     )
 
 
@@ -283,7 +296,7 @@ def rfi_delete(id):
     try:
         misp_store.delete_rfi(id)
         audit.record("delete", "rfi", entity_id=id, entity_label=label)
-        flash(f"{label} deleted.", "success")
+        flash(f"{label} deleted.", "info")
     except Exception as exc:
         logger.warning("rfi_delete %s failed: %s", id, exc)
         flash(f"Could not delete {label}: {exc}", "warning")
@@ -452,33 +465,56 @@ def rfi_notify(id):
     })
 
 
+def _is_ajax():
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+def _an_fragment(id):
+    """Render the attachments & notes section (editable) as an HTML fragment,
+    used to refresh that section in place after an AJAX add/delete."""
+    rfi = misp_store.get_rfi(id)
+    return render_template("rfi/_attachments_notes.html", rfi=rfi, editable=True)
+
+
 @bp.route("/<string:id>/attachments", methods=["POST"])
 def rfi_attachment_add(id):
+    ajax = _is_ajax()
     rfi = misp_store.get_rfi(id)
     if rfi is None:
         return "RFI not found", 404
     f = request.files.get("attachment")
     if not f or not f.filename:
+        if ajax:
+            return "No file selected.", 400
         flash("No file selected.", "warning")
         return redirect(url_for("rfi.rfi_detail", id=id))
     try:
         misp_store.add_rfi_attachment(id, f.filename, f.read())
         audit.record("update", "rfi", entity_id=id, entity_label=rfi.rfi_id)
+        if ajax:
+            return _an_fragment(id)
         flash(f"Attachment '{f.filename}' added.", "success")
     except Exception as exc:
+        if ajax:
+            return f"Could not add attachment: {exc}", 500
         flash(f"Could not add attachment: {exc}", "warning")
     return redirect(url_for("rfi.rfi_detail", id=id))
 
 
 @bp.route("/<string:id>/attachments/<string:attr_uuid>/delete", methods=["POST"])
 def rfi_attachment_delete(id, attr_uuid):
+    ajax = _is_ajax()
     rfi = misp_store.get_rfi(id)
     label = rfi.rfi_id if rfi else id
     try:
         misp_store.delete_rfi_attachment(attr_uuid)
         audit.record("update", "rfi", entity_id=id, entity_label=label)
+        if ajax:
+            return _an_fragment(id)
         flash("Attachment deleted.", "success")
     except Exception as exc:
+        if ajax:
+            return f"Could not delete attachment: {exc}", 500
         flash(f"Could not delete attachment: {exc}", "warning")
     return redirect(url_for("rfi.rfi_detail", id=id))
 
@@ -499,31 +535,43 @@ def rfi_attachment_download(id, attr_uuid):
 
 @bp.route("/<string:id>/notes", methods=["POST"])
 def rfi_note_add(id):
+    ajax = _is_ajax()
     rfi = misp_store.get_rfi(id)
     if rfi is None:
         return "RFI not found", 404
     title = (request.form.get("note_title") or "").strip()
     content = (request.form.get("note_content") or "").strip()
     if not title:
+        if ajax:
+            return "Note title is required.", 400
         flash("Note title is required.", "warning")
         return redirect(url_for("rfi.rfi_detail", id=id))
     try:
         misp_store.add_rfi_note(id, title, content)
         audit.record("update", "rfi", entity_id=id, entity_label=rfi.rfi_id)
+        if ajax:
+            return _an_fragment(id)
         flash(f"Note '{title}' added.", "success")
     except Exception as exc:
+        if ajax:
+            return f"Could not add note: {exc}", 500
         flash(f"Could not add note: {exc}", "warning")
     return redirect(url_for("rfi.rfi_detail", id=id))
 
 
 @bp.route("/<string:id>/notes/<string:report_id>/delete", methods=["POST"])
 def rfi_note_delete(id, report_id):
+    ajax = _is_ajax()
     rfi = misp_store.get_rfi(id)
     label = rfi.rfi_id if rfi else id
     try:
         misp_store.delete_rfi_note(report_id)
         audit.record("update", "rfi", entity_id=id, entity_label=label)
+        if ajax:
+            return _an_fragment(id)
         flash("Note deleted.", "success")
     except Exception as exc:
+        if ajax:
+            return f"Could not delete note: {exc}", 500
         flash(f"Could not delete note: {exc}", "warning")
     return redirect(url_for("rfi.rfi_detail", id=id))

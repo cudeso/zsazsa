@@ -883,6 +883,29 @@ body {
 .status-retired          { background: var(--status-retired-bg);     color: var(--status-retired-fg); }
 .status-rejected         { background: var(--status-rejected-bg);    color: var(--status-rejected-fg); }
 
+/* RFI lifecycle statuses (New → Acknowledged → In Progress → Delivered → Closed) */
+.status-new              { background: var(--status-pending-bg);     color: var(--status-pending-fg); }
+.status-acknowledged     { background: var(--status-under-eval-bg);  color: var(--status-under-eval-fg); }
+.status-in-progress      { background: var(--status-in-dev-bg);      color: var(--status-in-dev-fg); }
+.status-delivered        { background: var(--status-implemented-bg); color: var(--status-implemented-fg); }
+.status-closed           { background: var(--status-retired-bg);     color: var(--status-retired-fg); }
+
+/* ─── Sortable table headers ────────────────────────────────────────────── */
+.sort-th {
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sort-th:hover { color: var(--accent-blue); }
+.sort-th.sort-active { color: var(--accent-blue); }
+.sort-idle { opacity: .35; }
+
+/* Two-way hover highlight between a list row and its status-board card,
+   shared by the PIR/GIR/RFI list pages. */
+.kanban-card.req-hover { background: var(--neutral-200) !important; box-shadow: 0 0 0 2px var(--neutral-400) !important; }
+.req-row.req-hover > td { background-color: var(--neutral-200) !important; }
+
 /* ─── TLP badges ────────────────────────────────────────────────────────── */
 .tlp-badge {
   display: inline-block;

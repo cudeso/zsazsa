@@ -1,0 +1,19 @@
+{# Sortable table header. Renders a <th> whose link toggles ?sort=<key>&dir=...
+   while preserving any other query args (filters). Reads the current sort from
+   request.args, so the calling route only needs to sort its list accordingly. #}
+{% macro sort_th(label, key, width='') %}
+{% set cur = request.args.get('sort', '') %}
+{% set curdir = request.args.get('dir', 'asc') %}
+{% set newdir = 'desc' if (cur == key and curdir == 'asc') else 'asc' %}
+{% set args = dict(request.args.to_dict(), sort=key, dir=newdir) %}
+<th {% if width %}style="width:{{ width }}"{% endif %}>
+  <a href="{{ url_for(request.endpoint, **args) }}" class="sort-th{{ ' sort-active' if cur == key }}">
+    {{ label }}
+    {% if cur == key %}
+    <i class="fas fa-sort-{{ 'up' if curdir == 'asc' else 'down' }} fa-xs"></i>
+    {% else %}
+    <i class="fas fa-sort fa-xs sort-idle"></i>
+    {% endif %}
+  </a>
+</th>
+{% endmacro %}

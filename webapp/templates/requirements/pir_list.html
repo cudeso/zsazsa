@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_sort.html" import sort_th %}
 
 {% block title %}PIRs | zsazsa CTI{% endblock %}
 {% block page_title %}Priority Intelligence Requirements{% endblock %}
@@ -137,14 +138,14 @@
     <table class="table table-hover zsazsa-table mb-0">
       <thead>
         <tr>
-          <th style="width:90px">ID</th>
-          <th>Question</th>
+          {{ sort_th('ID', 'id', width='90px') }}
+          {{ sort_th('Question', 'text') }}
           <th>Owner</th>
           <th>Level</th>
           <th>Priority</th>
-          <th>Status</th>
+          {{ sort_th('Status', 'status') }}
           <th title="Scope"><i class="fas fa-crosshairs fa-xs"></i></th>
-          <th>Next review</th>
+          {{ sort_th('Next review', 'next_review') }}
           <th class="text-end">Actions</th>
         </tr>
       </thead>

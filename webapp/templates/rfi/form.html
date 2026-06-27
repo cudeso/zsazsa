@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% set is_edit = is_edit | default(false) %}
+{% set is_edit = rfi is not none %}
 {% set sel_owner = rfi.owner_uuid if is_edit else '' %}
 {% set sel_pir = rfi.linked_pir_uuid if is_edit else '' %}
 {% set sel_gir = rfi.linked_gir_uuid if is_edit else '' %}
@@ -9,9 +9,16 @@
 {% block page_title %}{{ 'Edit ' + rfi.rfi_id if is_edit else 'New RFI' }}{% endblock %}
 
 {% block misp_object_url %}{% if is_edit %}{{ rfi.misp_url }}{% else %}{{ misp_webapp_url }}{% endif %}{% endblock %}
-{% block topbar_actions %}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('rfi.rfi_list') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
 
 {% block content %}
+{# Response and feedback can only be captured once the RFI has been triaged
+   (acknowledged). A brand-new RFI starts as 'New' and is not yet triaged. #}
+{% set triaged = is_edit and rfi.status != 'New' %}
 <form method="post" class="row g-4">
 
   <div class="col-lg-8">
@@ -29,7 +36,7 @@
           <li><strong>Tie it to a PIR or GIR if possible.</strong> Recurring RFIs hint at missing standing requirements.</li>
           <li><strong>Set a realistic due date.</strong> SLA hints: High {{ sla_days.High }}BD, Medium {{ sla_days.Medium }}BD, Low {{ sla_days.Low }}BD.</li>
           <li><strong>Always close the loop.</strong> Record the response and capture feedback to feed the metrics dashboard.</li>
-          <li><strong>Attachments and notes</strong> can be added once the RFI is created.</li>
+          <li><strong>Attachments and notes</strong> can be added from the RFI's own page once it is created (after you save).</li>
         </ul>
       </div>
     </div>
@@ -56,7 +63,10 @@
       <div class="card-body">
         <div class="mb-3">
           <label class="form-label">Response (delivered to the requester)</label>
-          <textarea name="response" class="form-control" rows="6">{{ rfi.response if is_edit else '' }}</textarea>
+          <textarea name="response" class="form-control" rows="6" {{ 'disabled' if not triaged }}>{{ rfi.response if is_edit else '' }}</textarea>
+          {% if not triaged %}
+          <div class="form-text"><i class="fas fa-lock me-1"></i>The response can be recorded once the RFI has been triaged (acknowledged) from the RFI list.</div>
+          {% endif %}
         </div>
         <div>
           <label class="form-label">Output formats</label>
@@ -94,7 +104,7 @@
           <div class="flex-grow-1">
             <input type="file" class="form-control form-control-sm" disabled>
           </div>
-          <button class="btn btn-sm btn-primary" type="button" disabled>Upload</button>
+          <button class="btn btn-sm btn-secondary" type="button" disabled>Upload</button>
         </div>
       </div>
     </div>
@@ -108,7 +118,7 @@
         <div class="mb-2">
           <textarea class="form-control form-control-sm" rows="3" placeholder="Markdown content…" disabled></textarea>
         </div>
-        <button class="btn btn-sm btn-primary" type="button" disabled>Add note</button>
+        <button class="btn btn-sm btn-secondary" type="button" disabled>Add note</button>
       </div>
     </div>
     {% endif %}
@@ -116,10 +126,16 @@
     <div class="card content-card mb-4">
       <div class="card-header"><i class="fas fa-comment-dots me-2"></i>Feedback (after delivery)</div>
       <div class="card-body">
+        {% if not triaged %}
+        <div class="alert alert-light border small d-flex align-items-center mb-3">
+          <i class="fas fa-lock me-2 text-muted"></i>
+          Feedback can only be captured once the RFI has been triaged (acknowledged) and delivered.
+        </div>
+        {% endif %}
         <div class="row g-3">
           <div class="col-md-4">
             <label class="form-label">Did the response meet the requirement?</label>
-            <select name="feedback_requirement_met" class="form-select">
+            <select name="feedback_requirement_met" class="form-select" {{ 'disabled' if not triaged }}>
               {% for opt in feedback_requirement %}
               <option value="{{ opt }}" {{ 'selected' if is_edit and rfi.feedback_requirement_met == opt }}>{{ opt or '-' }}</option>
               {% endfor %}
@@ -127,7 +143,7 @@
           </div>
           <div class="col-md-4">
             <label class="form-label">Delivered on time?</label>
-            <select name="feedback_on_time" class="form-select">
+            <select name="feedback_on_time" class="form-select" {{ 'disabled' if not triaged }}>
               {% for opt in feedback_on_time %}
               <option value="{{ opt }}" {{ 'selected' if is_edit and rfi.feedback_on_time == opt }}>{{ opt or '-' }}</option>
               {% endfor %}
@@ -135,7 +151,7 @@
           </div>
           <div class="col-md-4">
             <label class="form-label">Usefulness</label>
-            <select name="feedback_usefulness" class="form-select">
+            <select name="feedback_usefulness" class="form-select" {{ 'disabled' if not triaged }}>
               {% for opt in feedback_usefulness %}
               <option value="{{ opt }}" {{ 'selected' if is_edit and rfi.feedback_usefulness == opt }}>{{ opt or '-' }}</option>
               {% endfor %}
@@ -143,7 +159,7 @@
           </div>
           <div class="col-12">
             <label class="form-label">Suggestions</label>
-            <textarea name="feedback_suggestions" class="form-control" rows="2">{{ rfi.feedback_suggestions if is_edit else '' }}</textarea>
+            <textarea name="feedback_suggestions" class="form-control" rows="2" {{ 'disabled' if not triaged }}>{{ rfi.feedback_suggestions if is_edit else '' }}</textarea>
           </div>
         </div>
       </div>
@@ -234,11 +250,30 @@
       </div>
     </div>
 
-    <button class="btn btn-primary w-100" type="submit">
-      <i class="fas fa-save me-1"></i> {{ 'Update RFI' if is_edit else 'Create RFI' }}
-    </button>
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary flex-grow-1">
+        <i class="fas fa-floppy-disk me-1"></i> {{ 'Save changes' if is_edit else 'Create RFI' }}
+      </button>
+      <a href="{{ url_for('rfi.rfi_detail', id=rfi.id) if is_edit else url_for('rfi.rfi_list') }}" class="btn btn-outline-secondary">
+        Cancel
+      </a>
+    </div>
   </div>
 </form>
+
+{# Attachments and notes are managed outside the main form (their own POST
+   endpoints), so they live here rather than nested in the form above. #}
+{% if is_edit %}
+<div class="row g-4 mt-0">
+  <div class="col-lg-8">
+    <h2 class="h6 text-muted mb-3"><i class="fas fa-folder-open me-2"></i>Attachments &amp; notes</h2>
+    <div id="rfi-an-section">
+      {% set editable = True %}
+      {% include "rfi/_attachments_notes.html" %}
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -299,4 +334,55 @@
   });
 })();
 </script>
+{% if is_edit %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+  marked.setOptions({ breaks: true, gfm: true });
+
+  // Render Markdown note bodies inside the given root.
+  function renderMarkdown(root) {
+    (root || document).querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+      var raw = el.getAttribute('data-md') || '';
+      el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+      el.removeAttribute('data-md');
+    });
+  }
+  renderMarkdown(document);
+
+  // Add/delete attachments and notes without reloading the whole page: submit
+  // via fetch and swap just the attachments & notes section with the rendered
+  // fragment the server returns.
+  var section = document.getElementById('rfi-an-section');
+  if (section) {
+    section.addEventListener('submit', function(e) {
+      var form = e.target.closest('form');
+      if (!form) return;
+      e.preventDefault();
+      var confirmMsg = form.getAttribute('data-confirm');
+      if (confirmMsg && !window.confirm(confirmMsg)) return;
+      var submitBtn = form.querySelector('[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      var csrf = document.querySelector('meta[name="csrf-token"]');
+      var headers = {'X-Requested-With': 'XMLHttpRequest'};
+      if (csrf) headers['X-CSRF-Token'] = csrf.content;
+      fetch(form.getAttribute('action'), {method: 'POST', body: new FormData(form), headers: headers})
+        .then(function(r) {
+          if (!r.ok) return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); });
+          return r.text();
+        })
+        .then(function(html) {
+          section.innerHTML = html;
+          renderMarkdown(section);
+        })
+        .catch(function(err) {
+          if (submitBtn) submitBtn.disabled = false;
+          alert('Action failed: ' + err.message);
+        });
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}
