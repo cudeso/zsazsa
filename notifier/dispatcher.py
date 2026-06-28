@@ -207,6 +207,19 @@ def send_vea(vea, markdown: str, stakeholders: list) -> dict:
     return _dispatch(stakeholders, senders, "VEA", getattr(vea, "vea_id", ""))
 
 
+def send_threat_actor_profile(tap, markdown: str, stakeholders: list) -> dict:
+    """Deliver a threat actor profile to stakeholder channels across all channel types."""
+    senders = {
+        "mattermost": lambda channel_ids: bool(
+            mattermost.send_threat_actor_profile_notification(tap, markdown, channel_ids=channel_ids)
+        ),
+        "email": lambda channel_ids: bool(
+            email.send_threat_actor_profile_notification(tap, markdown, channel_ids=channel_ids)
+        ),
+    }
+    return _dispatch(stakeholders, senders, "threat actor profile", getattr(tap, "tap_id", ""))
+
+
 def send_indicator_feed(feed, markdown: str, csv_bytes: bytes, stakeholders: list) -> dict:
     """Deliver an indicator feed (summary + values, plus CSV by email) to channels."""
     senders = {

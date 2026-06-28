@@ -99,12 +99,12 @@ def normalize_notification_channels(
 
 _PRODUCT_SORT_KEYS = {
     "title": lambda p: (getattr(p, "title", "") or "").lower(),
-    "state": lambda p: (getattr(p, "review_state", "") or ""),
+    "state": lambda p: (getattr(p, "review_state", "") or getattr(p, "status", "") or ""),
     "date": lambda p: getattr(p, "published_at", None) or datetime.min,
     "bdate": lambda p: (getattr(p, "date", "") or ""),
-    # Product id: FIAs and VEAs use a zero-padded "<TYPE>-NNNNN" so a plain
+    # Product id: FIAs, VEAs and TAPs use a zero-padded "<TYPE>-NNNNN" so a plain
     # string sort orders them numerically.
-    "id": lambda p: (getattr(p, "fia_id", "") or getattr(p, "vea_id", "") or ""),
+    "id": lambda p: (getattr(p, "fia_id", "") or getattr(p, "vea_id", "") or getattr(p, "tap_id", "") or ""),
     "cve": lambda p: (getattr(p, "cve_id", "") or "").upper(),
 }
 

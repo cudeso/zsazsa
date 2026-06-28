@@ -265,6 +265,29 @@ def send_vea_notification(vea, markdown: str, stakeholders: list | None = None,
     return _chunk_and_send(targets, body, f"VEA {getattr(vea, 'vea_id', '')}")
 
 
+def send_threat_actor_profile_notification(tap, markdown: str, stakeholders: list | None = None,
+                                           channel_ids: list[str] | None = None) -> bool:
+    """Send a threat actor profile notification to subscribed stakeholders."""
+    if channel_ids is None and stakeholders:
+        ids: set[str] = set()
+        for s in stakeholders:
+            for cid in (getattr(s, "notification_channels", None) or []):
+                if cid:
+                    ids.add(cid)
+        if ids:
+            channel_ids = sorted(ids)
+
+    headline = f"### :detective: {getattr(tap, 'tap_id', '')}: Threat actor profile"
+    subtitle = f"**{getattr(tap, 'title', '')}**".strip()
+    body = f"{headline}\n"
+    if subtitle and subtitle != "****":
+        body += f"{subtitle}\n\n"
+    body += markdown
+
+    targets = _active_webhooks(channel_ids)
+    return _chunk_and_send(targets, body, f"threat actor profile {getattr(tap, 'tap_id', '')}")
+
+
 def send_rfi_notification(
     rfi,
     markdown: str,

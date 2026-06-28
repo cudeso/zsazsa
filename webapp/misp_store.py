@@ -224,12 +224,13 @@ def _ensure_tag(misp, tag_name: str):
         logger.debug("add_tag %s: %s (may already exist)", tag_name, r["errors"])
 
 
-def _apply_scope_tags(misp, event_uuid: str, data: dict, new_info: str = None, _event=None):
+def _apply_scope_tags(misp, event_uuid: str, data: dict, new_info: str = None, _event=None, local=False):
     """Apply scope galaxy tags using individual tag/untag API calls.
 
     Calls misp.tag()/misp.untag() per tag which is the only reliable path
     for galaxy tags. Falls back to creating missing tags via _ensure_tag.
     Pass _event to avoid a redundant fetch when the caller already has it.
+    Pass local=True to attach the galaxy tags as local (not federated).
     """
     event = _event or misp.get_event(event_uuid, pythonify=True)
     if isinstance(event, dict) or event is None:
@@ -245,11 +246,11 @@ def _apply_scope_tags(misp, event_uuid: str, data: dict, new_info: str = None, _
         if isinstance(r, dict) and "errors" in r:
             logger.warning("untag %s from %s: %s", name, event_uuid, r["errors"])
     for name in wanted - current_scope:
-        r = misp.tag(event_uuid, name)
+        r = misp.tag(event_uuid, name, local=local)
         if isinstance(r, dict) and "errors" in r:
             logger.warning("tag %s on %s failed, trying to create: %s", name, event_uuid, r["errors"])
             _ensure_tag(misp, name)
-            r2 = misp.tag(event_uuid, name)
+            r2 = misp.tag(event_uuid, name, local=local)
             if isinstance(r2, dict) and "errors" in r2:
                 logger.error("tag %s still failed after create: %s", name, r2["errors"])
 
@@ -353,6 +354,60 @@ def galaxy_sectors() -> list:
 
 def galaxy_threat_actors() -> list:
     return _fetch_galaxy_clusters(GALAXY_THREAT_ACTOR)
+
+
+# Value -> cluster UUID map for the threat-actor galaxy, cached so enrichment
+# does not re-list all clusters on every save.
+_ta_uuid_cache: dict = {}
+_ta_uuid_ts: float = 0.0
+
+
+def _threat_actor_uuid(value: str):
+    """Return the threat-actor galaxy cluster UUID for a value, or None."""
+    global _ta_uuid_ts
+    now = time.time()
+    if not _ta_uuid_cache or now - _ta_uuid_ts >= _GALAXY_TTL:
+        try:
+            clusters = _misp().search_galaxy_clusters(GALAXY_THREAT_ACTOR, pythonify=True)
+            if isinstance(clusters, list):
+                _ta_uuid_cache.clear()
+                for c in clusters:
+                    if getattr(c, "value", None) and getattr(c, "uuid", None):
+                        _ta_uuid_cache[c.value.lower()] = c.uuid
+                _ta_uuid_ts = now
+        except Exception as exc:
+            logger.warning("Failed to list threat-actor clusters: %s", exc)
+    return _ta_uuid_cache.get((value or "").lower())
+
+
+def threat_actor_galaxy_meta(value: str) -> dict:
+    """Return enrichment data for a threat-actor galaxy cluster.
+
+    Cluster metadata is stored as GalaxyElement key/value rows (capabilities,
+    mode-of-operation, synonyms, refs, victimology). Returns each as a list of
+    strings; empty dict for a custom (non-galaxy) actor.
+    """
+    uuid = _threat_actor_uuid(value)
+    if not uuid:
+        return {}
+    try:
+        raw = _misp().get_galaxy_cluster(uuid, pythonify=False)
+    except Exception as exc:
+        logger.warning("get_galaxy_cluster %s failed: %s", uuid, exc)
+        return {}
+    gc = raw.get("GalaxyCluster", raw) if isinstance(raw, dict) else {}
+    agg: dict = {}
+    for el in gc.get("GalaxyElement") or []:
+        key = el.get("key")
+        if key:
+            agg.setdefault(key, []).append(el.get("value"))
+    return {
+        "capabilities": agg.get("capabilities") or [],
+        "mode_of_operation": agg.get("mode-of-operation") or [],
+        "synonyms": agg.get("synonyms") or [],
+        "refs": agg.get("refs") or [],
+        "victimology": agg.get("victimology") or [],
+    }
 
 
 _MITRE_CACHE_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "mitre-attack-pattern.json")
@@ -1944,6 +1999,224 @@ def get_indicator_feed_by_token(token):
     if not token:
         return None
     return next((f for f in list_indicator_feeds() if f.token == token), None)
+
+
+# ── Threat actor profiles (saved MISP-backed actor write-ups) ────────────────
+
+def galaxy_enrichment(actors) -> dict:
+    """Merge threat-actor galaxy context for one or more actors.
+
+    Returns capabilities/mode_of_operation/synonyms as joined strings and refs as
+    a list, for the interactive "complete profile" button. victimology is returned
+    as (actor, text) pairs since it is recorded as a note rather than a field.
+    """
+    caps, modes, syns, refs, victimology = [], [], [], [], []
+    seen_syn = set()
+    for actor in actors:
+        meta = threat_actor_galaxy_meta(actor)
+        if not meta:
+            continue
+        caps += [c for c in meta["capabilities"] if c]
+        modes += [m for m in meta["mode_of_operation"] if m]
+        for s in meta["synonyms"]:
+            if s and s.strip().lower() not in seen_syn:
+                syns.append(s.strip())
+                seen_syn.add(s.strip().lower())
+        for r in meta["refs"]:
+            if r and r not in refs:
+                refs.append(r)
+        vic = "\n".join(meta["victimology"]).strip()
+        if vic:
+            victimology.append((actor, vic))
+    return {
+        "capabilities": "\n".join(caps),
+        "mode_of_operation": "\n".join(modes),
+        "synonyms": ", ".join(syns),
+        "refs": refs,
+        "victimology": victimology,
+    }
+
+
+def _add_victimology_notes(uuid, victimology):
+    for actor, text in victimology:
+        add_rfi_note(uuid, f"Victimology: {actor} (from MISP galaxy)", text)
+
+
+def _tap_obj(data):
+    obj = _build_obj("zsazsa-threat-actor-profile")
+    _oa(obj, "tap-id", data.get("tap_id"))
+    _oa(obj, "title", data.get("title"))
+    _oa(obj, "summary", data.get("summary"))
+    _oa_json(obj, "threat-actors", data.get("threat_actors", []))
+    _oa(obj, "audience", data.get("audience"))
+    _oa(obj, "tlp", data.get("tlp", "amber"))
+    _oa(obj, "status", data.get("status", "Draft"))
+    _oa(obj, "published-at", data.get("published_at"))
+    _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
+    _oa(obj, "source-reliability", data.get("source_reliability"))
+    _oa(obj, "source-credibility", data.get("source_credibility"))
+    _oa(obj, "attribution-rationale", data.get("attribution_rationale"))
+    _oa_json(obj, "actor-types", data.get("actor_types", []))
+    _oa(obj, "synonyms", data.get("synonyms"))
+    _oa(obj, "capabilities", data.get("capabilities"))
+    _oa(obj, "mode-of-operation", data.get("mode_of_operation"))
+    _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
+    _oa_json(obj, "sectors", data.get("sectors", []))
+    _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
+    _oa_json(obj, "threat-types", data.get("threat_types", []))
+    _oa(obj, "time-frame", data.get("time_frame"))
+    _oa_json(obj, "technology", data.get("technology", []))
+    _oa_json(obj, "vendor", data.get("vendor", []))
+    _oa(obj, "external-references", _join_lines(data.get("external_references")))
+    _oa(obj, "feedback-deadline", data.get("feedback_deadline"))
+    _oa(obj, "author", data.get("author"))
+    _oa(obj, "creator", data.get("creator"))
+    return obj
+
+
+def _tap_ns(event):
+    uuid = event.uuid
+    obj = _get_obj(event, "zsazsa-threat-actor-profile")
+    notes = [
+        SimpleNamespace(
+            id=er.id,
+            uuid=getattr(er, "uuid", str(er.id)),
+            title=(getattr(er, "name", "") or "")[6:],
+            content=getattr(er, "content", "") or "",
+        )
+        for er in (getattr(event, "event_reports", []) or [])
+        if (getattr(er, "name", "") or "").startswith("note: ")
+    ]
+    return SimpleNamespace(
+        id=uuid,
+        uuid=uuid,
+        misp_url=f"{config.MISP_WEBAPP_URL}/events/view/{uuid}",
+        history_url=f"{config.MISP_WEBAPP_URL}/audit_logs/eventIndex/{uuid}",
+        tap_id=_obj_attr(obj, "tap-id") or "",
+        title=_obj_attr(obj, "title") or "",
+        summary=_obj_attr(obj, "summary") or "",
+        threat_actors=_json_list(_obj_attr(obj, "threat-actors")),
+        audience=_obj_attr(obj, "audience") or "",
+        tlp=_obj_attr(obj, "tlp") or "amber",
+        status=_obj_attr(obj, "status") or "Draft",
+        published_at=_parse_dt(_obj_attr(obj, "published-at")),
+        linked_pir_uuid=_obj_attr(obj, "linked-pir-uuid") or "",
+        source_reliability=_obj_attr(obj, "source-reliability") or "",
+        source_credibility=_obj_attr(obj, "source-credibility") or "",
+        attribution_rationale=_obj_attr(obj, "attribution-rationale") or "",
+        actor_types=_json_list(_obj_attr(obj, "actor-types")),
+        synonyms=_obj_attr(obj, "synonyms") or "",
+        capabilities=_obj_attr(obj, "capabilities") or "",
+        mode_of_operation=_obj_attr(obj, "mode-of-operation") or "",
+        geographic_scope=_json_list(_obj_attr(obj, "geographic-scope")),
+        sectors=_json_list(_obj_attr(obj, "sectors")),
+        mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
+        threat_types=_json_list(_obj_attr(obj, "threat-types")),
+        time_frame=_obj_attr(obj, "time-frame") or "",
+        technology=_json_list(_obj_attr(obj, "technology")),
+        vendor=_json_list(_obj_attr(obj, "vendor")),
+        external_references=(_obj_attr(obj, "external-references") or "").splitlines(),
+        feedback_deadline=_parse_date(_obj_attr(obj, "feedback-deadline")),
+        author=_obj_attr(obj, "author") or "",
+        creator=_obj_attr(obj, "creator") or "",
+        notes=notes,
+        created_at=_parse_dt(event.date.isoformat() if event.date else None),
+    )
+
+
+def list_threat_actor_profiles(status=None):
+    misp = _misp()
+    events = misp.search(tags=[config.TAG_THREAT_ACTOR_PROFILE], limit=500, pythonify=True)
+    if not events or isinstance(events, dict):
+        return []
+    result = [_tap_ns(e) for e in events]
+    if status:
+        result = [t for t in result if t.status == status]
+    result.sort(key=lambda t: t.tap_id)
+    return result
+
+
+def get_threat_actor_profile(uuid):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        return None
+    return _tap_ns(event)
+
+
+def create_threat_actor_profile(data):
+    data["creator"] = misp_session.current_user_email()
+    data.setdefault("status", "Draft")
+    # Text fields are filled interactively via the "complete profile" button;
+    # only victimology is recorded server-side (it becomes a note).
+    victimology = galaxy_enrichment(data.get("threat_actors") or [])["victimology"]
+    misp = _misp()
+    with _id_lock:
+        data["tap_id"] = _sequence_id(misp, config.TAG_THREAT_ACTOR_PROFILE, "TAP", data.get("tap_id"))
+        info = f"[zsazsa:threat-actor-profile] {data['tap_id']}: {(data.get('title') or '')[:80]}"
+        event = _make_event(info)
+        result = _add_event(misp, event, [config.TAG_THREAT_ACTOR_PROFILE], "create threat actor profile")
+    _check(misp.add_object(_event_ref(result), _tap_obj(data)), "add threat actor profile object")
+    uuid = _event_uuid(result)
+    if not uuid:
+        raise RuntimeError("create threat actor profile: missing UUID in MISP response")
+    # Add the selected threat actors (and other scope) as local galaxy tags.
+    _apply_scope_tags(misp, uuid, data, local=True)
+    _add_victimology_notes(uuid, victimology)
+    return uuid
+
+
+def update_threat_actor_profile(uuid, data):
+    misp = _misp()
+    event = misp.get_event(uuid, pythonify=True)
+    if isinstance(event, dict):
+        logger.warning("Threat actor profile event %s not found; recreating", uuid)
+        return create_threat_actor_profile(data)
+    old = _get_obj(event, "zsazsa-threat-actor-profile")
+    old_actors = _json_list(_obj_attr(old, "threat-actors")) if old else []
+    if old:
+        # Provenance and lifecycle are set elsewhere; carry them over on a plain edit.
+        data.setdefault("creator", _obj_attr(old, "creator") or "")
+        data.setdefault("status", _obj_attr(old, "status") or "Draft")
+        data.setdefault("published_at", _obj_attr(old, "published-at") or "")
+    # Enrich only from newly added actors so a manual edit is not overwritten on
+    # every save and victimology notes are not duplicated.
+    seen = {a.lower() for a in old_actors}
+    new_actors = [a for a in (data.get("threat_actors") or []) if a.lower() not in seen]
+    victimology = galaxy_enrichment(new_actors)["victimology"]
+    _sync_object_attributes(misp, event, "zsazsa-threat-actor-profile", _tap_obj(data), "threat actor profile")
+    info = f"[zsazsa:threat-actor-profile] {data.get('tap_id', '')}: {(data.get('title') or '')[:80]}"
+    _apply_scope_tags(misp, uuid, data, new_info=info, _event=event, local=True)
+    _add_victimology_notes(uuid, victimology)
+    return uuid
+
+
+def publish_threat_actor_profile(uuid):
+    tap = get_threat_actor_profile(uuid)
+    if tap is None:
+        raise RuntimeError("threat actor profile not found")
+    data = {
+        "tap_id": tap.tap_id, "title": tap.title, "summary": tap.summary,
+        "threat_actors": tap.threat_actors, "audience": tap.audience, "tlp": tap.tlp,
+        "linked_pir_uuid": tap.linked_pir_uuid, "source_reliability": tap.source_reliability,
+        "source_credibility": tap.source_credibility,
+        "attribution_rationale": tap.attribution_rationale,
+        "actor_types": tap.actor_types, "synonyms": tap.synonyms,
+        "capabilities": tap.capabilities, "mode_of_operation": tap.mode_of_operation,
+        "geographic_scope": tap.geographic_scope, "sectors": tap.sectors,
+        "mitre_attack_techniques": tap.mitre_attack_techniques, "threat_types": tap.threat_types,
+        "time_frame": tap.time_frame, "technology": tap.technology, "vendor": tap.vendor,
+        "external_references": tap.external_references,
+        "feedback_deadline": tap.feedback_deadline.isoformat() if tap.feedback_deadline else "",
+        "author": tap.author, "creator": tap.creator,
+        "status": "Published", "published_at": date.today().isoformat(),
+    }
+    update_threat_actor_profile(uuid, data)
+
+
+def delete_threat_actor_profile(uuid):
+    misp = _misp()
+    misp.delete_event(uuid)
 
 
 # ── Indicator-feed MISP servers (the data-collection sources) ────────────────

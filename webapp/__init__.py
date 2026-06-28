@@ -125,6 +125,7 @@ def create_app():
     from webapp.routes.rfi import bp as rfi_bp
     from webapp.routes.products import bp as products_bp
     from webapp.routes.indicator_feed import bp as indicator_feed_bp
+    from webapp.routes.threat_actor_profile import bp as threat_actor_profile_bp
     from webapp.routes.flash_intel import bp as flash_intel_bp
     from webapp.routes.community import bp as community_bp
     from webapp.routes.vea import bp as vea_bp
@@ -145,6 +146,7 @@ def create_app():
     app.register_blueprint(rfi_bp)
     app.register_blueprint(products_bp)
     app.register_blueprint(indicator_feed_bp)
+    app.register_blueprint(threat_actor_profile_bp)
     app.register_blueprint(flash_intel_bp)
     app.register_blueprint(vea_bp)
     app.register_blueprint(daily_briefing_bp)

@@ -348,44 +348,76 @@
       </div>
     </div>
 
-    <div class="card content-card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-layer-group me-2"></i>Saved feeds</span>
-        <span class="text-muted small">{{ feeds | length }}</span>
-      </div>
-      <div class="card-body p-0">
-        {% if feeds %}
-        <ul class="list-group list-group-flush">
-          {% for f in feeds %}
-          <li class="list-group-item">
-            <div class="d-flex justify-content-between align-items-start">
-              <a href="{{ url_for('indicator_feed.detail', id=f.id) }}" class="text-decoration-none text-truncate">
-                <span class="req-id-badge">{{ f.feed_id }}</span> {{ f.name }}
-              </a>
-              {% if feed and feed.id == f.id %}<i class="fas fa-circle-dot text-primary mt-1" title="Open"></i>{% endif %}
-            </div>
-            <div class="text-muted small mt-1">
-              <span class="tlp-badge tlp-{{ f.tlp | slug }}">TLP:{{ f.tlp | upper }}</span>
-              <span class="ms-1">{{ f.created_at.strftime('%d-%m-%Y') if f.created_at else '-' }}{% if f.creator %} · {{ f.creator }}{% endif %}</span>
-            </div>
-            {% if f.token %}
-            <div class="input-group input-group-sm mt-1">
-              <span class="input-group-text" title="Public feed URL (no login)"><i class="fas fa-link fa-xs"></i></span>
-              <input type="text" class="form-control public-url font-monospace" style="font-size:.68rem;" readonly
-                     value="{{ url_for('indicator_feed.public_feed', token=f.token, _external=True) }}">
-              <button type="button" class="btn btn-outline-secondary copy-url" title="Copy URL"><i class="fas fa-copy"></i></button>
-            </div>
-            {% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <div class="px-3 py-3 text-muted small"><em>No saved feeds yet.</em></div>
-        {% endif %}
-      </div>
-    </div>
   </div>
 </form>
+
+{# Saved feeds: full-width table under the query, like other product lists.
+   Collapsed once a search has been run so the results take focus. #}
+<div class="card content-card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <button class="btn btn-link p-0 text-decoration-none text-reset fw-semibold" type="button"
+            data-bs-toggle="collapse" data-bs-target="#saved-feeds-body">
+      <i class="fas fa-layer-group me-2"></i>Saved feeds
+      <span class="text-muted small fw-normal">({{ feeds | length }})</span>
+    </button>
+  </div>
+  <div class="collapse {% if not run %}show{% endif %}" id="saved-feeds-body">
+    <div class="card-body p-0">
+      {% if feeds %}
+      <table class="table table-hover zsazsa-table mb-0">
+        <thead>
+          <tr>
+            <th style="width:110px;">ID</th>
+            <th>Name</th>
+            <th>TLP</th>
+            <th>Created</th>
+            <th>Public URL</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in feeds %}
+          <tr>
+            <td>
+              <a href="{{ url_for('indicator_feed.detail', id=f.id) }}" class="text-decoration-none">
+                <span class="req-id-badge">{{ f.feed_id }}</span>
+              </a>
+            </td>
+            <td>{{ f.name }}</td>
+            <td><span class="tlp-badge tlp-{{ f.tlp | slug }}">TLP:{{ f.tlp | upper }}</span></td>
+            <td class="text-muted small" style="white-space:nowrap;">
+              {{ f.created_at.strftime('%d-%m-%Y') if f.created_at else '-' }}{% if f.creator %}<br>{{ f.creator }}{% endif %}
+            </td>
+            <td>
+              {% if f.token %}
+              <div class="input-group input-group-sm" style="min-width:14rem;">
+                <input type="text" class="form-control public-url font-monospace" style="font-size:.68rem;" readonly
+                       value="{{ url_for('indicator_feed.public_feed', token=f.token, _external=True) }}">
+                <button type="button" class="btn btn-outline-secondary copy-url" title="Copy URL"><i class="fas fa-copy"></i></button>
+              </div>
+              {% else %}<span class="text-muted small">-</span>{% endif %}
+            </td>
+            <td class="text-end">
+              <div class="d-inline-flex flex-nowrap gap-1 justify-content-end">
+                <a href="{{ url_for('indicator_feed.detail', id=f.id) }}" class="btn btn-xs btn-outline-secondary" title="View / edit">
+                  <i class="fas fa-pen"></i>
+                </a>
+                <form method="post" action="{{ url_for('indicator_feed.delete', id=f.id) }}" class="d-inline"
+                      onsubmit="return confirm('Delete {{ f.feed_id }}?')">
+                  <button class="btn btn-xs btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="px-3 py-3 text-muted small"><em>No saved feeds yet.</em></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 
 {% if run %}
 {% include "indicator_feed/_results.html" %}

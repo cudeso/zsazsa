@@ -15,7 +15,7 @@
 
 {% set stakeholders_section_active = request.blueprint in ('stakeholders', 'community') and request.endpoint != 'stakeholders.matrix' %}
 {% set requirements_section_active = (request.endpoint and request.endpoint.startswith('requirements.')) or request.blueprint == 'rfi' %}
-{% set products_section_active = request.blueprint in ('data_collection', 'daily_briefing', 'threat_landscape', 'flash_intel', 'vea', 'products', 'indicator_feed') %}
+{% set products_section_active = request.blueprint in ('data_collection', 'daily_briefing', 'threat_landscape', 'flash_intel', 'vea', 'products', 'indicator_feed', 'threat_actor_profile') %}
 {% set reporting_section_active = request.blueprint == 'pipeline' or request.endpoint in ('stats.index', 'logs.index', 'stakeholders.matrix') %}
 {% set settings_section_active = request.endpoint == 'config_page.index' or request.blueprint == 'collection_sources' %}
 
@@ -79,6 +79,7 @@
           <li><a href="{{ url_for('threat_landscape.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'threat_landscape' }}"><i class="fas fa-globe fa-fw"></i> Threat landscape</a></li>
           <li><a href="{{ url_for('flash_intel.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'flash_intel' }}"><i class="fas fa-bolt fa-fw"></i> Flash intel alert</a></li>
           <li><a href="{{ url_for('vea.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'vea' }}"><i class="fas fa-bug fa-fw"></i> Vuln advisories</a></li>
+          <li><a href="{{ url_for('threat_actor_profile.review') }}" class="dropdown-item {{ 'active' if request.blueprint == 'threat_actor_profile' }}"><i class="fas fa-user-secret fa-fw"></i> Threat actor profile</a></li>
           <li><a href="{{ url_for('indicator_feed.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'indicator_feed' }}"><i class="fas fa-satellite-dish fa-fw"></i> Indicator feed</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><a href="{{ url_for('products.index') }}" class="dropdown-item {{ 'active' if request.blueprint == 'products' }}"><i class="fas fa-cubes fa-fw"></i> All products</a></li>
@@ -221,6 +222,11 @@
       <li>
         <a href="{{ url_for('vea.review') }}" class="{{ 'active' if request.blueprint == 'vea' }}">
           <i class="fas fa-bug fa-fw"></i> Vuln advisories
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('threat_actor_profile.review') }}" class="{{ 'active' if request.blueprint == 'threat_actor_profile' }}">
+          <i class="fas fa-user-secret fa-fw"></i> Threat actor profile
         </a>
       </li>
       <li>

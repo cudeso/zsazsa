@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tap.tap_id }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ tap.tap_id }}: {{ tap.title }}{% endblock %}
+
+{% block misp_object_url %}{{ tap.misp_url }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('threat_actor_profile.review') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <div class="col-lg-8">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-file-lines me-2"></i>Summary</div>
+      <div class="card-body">
+        {% if tap.summary %}
+        <div class="report-md-body" data-md="{{ tap.summary | e }}"></div>
+        {% else %}<p class="text-muted mb-0"><em>No summary.</em></p>{% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user-secret me-2"></i>Threat actors</div>
+      <div class="card-body">
+        {% if tap.threat_actors %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for a in tap.threat_actors %}
+          <span class="badge chip-source">{{ a }}</span>
+          {% endfor %}
+        </div>
+        {% else %}<p class="text-muted mb-0"><em>None recorded.</em></p>{% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-id-card me-2"></i>Threat actor details</div>
+      <div class="card-body">
+        <dl class="row small mb-2">
+          {% if tap.actor_types %}
+          <dt class="col-sm-3">Type</dt>
+          <dd class="col-sm-9">{% for x in tap.actor_types %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>
+          {% endif %}
+          <dt class="col-sm-3">Synonyms</dt>
+          <dd class="col-sm-9">{{ tap.synonyms or '-' }}</dd>
+        </dl>
+        {% if tap.capabilities %}
+        <p class="small fw-semibold text-muted mb-1">Capabilities</p>
+        <div class="report-md-body small mb-2" data-md="{{ tap.capabilities | e }}"></div>
+        {% endif %}
+        {% if tap.mode_of_operation %}
+        <p class="small fw-semibold text-muted mb-1">Mode of operation</p>
+        <div class="report-md-body small mb-0" data-md="{{ tap.mode_of_operation | e }}"></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-fingerprint me-2"></i>Attribution</div>
+      <div class="card-body">
+        {% if tap.attribution_rationale %}
+        <div class="report-md-body small mb-0" data-md="{{ tap.attribution_rationale | e }}"></div>
+        {% else %}<p class="text-muted small mb-0"><em>No attribution rationale.</em></p>{% endif %}
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-crosshairs me-2"></i>Scope</div>
+      <div class="card-body">
+        {% if tap.geographic_scope or tap.sectors or tap.mitre_attack_techniques or tap.threat_types or tap.time_frame or tap.technology or tap.vendor %}
+        <dl class="row small mb-0">
+          {% if tap.geographic_scope %}<dt class="col-sm-3">Geographic</dt><dd class="col-sm-9">{% for x in tap.geographic_scope %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>{% endif %}
+          {% if tap.sectors %}<dt class="col-sm-3">Sectors</dt><dd class="col-sm-9">{% for x in tap.sectors %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>{% endif %}
+          {% if tap.mitre_attack_techniques %}<dt class="col-sm-3">MITRE ATT&amp;CK</dt><dd class="col-sm-9">{% for x in tap.mitre_attack_techniques %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>{% endif %}
+          {% if tap.threat_types %}<dt class="col-sm-3">Threat types</dt><dd class="col-sm-9">{% for x in tap.threat_types %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>{% endif %}
+          {% if tap.time_frame %}<dt class="col-sm-3">Time frame</dt><dd class="col-sm-9">{{ tap.time_frame }}</dd>{% endif %}
+          {% if tap.technology %}<dt class="col-sm-3">Technology</dt><dd class="col-sm-9">{% for x in tap.technology %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>{% endif %}
+          {% if tap.vendor %}<dt class="col-sm-3">Vendor</dt><dd class="col-sm-9">{% for x in tap.vendor %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</dd>{% endif %}
+        </dl>
+        {% else %}<p class="text-muted mb-0"><em>No scope defined.</em></p>{% endif %}
+      </div>
+    </div>
+
+    {% if tap.external_references %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-book me-2"></i>References</div>
+      <div class="card-body">
+        <ul class="small mb-0">
+          {% for r in tap.external_references %}
+          <li><a href="{{ r }}" target="_blank" rel="noopener">{{ r }}</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% include "threat_actor_profile/_notes.html" %}
+
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <strong>Metadata</strong>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                data-bs-toggle="modal" data-bs-target="#recipientsModal" title="Preview recipients">
+          <i class="fas fa-users me-1"></i> Recipients
+        </button>
+      </div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">ID</dt>
+          <dd class="col-7">{{ tap.tap_id }}</dd>
+          <dt class="col-5">State</dt>
+          <dd class="col-7">
+            {% if tap.status == 'Published' %}<span class="badge bg-success">Published</span>
+            {% else %}<span class="badge bg-secondary">Draft</span>{% endif %}
+          </dd>
+          <dt class="col-5">TLP</dt>
+          <dd class="col-7"><span class="tlp-badge tlp-{{ tap.tlp | slug }}">TLP:{{ tap.tlp | upper }}</span></dd>
+          <dt class="col-5">Audience</dt>
+          <dd class="col-7">{{ tap.audience or '-' }}</dd>
+          <dt class="col-5">Author</dt>
+          <dd class="col-7">{{ tap.author or '-' }}</dd>
+          <dt class="col-5">Linked PIR</dt>
+          <dd class="col-7">
+            {% if pir %}<a href="{{ url_for('requirements.pir_detail', id=pir.uuid) }}">{{ pir.pir_id }}</a>
+            {% else %}-{% endif %}
+          </dd>
+          <dt class="col-5">Created</dt>
+          <dd class="col-7">{{ tap.created_at.strftime('%Y-%m-%d') if tap.created_at else '-' }}</dd>
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ tap.creator or '-' }}</dd>
+          <dt class="col-5">Published</dt>
+          <dd class="col-7">{{ tap.published_at.strftime('%Y-%m-%d') if tap.published_at else '-' }}</dd>
+          {% if tap.feedback_deadline %}
+          <dt class="col-5">Feedback by</dt>
+          <dd class="col-7">{{ tap.feedback_deadline.strftime('%d-%m-%Y') }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+
+    <div class="card content-card mb-3">
+      <div class="card-header"><i class="fas fa-comment-dots me-2"></i>Feedback</div>
+      <div class="card-body">
+        {% if feedback %}
+        {% for f in feedback %}
+        <div class="border rounded p-2 mb-2 small">
+          <div class="text-muted mb-1">{{ f.name }}</div>
+          <div class="report-md-body" data-md="{{ f.content | e }}"></div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-2"><em>No feedback recorded yet.</em></p>
+        {% endif %}
+        <hr>
+        <form method="post" action="{{ url_for('threat_actor_profile.add_feedback', id=tap.uuid) }}">
+          <div class="mb-2">
+            <input type="text" name="author" class="form-control form-control-sm" placeholder="Your name (optional)">
+          </div>
+          <div class="mb-2">
+            <select name="rating" class="form-select form-select-sm">
+              <option value="">- rating -</option>
+              <option>Very useful</option>
+              <option>Useful</option>
+              <option>Somewhat useful</option>
+              <option>Not useful</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <textarea name="comment" class="form-control form-control-sm" rows="3" placeholder="Comments or suggestions…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-paper-plane me-1"></i> Submit feedback</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Source assessment</div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-7">Source reliability</dt>
+          <dd class="col-5">{{ tap.source_reliability or '-' }}</dd>
+          <dt class="col-7">Information credibility</dt>
+          <dd class="col-5">{{ tap.source_credibility or '-' }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-bolt me-2"></i>Actions</div>
+      <div class="card-body">
+        {% if tap.status != 'Published' %}
+        <form method="post" action="{{ url_for('threat_actor_profile.publish', id=tap.uuid) }}" class="mb-2">
+          <button class="btn btn-success w-100"><i class="fas fa-paper-plane me-1"></i> Publish</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('threat_actor_profile.notify', id=tap.uuid) }}"
+              class="mb-2" onsubmit="return confirm('Notify subscribed stakeholders?');">
+          <button class="btn btn-outline-secondary w-100"><i class="fas fa-bell me-1"></i> Notify subscribers</button>
+        </form>
+        <div class="d-flex gap-2">
+          {% if tap.status == 'Published' %}
+          <span class="flex-fill" title="Published profiles cannot be edited" style="cursor:not-allowed;">
+            <button class="btn btn-sm btn-outline-secondary w-100" disabled style="pointer-events:none;">
+              <i class="fas fa-pen me-1"></i> Edit
+            </button>
+          </span>
+          {% else %}
+          <a href="{{ url_for('threat_actor_profile.edit', id=tap.uuid) }}" class="btn btn-sm btn-outline-secondary flex-fill">
+            <i class="fas fa-pen me-1"></i> Edit
+          </a>
+          {% endif %}
+          {% if tap.status == 'Published' %}
+          <span class="flex-fill" title="Published profiles cannot be deleted" style="cursor:not-allowed;">
+            <button class="btn btn-sm btn-outline-danger w-100" disabled style="pointer-events:none;">
+              <i class="fas fa-trash me-1"></i> Delete
+            </button>
+          </span>
+          {% else %}
+          <form method="post" action="{{ url_for('threat_actor_profile.delete', id=tap.uuid) }}"
+                class="flex-fill" onsubmit="return confirm('Delete {{ tap.tap_id }}? This cannot be undone.');">
+            <button class="btn btn-sm btn-outline-danger w-100"><i class="fas fa-trash me-1"></i> Delete</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# Recipients preview #}
+<div class="modal fade" id="recipientsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users me-2"></i>Who gets this profile?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% with tlp_label = tap.tlp, audience_label = tap.audience %}
+        {% include "threat_actor_profile/_recipients.html" %}
+        {% endwith %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+  document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+    var raw = el.getAttribute('data-md') || '';
+    el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+  });
+</script>
+{% endblock %}

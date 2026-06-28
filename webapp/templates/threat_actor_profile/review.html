@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "_sort_header.html" import sort_th %}
+
+{% block title %}Threat actor profiles | zsazsa CTI{% endblock %}
+{% block page_title %}Threat actor profiles{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('threat_actor_profile.new') }}" class="btn btn-sm btn-primary">
+  <i class="fas fa-plus me-1"></i> New profile
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card content-card mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">State</label>
+        <select name="state" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All states</option>
+          {% for s in states %}
+          <option value="{{ s }}" {{ 'selected' if state_filter == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if state_filter %}
+      <div class="col-auto">
+        <a href="{{ url_for('threat_actor_profile.review') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+      {% endif %}
+      <div class="col-auto ms-auto text-muted small">{{ taps | length }} profile{{ 's' if taps|length != 1 }}</div>
+    </form>
+  </div>
+</div>
+
+<div class="card content-card">
+  <div class="card-body p-0">
+    {% if taps %}
+    <table class="table table-hover zsazsa-table mb-0">
+      <thead>
+        <tr>
+          {{ sort_th('ID', 'id', sort, dir, 'threat_actor_profile.review', state_filter, '110px') }}
+          {{ sort_th('Title', 'title', sort, dir, 'threat_actor_profile.review', state_filter) }}
+          <th>TLP</th>
+          {{ sort_th('State', 'state', sort, dir, 'threat_actor_profile.review', state_filter) }}
+          {{ sort_th('Published', 'date', sort, dir, 'threat_actor_profile.review', state_filter) }}
+          <th>Author</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in taps %}
+        <tr>
+          <td>
+            <a href="{{ url_for('threat_actor_profile.detail', id=t.uuid) }}" class="text-decoration-none">
+              <span class="req-id-badge">{{ t.tap_id }}</span>
+            </a>
+          </td>
+          <td>
+            {{ t.title or '(untitled)' }}
+            {% if t.threat_actors %}
+            <div class="mt-1">
+              {% for a in t.threat_actors %}
+              <span class="badge chip-source" style="font-size:.63rem;">{{ a }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td><span class="tlp-badge tlp-{{ t.tlp | slug }}">TLP:{{ t.tlp | upper }}</span></td>
+          <td>
+            {% if t.status == 'Published' %}<span class="badge bg-success">Published</span>
+            {% else %}<span class="badge bg-secondary">Draft</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap;">{{ t.published_at.strftime('%Y-%m-%d') if t.published_at else '-' }}</td>
+          <td>{{ t.author or '-' }}</td>
+          <td class="text-end">
+            <div class="d-inline-flex flex-nowrap align-items-center justify-content-end gap-2">
+              <span class="d-inline-flex flex-nowrap gap-1">
+                {% if t.status == 'Published' %}
+                <form method="post" action="{{ url_for('threat_actor_profile.notify', id=t.uuid) }}"
+                      class="d-inline" onsubmit="return confirm('Resend {{ t.tap_id }} to subscribed stakeholders?')">
+                  <button type="submit" class="btn btn-xs btn-outline-primary" title="Resend to recipients">
+                    <i class="fas fa-paper-plane"></i>
+                  </button>
+                </form>
+                {% else %}
+                <span class="btn btn-xs btn-outline-primary btn-ghost" aria-hidden="true"><i class="fas fa-paper-plane"></i></span>
+                {% endif %}
+              </span>
+              <span class="vr"></span>
+              <span class="d-inline-flex flex-nowrap gap-1">
+                {% if t.status == 'Published' %}
+                <span class="btn btn-xs btn-outline-secondary btn-ghost" aria-hidden="true"><i class="fas fa-pen"></i></span>
+                <span class="btn btn-xs btn-outline-danger btn-ghost" aria-hidden="true"><i class="fas fa-trash"></i></span>
+                {% else %}
+                <a href="{{ url_for('threat_actor_profile.edit', id=t.uuid) }}" class="btn btn-xs btn-outline-secondary" title="Edit">
+                  <i class="fas fa-pen"></i>
+                </a>
+                <form method="post" action="{{ url_for('threat_actor_profile.delete', id=t.uuid) }}"
+                      class="d-inline" onsubmit="return confirm('Delete {{ t.tap_id }}?')">
+                  <button class="btn btn-xs btn-outline-danger" title="Delete">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </span>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-4 text-center text-muted">
+      No threat actor profiles yet. <a href="{{ url_for('threat_actor_profile.new') }}">Create the first one</a>.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

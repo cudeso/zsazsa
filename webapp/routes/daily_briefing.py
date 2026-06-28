@@ -80,7 +80,7 @@ def _render_briefing_form(
         page_title_text=(f"Edit briefing {date or '(no date)'}" if is_edit else "Compose daily briefing"),
         browser_title=(f"Edit briefing {date or '(no date)'}" if is_edit else "Compose briefing"),
         form_action=form_action,
-        save_label=("Save" if is_edit else "Save draft"),
+        save_label=("Save changes" if is_edit else "Save draft"),
         cancel_url=cancel_url,
         cancel_label=("Cancel" if is_edit else "Back to triage"),
         story_title_exclusions=(getattr(config, "DAILY_BRIEFING_TITLE_EXCLUSIONS", []) or []),

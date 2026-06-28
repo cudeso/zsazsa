@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+{% from "_macros.html" import galaxy_multiselect, tag_input %}
+
+{% set is_edit = tap is not none %}
+{# Field values come from the submitted form on a validation re-render, otherwise
+   from the saved profile. `tap` itself stays the saved object (used for the notes
+   section, back link and MISP link, which need the real UUID). #}
+{% set src = form_values or tap %}
+{% set current_audiences = (src.audience or '').split(', ') if src and src.audience else [] %}
+
+{% block title %}{{ 'Edit ' + tap.tap_id if is_edit else 'New threat actor profile' }} | zsazsa CTI{% endblock %}
+{% block page_title %}{{ 'Edit ' + tap.tap_id if is_edit else 'New threat actor profile' }}{% endblock %}
+
+{% block misp_object_url %}{% if is_edit %}{{ tap.misp_url }}{% endif %}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('threat_actor_profile.detail', id=tap.uuid) if is_edit else url_for('threat_actor_profile.review') }}"
+   class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back {{ 'to profile' if is_edit else 'to list' }}
+</a>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="row g-4">
+
+  <div class="col-lg-8">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-file-lines me-2"></i>Summary</div>
+      <div class="card-body">
+        <label class="form-label">Narrative summary
+          <span class="text-muted small fw-normal">Markdown supported</span>
+        </label>
+        <textarea name="summary" class="form-control" rows="12"
+          placeholder="Describe the threat actor: who they are, motivation, targeting, TTPs, recent activity and your assessment.">{{ src.summary if src else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user-secret me-2"></i>Threat actors</div>
+      <div class="card-body">
+        <label class="form-label">MISP threat actor galaxy
+          <span class="text-muted fw-normal small">(select from the galaxy or type a custom one)</span>
+        </label>
+        {{ galaxy_multiselect("threat_actors", values=(src.threat_actors if src else []), items=threat_actor_items) }}
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="tap-enrich-btn" style="display:none;">
+          <i class="fas fa-wand-magic-sparkles me-1"></i> Complete profile with MISP galaxy data
+        </button>
+        <div id="tap-enrich-status" class="form-text"></div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-id-card me-2"></i>Threat actor details</div>
+      <div class="card-body">
+        {% if threat_actor_types %}
+        <div class="mb-3">
+          <label class="form-label">Threat actor type</label>
+          {% set selected_types = (src.actor_types if src and src.actor_types else []) %}
+          <div class="d-flex flex-wrap gap-2">
+            {% for tat in threat_actor_types %}
+            <label class="actor-type-pill{% if tat.name in selected_types %} selected{% endif %}" title="{{ tat.description }}">
+              <input type="checkbox" name="actor_types" value="{{ tat.name }}"
+                     {% if tat.name in selected_types %}checked{% endif %} style="display:none;">
+              {{ tat.name }}
+            </label>
+            {% endfor %}
+          </div>
+          <div class="form-text">Select one or more. Hover for description.</div>
+        </div>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Synonyms</label>
+          <input name="synonyms" class="form-control" placeholder="Other names for this actor"
+            value="{{ src.synonyms if src else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Capabilities</label>
+          <textarea name="capabilities" class="form-control" rows="3"
+            placeholder="Tooling, malware, techniques the actor is known to use.">{{ src.capabilities if src else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Mode of operation</label>
+          <textarea name="mode_of_operation" class="form-control" rows="3"
+            placeholder="How the actor typically operates.">{{ src.mode_of_operation if src else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-fingerprint me-2"></i>Attribution</div>
+      <div class="card-body">
+        <label class="form-label">Rationale</label>
+        <textarea name="attribution_rationale" class="form-control" rows="3"
+          placeholder="Basis for attribution: overlapping infrastructure, TTPs, tooling, victimology.">{{ src.attribution_rationale if src else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-crosshairs me-2"></i>Scope</div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <div class="col-12">
+            <label class="form-label">Geographic scope items
+              <span class="text-muted fw-normal small">(from MISP Country &amp; Target Information galaxies)</span>
+            </label>
+            {{ galaxy_multiselect("geographic_scope", values=(src.geographic_scope if src else []), items=geo_items) }}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Sector scope items
+              <span class="text-muted fw-normal small">(from MISP Sector galaxy)</span>
+            </label>
+            {{ galaxy_multiselect("sectors", values=(src.sectors if src else []), items=galaxy_sectors) }}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">MITRE ATT&amp;CK techniques
+              <span class="text-muted fw-normal small">(from MITRE ATT&amp;CK galaxy)</span>
+            </label>
+            {{ galaxy_multiselect("mitre_attack_techniques", values=(src.mitre_attack_techniques if src else []), items=galaxy_mitre_attack) }}
+          </div>
+
+          <div class="col-12">
+            <div class="scope-section">
+
+              <div class="scope-group">
+                <div class="scope-group-label"><i class="fas fa-skull-crossbones me-1"></i>Threat context</div>
+                <div class="row g-3">
+                  <div class="col-sm-6">
+                    <label class="form-label small mb-1">Threat types</label>
+                    {{ tag_input("threat_types", values=(src.threat_types if src else []),
+                        placeholder="Ransomware, APT, Espionage…") }}
+                  </div>
+                  <div class="col-sm-6">
+                    <label class="form-label small mb-1">Time frame</label>
+                    <input type="text" name="time_frame" class="form-control form-control-sm"
+                      value="{{ src.time_frame if src else '' }}" placeholder="Past 12 months, Current threats…">
+                  </div>
+                </div>
+              </div>
+
+              <div class="scope-group">
+                <div class="scope-group-label"><i class="fas fa-microchip me-1"></i>Technical assets</div>
+                <div class="row g-3">
+                  <div class="col-sm-6">
+                    <label class="form-label small mb-1">Technology</label>
+                    {{ tag_input("technology", values=(src.technology if src else []),
+                        placeholder="Fortinet, Windows, Apache…") }}
+                  </div>
+                  <div class="col-sm-6">
+                    <label class="form-label small mb-1">Vendor</label>
+                    {{ tag_input("vendor", values=(src.vendor if src else []),
+                        placeholder="Microsoft, Cisco, Palo Alto…") }}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-book me-2"></i>References &amp; feedback</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">External references</label>
+          <textarea name="external_references" class="form-control font-monospace" rows="4" style="font-size:.88rem;"
+            placeholder="https://vendor.example/advisory">{{ (src.external_references if src else []) | join('\n') }}</textarea>
+          <div class="form-text">One URL per line. Vendor advisory, blog post, report, etc.</div>
+        </div>
+        <div>
+          <label class="form-label">Feedback deadline</label>
+          <input type="date" name="feedback_deadline" class="form-control"
+            value="{{ src.feedback_deadline if src and src.feedback_deadline else '' }}">
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-user-secret me-2"></i>Profile</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required-label">Title</label>
+          <input name="title" class="form-control" required
+            placeholder="Short, recognisable profile title." value="{{ src.title if src else '' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label required-label">Audience</label>
+          <div class="d-flex flex-wrap gap-2 mt-1">
+            {% for a in audiences %}
+            <div class="form-check form-check-inline me-0">
+              <input class="form-check-input tap-audience" type="checkbox" name="audience" value="{{ a }}"
+                     id="aud-{{ loop.index }}" {{ 'checked' if a in current_audiences }}>
+              <label class="form-check-label small" for="aud-{{ loop.index }}">{{ a }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          <div id="tap-audience-warn" class="text-danger small mt-1" style="display:none;">
+            <i class="fas fa-triangle-exclamation me-1"></i>Select at least one audience.
+          </div>
+          <div class="form-text">Corresponds to the stakeholder <strong>role</strong>. Select all that apply.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">TLP</label>
+          <select name="tlp" class="form-select">
+            {% for t in tlp_levels %}
+            <option value="{{ t }}" {{ 'selected' if src and src.tlp == t else ('selected' if not src and t == 'amber') }}>TLP:{{ t | upper }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Linked PIR</label>
+          <select name="linked_pir_uuid" class="form-select">
+            <option value="">None</option>
+            {% for p in pirs %}
+            <option value="{{ p.uuid }}" {{ 'selected' if src and src.linked_pir_uuid == p.uuid }}>{{ p.pir_id }} - {{ p.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Source assessment</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Source reliability
+            <span class="text-muted small">(Admiralty A–F)</span>
+          </label>
+          <select name="source_reliability" class="form-select">
+            <option value="">-</option>
+            {% for r in reliabilities %}
+            <option value="{{ r }}" {{ 'selected' if src and src.source_reliability == r }}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Information credibility
+            <span class="text-muted small">(Admiralty 1–6)</span>
+          </label>
+          <select name="source_credibility" class="form-select">
+            <option value="">-</option>
+            {% for c in credibilities %}
+            <option value="{{ c }}" {{ 'selected' if src and src.source_credibility == c }}>{{ c }}</option>
+            {% endfor %}
+          </select>
+          <div id="credibility-justification" class="form-text mt-1" style="display:none;">
+            <i class="fas fa-circle-info fa-xs me-1 text-muted"></i><span id="credibility-justification-text"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-pen-nib me-2"></i>Author</div>
+      <div class="card-body">
+        <input name="author" class="form-control" placeholder="Analyst name" value="{{ src.author if src else '' }}">
+      </div>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button type="submit" class="btn btn-primary" id="tap-submit">
+        <i class="fas fa-floppy-disk me-1"></i>Save draft
+      </button>
+      {% if not is_edit %}
+      <button type="button" class="btn btn-outline-secondary" id="tap-recipients-btn"
+              data-bs-toggle="modal" data-bs-target="#recipientsModal">
+        <i class="fas fa-users me-1"></i> Recipients
+      </button>
+      {% endif %}
+      <a href="{{ url_for('threat_actor_profile.detail', id=tap.uuid) if is_edit else url_for('threat_actor_profile.review') }}"
+         class="btn btn-outline-secondary">Cancel</a>
+    </div>
+
+  </div>
+
+</form>
+
+{% if is_edit %}
+{# Notes are managed here on the edit page (the detail view shows them read-only).
+   Kept outside the main form: the add/delete controls post to their own endpoints. #}
+<div class="row g-4 mt-0">
+  <div class="col-lg-8">
+    {% with editable = True %}
+    {% include "threat_actor_profile/_notes.html" %}
+    {% endwith %}
+  </div>
+</div>
+{% endif %}
+
+{% if not is_edit %}
+{# Recipients preview (computed live from the current audience + TLP) #}
+<div class="modal fade" id="recipientsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users me-2"></i>Who would receive this profile?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="recipients-body">
+        <p class="text-muted mb-0">Loading…</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if is_edit %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+  document.querySelectorAll('.report-md-body[data-md]').forEach(function(el) {
+    var raw = el.getAttribute('data-md') || '';
+    el.innerHTML = raw.trim() ? DOMPurify.sanitize(marked.parse(raw)) : '';
+  });
+</script>
+{% endif %}
+<script>
+// Tag-input pills (threat types, technology, vendor), shared idiom with the PIR form.
+function tiRender(field) {
+  var display = document.getElementById('ti-display-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!display || !store) return;
+  display.innerHTML = '';
+  store.querySelectorAll('input[type="hidden"]').forEach(function(inp, i) {
+    var pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    var txt = document.createTextNode(inp.value);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tag-pill-remove';
+    btn.textContent = '×';
+    btn.title = 'Remove';
+    btn.setAttribute('data-remove', i);
+    btn.onclick = function() { inp.remove(); tiRender(field); };
+    pill.appendChild(txt);
+    pill.appendChild(btn);
+    display.appendChild(pill);
+  });
+}
+function tiAdd(field) {
+  var text = document.getElementById('ti-text-' + field);
+  var store = document.getElementById('ti-store-' + field);
+  if (!text || !store) return;
+  var val = text.value.trim();
+  if (!val) return;
+  var existing = Array.from(store.querySelectorAll('input[type="hidden"]')).map(function(i){ return i.value; });
+  if (!existing.includes(val)) {
+    var h = document.createElement('input');
+    h.type = 'hidden';
+    h.name = field;
+    h.value = val;
+    store.appendChild(h);
+    tiRender(field);
+  }
+  text.value = '';
+  text.focus();
+}
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-ti-field]').forEach(function(w) {
+    var f = w.dataset.tiField;
+    tiRender(f);
+    var t = document.getElementById('ti-text-' + f);
+    if (t) t.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); tiAdd(f); }
+    });
+  });
+});
+// Threat actor type pills: mirror the checked state onto the pill styling.
+document.querySelectorAll('.actor-type-pill').forEach(function(pill) {
+  var cb = pill.querySelector('input[type="checkbox"]');
+  if (!cb) return;
+  cb.addEventListener('change', function() { pill.classList.toggle('selected', cb.checked); });
+});
+
+// "Complete profile with MISP galaxy data": appears once a galaxy actor is
+// selected; fills the details/references fields from the galaxy before saving.
+(function() {
+  var btn = document.getElementById('tap-enrich-btn');
+  var status = document.getElementById('tap-enrich-status');
+  if (!btn) return;
+  var token = document.querySelector('meta[name="csrf-token"]').content;
+
+  function selectedActors() {
+    return Array.from(document.querySelectorAll('input[name="threat_actors"]:checked')).map(function(c){ return c.value; });
+  }
+  function refresh() { btn.style.display = selectedActors().length ? '' : 'none'; }
+  document.addEventListener('change', function(e) {
+    if (e.target && e.target.name === 'threat_actors') refresh();
+  });
+  refresh();
+
+  function appendText(el, text, sep) {
+    if (!el || !text) return;
+    var cur = el.value.trim();
+    if (cur.indexOf(text) !== -1) return;
+    el.value = cur ? cur + sep + text : text;
+  }
+
+  btn.addEventListener('click', function() {
+    var actors = selectedActors();
+    if (!actors.length) return;
+    btn.disabled = true;
+    status.textContent = 'Fetching galaxy data…';
+    var fd = new FormData();
+    actors.forEach(function(a){ fd.append('threat_actors', a); });
+    fetch('{{ url_for("threat_actor_profile.galaxy_enrich") }}', {
+      method: 'POST', headers: { 'X-CSRF-Token': token }, body: fd
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      appendText(document.querySelector('[name="capabilities"]'), d.capabilities, '\n');
+      appendText(document.querySelector('[name="mode_of_operation"]'), d.mode_of_operation, '\n');
+      appendText(document.querySelector('[name="synonyms"]'), d.synonyms, ', ');
+      var refs = document.querySelector('[name="external_references"]');
+      (d.refs || []).forEach(function(u) { appendText(refs, u, '\n'); });
+      status.textContent = 'Filled from MISP galaxy. Victimology is added as a note on save.';
+      btn.disabled = false;
+    })
+    .catch(function() { status.textContent = 'Could not fetch galaxy data.'; btn.disabled = false; });
+  });
+})();
+</script>
+<script>
+(function() {
+  var form = document.querySelector('form');
+  var warn = document.getElementById('tap-audience-warn');
+
+  function audienceChecked() {
+    return document.querySelectorAll('.tap-audience:checked').length > 0;
+  }
+
+  // Audience is required: block submit and flag it when none is selected.
+  form.addEventListener('submit', function(e) {
+    if (!audienceChecked()) {
+      e.preventDefault();
+      warn.style.display = '';
+      warn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+  document.querySelectorAll('.tap-audience').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+      if (audienceChecked()) warn.style.display = 'none';
+    });
+  });
+
+  // Live recipients preview based on the currently selected audience + TLP.
+  // The button only exists on the new-profile form (hidden on edit, like FIA).
+  var recipientsBtn = document.getElementById('tap-recipients-btn');
+  if (recipientsBtn) {
+    var token = document.querySelector('meta[name="csrf-token"]').content;
+    recipientsBtn.addEventListener('click', function() {
+      var body = document.getElementById('recipients-body');
+      body.innerHTML = '<p class="text-muted mb-0">Loading…</p>';
+      var fd = new FormData();
+      fd.append('tlp', form.querySelector('[name="tlp"]').value);
+      document.querySelectorAll('.tap-audience:checked').forEach(function(cb) {
+        fd.append('audience', cb.value);
+      });
+      fetch('{{ url_for("threat_actor_profile.recipients_preview") }}', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': token },
+        body: fd
+      })
+      .then(function(r) { return r.text(); })
+      .then(function(html) { body.innerHTML = html; })
+      .catch(function() { body.innerHTML = '<p class="text-danger mb-0">Could not load recipients.</p>'; });
+    });
+  }
+})();
+</script>
+{% endblock %}

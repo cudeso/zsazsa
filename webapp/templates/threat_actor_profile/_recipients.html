@@ -1,0 +1,46 @@
+{# Recipients preview body. Expects `recipients` (from recipient_preview),
+   plus `tlp_label` and `audience_label` for the heading. Rendered both inside
+   the detail modal and on demand by the form's live preview endpoint. #}
+<p class="text-muted small mb-3">
+  Delivery eligibility based on subscription to <strong>Threat actor profile</strong>, TLP clearance and audience role.
+  TLP: <strong>{{ tlp_label | upper }}</strong> &middot; Audience: <strong>{{ audience_label or '(none)' }}</strong>
+</p>
+{% set green_recipients = recipients | selectattr("status", "eq", "green") | list %}
+{% set yellow_recipients = recipients | selectattr("status", "eq", "yellow") | list %}
+{% set grey_recipients = recipients | selectattr("status", "eq", "grey") | list %}
+{% if green_recipients %}
+<h6 class="mb-2"><i class="fas fa-circle-check text-success me-1"></i>Will receive <span class="badge bg-success rounded-pill">{{ green_recipients | length }}</span></h6>
+<div class="d-flex flex-wrap gap-2 mb-4">
+  {% for r in green_recipients %}
+  <span class="badge rounded-pill delivery-ok px-3 py-2" style="font-size:.82rem;" title="{{ r.reason }}">
+    {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+  </span>
+  {% endfor %}
+</div>
+{% endif %}
+{% if yellow_recipients %}
+<h6 class="mb-2"><i class="fas fa-circle-exclamation text-warning me-1"></i>Subscribed but blocked <span class="badge bg-warning text-dark rounded-pill">{{ yellow_recipients | length }}</span></h6>
+<ul class="list-unstyled mb-4">
+  {% for r in yellow_recipients %}
+  <li class="d-flex align-items-center gap-2 mb-2">
+    <span class="badge rounded-pill delivery-blocked px-3 py-2 flex-shrink-0" style="font-size:.82rem;">
+      {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+    </span>
+    <span class="text-muted small">{{ r.reason }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if grey_recipients %}
+<h6 class="mb-2"><i class="fas fa-circle text-secondary me-1"></i>Not subscribed <span class="badge bg-secondary rounded-pill">{{ grey_recipients | length }}</span></h6>
+<div class="d-flex flex-wrap gap-2 mb-2">
+  {% for r in grey_recipients %}
+  <span class="badge rounded-pill delivery-none px-3 py-2" style="font-size:.82rem;" title="{{ r.reason }}">
+    {{ r.name }}{% if r.role %} <span style="opacity:.65;font-size:.75em;">({{ r.role }})</span>{% endif %}
+  </span>
+  {% endfor %}
+</div>
+{% endif %}
+{% if not recipients %}
+<p class="text-muted mb-0">No stakeholders configured.</p>
+{% endif %}

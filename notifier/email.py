@@ -152,6 +152,13 @@ def send_vea_notification(vea, markdown: str, channel_ids: list[str] | None = No
     return send_email(_recipients(channel_ids), subject, markdown, f"VEA {vea_id}")
 
 
+def send_threat_actor_profile_notification(tap, markdown: str, channel_ids: list[str] | None = None) -> bool:
+    tap_id = getattr(tap, "tap_id", "")
+    title = getattr(tap, "title", "")
+    subject = f"[CTI] {tap_id}: {title}" if title else f"[CTI] {tap_id}"
+    return send_email(_recipients(channel_ids), subject, markdown, f"threat actor profile {tap_id}")
+
+
 def send_flash_intel_alert(fia_id: str, content: str, channel_ids: list[str] | None = None) -> bool:
     subject = f"[CTI] {fia_id}: Flash Intel Alert"
     return send_email(_recipients(channel_ids), subject, content, fia_id)

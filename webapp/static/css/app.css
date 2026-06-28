@@ -1118,6 +1118,13 @@ body {
   line-height: 1.6;
 }
 
+/* Placeholder that keeps an action button's footprint while hiding it, so the
+   icons in a table's actions column line up across rows. */
+.btn-ghost {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .btn-primary {
   background: var(--accent-blue);
   border-color: var(--accent-blue);

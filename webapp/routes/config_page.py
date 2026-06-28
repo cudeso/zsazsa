@@ -428,6 +428,8 @@ TAG_FLASH_INTEL = {values['TAG_FLASH_INTEL']!r}
 TAG_VEA         = {values['TAG_VEA']!r}
 TAG_BRIEFING    = {values['TAG_BRIEFING']!r}
 TAG_TLR         = {values['TAG_TLR']!r}
+TAG_INDICATOR_FEED = 'zsazsa:ctiproduct="indicator-feed"'
+TAG_THREAT_ACTOR_PROFILE = 'zsazsa:ctiproduct="threat-actor-profile"'
 TAG_COLLECTION_FOLLOWUP = {values['TAG_COLLECTION_FOLLOWUP']!r}
 
 # Data collection tag display settings
