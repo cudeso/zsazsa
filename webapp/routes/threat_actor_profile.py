@@ -187,6 +187,9 @@ def notify(id):
     tap = misp_store.get_threat_actor_profile(id)
     if tap is None:
         return "Threat actor profile not found", 404
+    if tap.status != "Published":
+        flash("Publish the profile before notifying recipients.", "warning")
+        return redirect(url_for("threat_actor_profile.detail", id=id))
     # Deliver to the green set: subscribed, TLP cleared, audience match.
     green = {r["uuid"] for r in misp_store.recipient_preview(PRODUCT_NAME, tap.tlp, tap.audience)
              if r["status"] == "green" and r.get("uuid")}

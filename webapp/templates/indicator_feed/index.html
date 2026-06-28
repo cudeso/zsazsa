@@ -326,14 +326,25 @@
           <i class="fas fa-users me-1"></i> Recipients
         </button>
       </div>
-      <div class="card-body small">
-        <p class="mb-1"><strong>Feed:</strong> {{ feed.feed_id }}</p>
-        <p class="mb-1"><strong>TLP:</strong> <span class="tlp-badge tlp-{{ feed.tlp | slug }}">TLP:{{ feed.tlp | upper }}</span></p>
-        <p class="mb-1"><strong>Audience:</strong> {{ feed.audience or '-' }}</p>
-        <p class="mb-1"><strong>Author:</strong> {{ feed.author or '-' }}</p>
-        <p class="mb-1"><strong>Created:</strong> {{ feed.created_at.strftime('%Y-%m-%d') if feed.created_at else '-' }}</p>
-        <p class="mb-1"><strong>Created by:</strong> {{ feed.creator or '-' }}</p>
-        {% if feed.feedback_by %}<p class="mb-0"><strong>Feedback by:</strong> {{ feed.feedback_by.strftime('%d-%m-%Y') }}</p>{% endif %}
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">Feed</dt>
+          <dd class="col-7">{{ feed.feed_id }}</dd>
+          <dt class="col-5">TLP</dt>
+          <dd class="col-7"><span class="tlp-badge tlp-{{ feed.tlp | slug }}">TLP:{{ feed.tlp | upper }}</span></dd>
+          <dt class="col-5">Audience</dt>
+          <dd class="col-7">{{ feed.audience or '-' }}</dd>
+          <dt class="col-5">Author</dt>
+          <dd class="col-7">{{ feed.author or '-' }}</dd>
+          <dt class="col-5">Created</dt>
+          <dd class="col-7">{{ feed.created_at.strftime('%Y-%m-%d') if feed.created_at else '-' }}</dd>
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ feed.creator or '-' }}</dd>
+          {% if feed.feedback_by %}
+          <dt class="col-5">Feedback by</dt>
+          <dd class="col-7">{{ feed.feedback_by.strftime('%d-%m-%Y') }}</dd>
+          {% endif %}
+        </dl>
       </div>
     </div>
     {% endif %}

@@ -132,36 +132,46 @@
           <i class="fas fa-users me-1"></i> Recipients
         </button>
       </div>
-      <div class="card-body small">
-        <p class="mb-1"><strong>Date:</strong> {{ briefing.date or '-' }}</p>
-        {% if briefing.created_at %}
-        <p class="mb-1"><strong>Saved:</strong> {{ briefing.created_at.strftime('%d %B %Y, %H:%M') }} UTC</p>
-        {% endif %}
-        {% if briefing.title %}<p class="mb-1"><strong>Title:</strong> {{ briefing.title }}</p>{% endif %}
-        <p class="mb-1"><strong>Author:</strong> {{ briefing.author or '-' }}</p>
-        <p class="mb-1"><strong>Created by:</strong> {{ briefing.creator or '-' }}</p>
-        {% if briefing.approved_by %}
-        <p class="mb-1"><strong>Approved by:</strong> {{ briefing.approved_by }}</p>
-        {% endif %}
-        <p class="mb-1"><strong>TLP:</strong> <span class="tlp-badge tlp-{{ briefing.tlp | slug }}">TLP:{{ briefing.tlp | upper }}</span></p>
-        <p class="mb-1"><strong>Stories:</strong> {{ briefing.stories | length }}</p>
-        <p class="mb-1">
-          <strong>State:</strong>
-          {% if briefing.review_state == 'published' %}<span class="badge bg-success">published</span>
-          {% else %}<span class="badge bg-secondary">draft</span>{% endif %}
-        </p>
-        {% if notify_status %}
-        <p class="mb-1">
-          <strong>Last notification:</strong>
-          <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
-          <span class="text-muted">{{ notify_status.timestamp }}</span>
-        </p>
-        {% if notify_status.details %}
-        <p class="mb-1 text-muted" style="font-size:.78rem;">{{ notify_status.details }}</p>
-        {% endif %}
-        {% endif %}
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">Date</dt>
+          <dd class="col-7">{{ briefing.date or '-' }}</dd>
+          {% if briefing.created_at %}
+          <dt class="col-5">Saved</dt>
+          <dd class="col-7">{{ briefing.created_at.strftime('%d %B %Y, %H:%M') }} UTC</dd>
+          {% endif %}
+          {% if briefing.title %}
+          <dt class="col-5">Title</dt>
+          <dd class="col-7">{{ briefing.title }}</dd>
+          {% endif %}
+          <dt class="col-5">Author</dt>
+          <dd class="col-7">{{ briefing.author or '-' }}</dd>
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ briefing.creator or '-' }}</dd>
+          {% if briefing.approved_by %}
+          <dt class="col-5">Approved by</dt>
+          <dd class="col-7">{{ briefing.approved_by }}</dd>
+          {% endif %}
+          <dt class="col-5">TLP</dt>
+          <dd class="col-7"><span class="tlp-badge tlp-{{ briefing.tlp | slug }}">TLP:{{ briefing.tlp | upper }}</span></dd>
+          <dt class="col-5">Stories</dt>
+          <dd class="col-7">{{ briefing.stories | length }}</dd>
+          <dt class="col-5">State</dt>
+          <dd class="col-7">
+            {% if briefing.review_state == 'published' %}<span class="badge bg-success">published</span>
+            {% else %}<span class="badge bg-secondary">draft</span>{% endif %}
+          </dd>
+          {% if notify_status %}
+          <dt class="col-5">Last notification</dt>
+          <dd class="col-7">
+            <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
+            <span class="text-muted">{{ notify_status.timestamp }}</span>
+            {% if notify_status.details %}<div class="text-muted" style="font-size:.78rem;">{{ notify_status.details }}</div>{% endif %}
+          </dd>
+          {% endif %}
+        </dl>
         {% if briefing.history_url %}
-        <p class="mb-0 mt-2">
+        <p class="mb-0 mt-2 small">
           <a href="{{ briefing.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
             <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
           </a>

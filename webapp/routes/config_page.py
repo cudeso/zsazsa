@@ -14,6 +14,7 @@ import requests
 
 import config as _config
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
+from markupsafe import escape
 from core import flowintel_client
 from webapp import audit, misp_session, misp_store, newsletter_parsers
 from webapp.rate_limit import rate_limited
@@ -850,7 +851,8 @@ def _build_imap_source(raw: dict, position: int, taken_ids: set) -> dict:
         raise ValueError("Each collection source needs a name")
     parser = (raw.get("parser") or "").strip()
     if parser not in newsletter_parsers.available_sources():
-        raise ValueError(f"Unknown newsletter parser {parser!r}")
+        # Escape the echoed value: it is reflected back in the JSON error response.
+        raise ValueError(f"Unknown newsletter parser '{escape(parser)}'")
     mode = (raw.get("mode") or "auto").strip().lower()
     if mode not in ("auto", "manual"):
         mode = "auto"

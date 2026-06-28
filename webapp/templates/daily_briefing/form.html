@@ -4,6 +4,12 @@
 {% block title %}{{ browser_title }} | zsazsa CTI{% endblock %}
 {% block page_title %}{{ page_title_text }}{% endblock %}
 
+{% block topbar_actions %}
+<a href="{{ url_for('daily_briefing.list_briefings') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
+
 {% block content %}
 <form method="post" action="{{ form_action }}" id="compose-form">
 

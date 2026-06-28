@@ -167,38 +167,47 @@
           <i class="fas fa-users me-1"></i> Recipients
         </button>
       </div>
-      <div class="card-body small">
-        <p class="mb-1"><strong>VEA:</strong> {{ vea.vea_id }}</p>
-        {% if vea.cve_id %}<p class="mb-1"><strong>CVE:</strong> <code>{{ vea.cve_id }}</code></p>{% endif %}
-        <p class="mb-1"><strong>Author:</strong> {{ vea.author or '-' }}</p>
-        <p class="mb-1"><strong>Created:</strong> {{ vea.created_at.strftime('%d-%m-%Y') if vea.created_at else '-' }}</p>
-        <p class="mb-1"><strong>Created by:</strong> {{ vea.creator or '-' }}</p>
-        {% if vea.approved_by %}
-        <p class="mb-1"><strong>Approved by:</strong> {{ vea.approved_by }}</p>
-        {% endif %}
-        {% if notify_status %}
-        <p class="mb-1">
-          <strong>Last notification:</strong>
-          <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
-          <span class="text-muted">{{ notify_status.timestamp }}</span>
-        </p>
-        {% if notify_status.details %}
-        <p class="mb-1 text-muted" style="font-size:.78rem;">{{ notify_status.details }}</p>
-        {% endif %}
-        {% endif %}
-        {% if vea.linked_pir_uuid %}
-        <p class="mb-1"><strong>Linked PIR:</strong>
-          <a href="{{ url_for('requirements.pir_detail', id=vea.linked_pir_uuid) }}">
-            {% if linked_pir %}{{ linked_pir.pir_id }}{% if linked_pir.question %}: {{ linked_pir.question }}{% endif %}{% else %}view{% endif %}
-          </a>
-        </p>
-        {% endif %}
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">VEA</dt>
+          <dd class="col-7">{{ vea.vea_id }}</dd>
+          {% if vea.cve_id %}
+          <dt class="col-5">CVE</dt>
+          <dd class="col-7"><code>{{ vea.cve_id }}</code></dd>
+          {% endif %}
+          <dt class="col-5">Author</dt>
+          <dd class="col-7">{{ vea.author or '-' }}</dd>
+          <dt class="col-5">Created</dt>
+          <dd class="col-7">{{ vea.created_at.strftime('%d-%m-%Y') if vea.created_at else '-' }}</dd>
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ vea.creator or '-' }}</dd>
+          {% if vea.approved_by %}
+          <dt class="col-5">Approved by</dt>
+          <dd class="col-7">{{ vea.approved_by }}</dd>
+          {% endif %}
+          {% if notify_status %}
+          <dt class="col-5">Last notification</dt>
+          <dd class="col-7">
+            <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
+            <span class="text-muted">{{ notify_status.timestamp }}</span>
+            {% if notify_status.details %}<div class="text-muted" style="font-size:.78rem;">{{ notify_status.details }}</div>{% endif %}
+          </dd>
+          {% endif %}
+          {% if vea.linked_pir_uuid %}
+          <dt class="col-5">Linked PIR</dt>
+          <dd class="col-7">
+            <a href="{{ url_for('requirements.pir_detail', id=vea.linked_pir_uuid) }}">
+              {% if linked_pir %}{{ linked_pir.pir_id }}{% if linked_pir.question %}: {{ linked_pir.question }}{% endif %}{% else %}view{% endif %}
+            </a>
+          </dd>
+          {% endif %}
+        </dl>
         {% if vea.rejection_reason %}
         <hr>
-        <p class="mb-0 text-danger"><strong>Rejection reason:</strong><br>{{ vea.rejection_reason }}</p>
+        <p class="mb-0 small text-danger"><strong>Rejection reason:</strong><br>{{ vea.rejection_reason }}</p>
         {% endif %}
         {% if vea.history_url %}
-        <p class="mb-0 mt-2">
+        <p class="mb-0 mt-2 small">
           <a href="{{ vea.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
             <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
           </a>

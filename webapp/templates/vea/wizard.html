@@ -3,6 +3,11 @@
 {% set title_text = ('Edit ' + vea.vea_id) if is_edit else 'New vulnerability advisory' %}
 {% block title %}{{ title_text }} | zsazsa CTI{% endblock %}
 {% block page_title %}{{ title_text }}{% endblock %}
+{% block topbar_actions %}
+<a href="{{ url_for('vea.review') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
 {% block page_subtitle %}
 {% if not is_edit and source_events %}
 <p class="text-muted mb-0" style="font-size:.82rem;margin-top:2px;">

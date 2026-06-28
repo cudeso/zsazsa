@@ -5,6 +5,12 @@
 {% block title %}{{ title_text }} | zsazsa CTI{% endblock %}
 {% block page_title %}{{ title_text }}{% endblock %}
 
+{% block topbar_actions %}
+<a href="{{ url_for('flash_intel.review') }}" class="btn btn-sm btn-light border shadow-sm">
+  <i class="fas fa-arrow-left me-1"></i> Back to list
+</a>
+{% endblock %}
+
 {% macro lines(items) %}{{ (items or []) | join('\n') }}{% endmacro %}
 
 {% block content %}

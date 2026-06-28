@@ -124,34 +124,41 @@
           <i class="fas fa-users me-1"></i> Recipients
         </button>
       </div>
-      <div class="card-body small">
-        <p class="mb-1"><strong>FIA:</strong> {{ fia.fia_id }}</p>
-        <p class="mb-1"><strong>Audience:</strong> {{ fia.audience or '-' }}</p>
-        <p class="mb-1"><strong>Author:</strong> {{ fia.author or '-' }}</p>
-        <p class="mb-1"><strong>Created:</strong> {{ fia.created_at.strftime('%Y-%m-%d %H:%M UTC') if fia.created_at else '-' }}</p>
-        <p class="mb-1"><strong>Created by:</strong> {{ fia.creator or '-' }}</p>
-        {% if fia.approved_by %}
-        <p class="mb-1"><strong>Approved by:</strong> {{ fia.approved_by }}</p>
-        {% endif %}
-        {% if notify_status %}
-        <p class="mb-1">
-          <strong>Last notification:</strong>
-          <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
-          <span class="text-muted">{{ notify_status.timestamp }}</span>
-        </p>
-        {% if notify_status.details %}
-        <p class="mb-1 text-muted" style="font-size:.78rem;">{{ notify_status.details }}</p>
-        {% endif %}
-        {% endif %}
-        {% if fia.feedback_deadline %}
-        <p class="mb-1"><strong>Feedback by:</strong> {{ fia.feedback_deadline.strftime('%d-%m-%Y') }}</p>
-        {% endif %}
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5">FIA</dt>
+          <dd class="col-7">{{ fia.fia_id }}</dd>
+          <dt class="col-5">Audience</dt>
+          <dd class="col-7">{{ fia.audience or '-' }}</dd>
+          <dt class="col-5">Author</dt>
+          <dd class="col-7">{{ fia.author or '-' }}</dd>
+          <dt class="col-5">Created</dt>
+          <dd class="col-7">{{ fia.created_at.strftime('%Y-%m-%d %H:%M UTC') if fia.created_at else '-' }}</dd>
+          <dt class="col-5">Created by</dt>
+          <dd class="col-7">{{ fia.creator or '-' }}</dd>
+          {% if fia.approved_by %}
+          <dt class="col-5">Approved by</dt>
+          <dd class="col-7">{{ fia.approved_by }}</dd>
+          {% endif %}
+          {% if notify_status %}
+          <dt class="col-5">Last notification</dt>
+          <dd class="col-7">
+            <span class="badge bg-{{ notify_status.tone }}">{{ notify_status.label }}</span>
+            <span class="text-muted">{{ notify_status.timestamp }}</span>
+            {% if notify_status.details %}<div class="text-muted" style="font-size:.78rem;">{{ notify_status.details }}</div>{% endif %}
+          </dd>
+          {% endif %}
+          {% if fia.feedback_deadline %}
+          <dt class="col-5">Feedback by</dt>
+          <dd class="col-7">{{ fia.feedback_deadline.strftime('%d-%m-%Y') }}</dd>
+          {% endif %}
+        </dl>
         {% if fia.rejection_reason %}
         <hr>
-        <p class="mb-0 text-danger"><strong>Rejection reason:</strong><br>{{ fia.rejection_reason }}</p>
+        <p class="mb-0 small text-danger"><strong>Rejection reason:</strong><br>{{ fia.rejection_reason }}</p>
         {% endif %}
         {% if fia.history_url %}
-        <p class="mb-0 mt-2">
+        <p class="mb-0 mt-2 small">
           <a href="{{ fia.history_url }}" target="_blank" rel="noopener" class="text-decoration-none">
             <i class="fas fa-clock-rotate-left me-1"></i>MISP event history
           </a>
