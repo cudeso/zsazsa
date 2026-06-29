@@ -28,15 +28,15 @@ The **dashboard** gives a live program snapshot. It shows active PIRs and GIRs, 
 
 **Stakeholder management** stores who consumes CTI output, with role, organisation, contact details, TLP clearance, per-product subscription modes, and notification channel preferences. Each stakeholder can be assigned one or more named notification channels (configured under Settings), so products are pushed to the channels that stakeholder is monitored on. The detail view also shows what the stakeholder owns and what products are linked to their requirements.
 
-**Requirement management** supports both PIRs and GIRs with full lifecycle editing. Records include decision context, priority, status, scope, delivery settings and owner fields. Scope fields are synchronised with focus points, and galaxy-backed categories can be synced directly from MISP cluster values.
+**Requirement management** supports both PIRs and GIRs with full lifecycle editing. Records include decision context, priority, status, scope, delivery settings and owner fields. Scope fields are synchronised with focus points, and galaxy-backed categories can be synced directly from MISP cluster values. PIRs, GIRs and RFIs share the same triage flow, handled inline on the list or detail page. A submitted requirement is first acknowledged, then approved, deferred, rejected or merged, with a short checklist and the decision reason recorded as you go.
 
 Focus points are first-class data. They can be added, removed, synchronised and previewed against recent scraper events, while organisation-wide AI focus points are configured centrally in Settings under the Products tab.
 
-**RFI workflow** is implemented end to end, from intake to closure. RFIs include SLA-aware due dates, owner assignment, links to PIR or GIR, response capture and feedback tracking.
+**RFI workflow** is implemented end to end, from intake to closure. RFIs include SLA-aware due dates, owner assignment, links to PIR or GIR, response capture with an estimative-language confidence level, file attachments, analyst notes, and feedback tracking. They can be exported as Markdown from the list.
 
 **Data collection** pages provide a local cached view of events from the scraper MISP and optional additional MISP servers. Analysts can browse events and reports, view details, trigger cache refresh, and generate an LLM summary report directly back into MISP. Events can be flagged for follow-up. Manual collection entries can be created directly from the UI for intelligence gathered from sources that are not auto-collected (newsletters, partner portals and similar). Each manual entry supports a Markdown description with live preview, scope fields (geography, sectors, threat actors, threat types), external references, file attachments, and direct links to create a Flash Intel Alert or VEA from that entry as a source event.
 
-**Product** pages provide a searchable catalogue of published outputs tagged as CTI products. Analysts can filter by product type and linked PIR, inspect event reports and store feedback as report entries.
+**Product** pages provide a searchable catalogue of published outputs tagged as CTI products. Analysts can filter by product type and linked PIR, inspect event reports and store feedback as report entries. Each feedback entry records who gave it, the rating, and when. The flash intel, vulnerability advisory and threat actor profile lists also let you preview a product inline and open a feedback dialog straight from the row.
 
 **Flash Intel Alert** supports manual drafting, review queue handling, approval and publishing. Drafts can be seeded from one or more source events. Source event accordions in the wizard show reports with rendered Markdown, attributes with one-click append to the observed facts table, and object attributes. Observed facts and exploitation indicators added via the source-event buttons are formatted as Markdown tables. Recommended immediate and near-term actions can be configured as organisation-wide presets and are shown as one-click insert buttons. Context tags from source events can be selected and carried into the product. Publishing can notify Mattermost and email.
 
@@ -46,9 +46,15 @@ Focus points are first-class data. They can be added, removed, synchronised and 
 
 **Threat landscape report** is a periodic strategic product for leadership audiences. It covers top threats, trending threat actors, key incidents, recommendations and an outlook section. Reports follow the same draft/publish workflow as other products and are stored as MISP objects.
 
+**Indicator feed** turns MISP into an operational indicator source. Analysts build an attribute search across the configured MISP servers with a filter builder (organisations to include or exclude, tags, attribute types, `to_ids`, attribute-timestamp and event-date windows, published state, warninglist enforcement, result limit), preview the matching indicators in a sortable table, and save the query as a named feed. The exact PyMISP query is shown and can be copied. Each saved feed gets a unique public URL that returns the indicator values without a login (append `?format=csv` for CSV), so detection tooling can pull it directly. Feeds can be linked to a PIR, downloaded as CSV or a plain values list, and pushed to subscribed stakeholders.
+
+**Threat actor profile** is a structured reference product about a single threat actor. It links one or more MISP threat-actor galaxy clusters, and a "Complete profile with MISP galaxy data" button auto-fills the profile from the galaxy (capabilities, mode of operation, synonyms, suspected origin, motivation, references, and a victimology note). The profile captures a narrative summary, source assessment on the Admiralty scale, attribution with an estimative-language confidence level, scope (geography, sectors, MITRE ATT&CK techniques, threat types, technology, vendor), prevention/detection/response recommendations, external references, free-form analyst notes, a review date, and a graphical **Diamond Model** (adversary, infrastructure, capability, victim). It follows a Draft → Published lifecycle, can be exported as PDF, and can link to one or more indicator feeds. When published and sent to stakeholders, the notification embeds the Diamond Model as an image and the content (name, description and CSV) of any linked indicator feeds.
+
 Drafts can be edited and deleted from the product pages, but once a product is published it is locked: it can no longer be edited or deleted in zsazsa. This is deliberate, it guards against accidentally removing something that has already been sent to stakeholders. If a published product genuinely has to be removed, delete its event directly in MISP, which is the system of record. The review and list pages carry a short reminder of this.
 
-**Statistics** pages include pipeline and program views. They aggregate source and outcome trends, RFI and feedback KPIs, product production metrics, PIR coverage checks and MISP source health. There is also a purge action for orphaned analyser log rows. The program statistics page includes a **CTI-CMM maturity signal** panel, which derives observable maturity indicators across five domains (Program, Situation, Analytical production, Operational delivery, and Feedback) from the live program data. These signals map to CTI-CMM levels CTI0 through CTI3 and highlight measurable gaps, giving the team a quick orientation of where the program sits and what to address next.
+**Statistics** pages include pipeline and program views. They aggregate source and outcome trends, RFI and feedback KPIs, product production metrics, a breakdown of products by threat actor type (across daily briefings, flash intel alerts and threat actor profiles), PIR coverage checks and MISP source health. There is also a purge action for orphaned analyser log rows. The program statistics page includes a **CTI-CMM maturity signal** panel, which derives observable maturity indicators across five domains (Program, Situation, Analytical production, Operational delivery, and Feedback) from the live program data. These signals map to CTI-CMM levels CTI0 through CTI3 and highlight measurable gaps, giving the team a quick orientation of where the program sits and what to address next.
+
+A separate **Scope statistics** page (under Reporting) charts how often each scope value is used across all requirements and products that carry scope (PIRs, GIRs, threat actor profiles and daily briefings), broken down by category: geographic scope, sector scope, MITRE ATT&CK techniques, threat types, technology, vendor, incident and campaign. This shows at a glance where collection and analysis are concentrated.
 
 Community pages provide a local registry of organisations validated against MISP UUIDs and reusable across stakeholder records.
 
@@ -65,6 +71,8 @@ Eligibility is computed centrally by `recipient_preview()` in `webapp/misp_store
 Current per-product coverage:
 
 - **Flash Intel Alert** and **Vulnerability advisory** implement the full flow above, including audience, subscription, TLP gating, and delivery to Mattermost, email and Flowintel.
+- **Threat actor profile** implements the same audience, subscription and TLP-gated flow over Mattermost and email once published, and additionally embeds its Diamond Model image and any linked indicator feed content in the message.
+- **Indicator feed** is pushed to the stakeholders subscribed to it (audience and TLP gated), with the indicator values in the message and the full feed attached as CSV by email.
 - **Daily threat briefing** is delivered to all stakeholders subscribed to it, over each recipient's configured notification channels. It has no audience and applies no TLP gating. Mattermost and email are delivered today and plug into the same per-channel-type dispatch.
 - **Threat landscape report** records an audience but does not yet push notifications on publish.
 - **PIR**, **GIR** and **RFI** are requirements rather than products. They notify an explicitly selected distribution list of stakeholders over Mattermost and email, independent of product subscriptions and audiences.
@@ -88,6 +96,8 @@ Entity type to MISP object mapping:
 | VEA | zsazsa-vea |
 | Daily briefing | zsazsa-daily-briefing |
 | Threat landscape report | zsazsa-threat-landscape-report |
+| Indicator feed | zsazsa-indicator-feed |
+| Threat actor profile | zsazsa-threat-actor-profile |
 | Collection source | zsazsa-collection-source |
 
 Every entity event carries a type tag so it can be searched and filtered independently of the object. All tags in the `zsazsa:` namespace are applied as local tags, so they never sync to connected MISP instances. Because MISP attaches tags embedded at event creation globally even when the local flag is set, the application applies these tags through the tag endpoint right after the event is created. The default tag values in use are:
@@ -100,9 +110,13 @@ TAG_RFI          = zsazsa:type="rfi"
 TAG_FLASH_INTEL  = zsazsa:ctiproduct="flash-intel"
 TAG_VEA          = zsazsa:ctiproduct="vea"
 TAG_BRIEFING     = zsazsa:ctiproduct="daily-briefing"
+TAG_INDICATOR_FEED        = zsazsa:ctiproduct="indicator-feed"
+TAG_THREAT_ACTOR_PROFILE  = zsazsa:ctiproduct="threat-actor-profile"
 ```
 
 Product events additionally carry `curation:ctiproduct` tags so they can be searched and grouped consistently across the product catalogue.
+
+Every product and requirement detail page links to the MISP event's history (its audit log), so you can inspect the full change history of a stored object directly in MISP. Editing updates the object's attributes in place instead of replacing it, so that history is kept across changes.
 
 Manual collection entries are stored on the webapp MISP server. They carry the scraper marker tag (`zsazsa:source="misp-scraper"` by default), a TLP tag, `zsazsa:source-type="manual"`, and a local `zsazsa:source="<source-name>"` tag linking the entry to the configured manual source. Galaxy-backed scope tags (geography, sector, threat actor, MITRE ATT&CK) are applied as regular MISP tags. The entry description is stored as a MISP event report in Markdown. File attachments are added as attachment attributes in the External analysis category.
 
@@ -483,7 +497,7 @@ The AI tab sets `OPENAI_MODEL`, the default model used by any AI-assisted featur
 
 ## Context elements
 
-This tab covers the MISP tags and presets for the zsazsa's tags. The entity type markers `TAG_STAKEHOLDER`, `TAG_PIR`, `TAG_GIR` and `TAG_RFI` identify the corresponding zsazsa entities in MISP. The product classification tags `TAG_FLASH_INTEL`, `TAG_VEA`, `TAG_BRIEFING` and `TAG_TLR` mark published products by type. `SCRAPER_MARKER_TAG` is the tag the analyser and the data collection page use to recognise events coming from the misp-scraper instance, and `TAG_COLLECTION_FOLLOWUP` is the tag used to flag collection items for analyst follow-up. `RECOMMENDED_ACTIONS_IMMEDIATE` and `RECOMMENDED_ACTIONS_NEAR_TERM` are organisation-wide presets offered as one-click insert buttons in the Flash Intel and VEA wizards. Finally, `COLLECTION_TAG_STRIP_PREFIXES` and `COLLECTION_TAG_HIDE_PREFIXES` control how tags are shortened or hidden when displaying events on the data collection page.
+This tab covers the MISP tags and presets for the zsazsa's tags. The entity type markers `TAG_STAKEHOLDER`, `TAG_PIR`, `TAG_GIR` and `TAG_RFI` identify the corresponding zsazsa entities in MISP. The product classification tags `TAG_FLASH_INTEL`, `TAG_VEA`, `TAG_BRIEFING`, `TAG_TLR`, `TAG_INDICATOR_FEED` and `TAG_THREAT_ACTOR_PROFILE` mark products by type. `SCRAPER_MARKER_TAG` is the tag the analyser and the data collection page use to recognise events coming from the misp-scraper instance, and `TAG_COLLECTION_FOLLOWUP` is the tag used to flag collection items for analyst follow-up. `RECOMMENDED_ACTIONS_IMMEDIATE` and `RECOMMENDED_ACTIONS_NEAR_TERM` are organisation-wide presets offered as one-click insert buttons in the Flash Intel and VEA wizards. Finally, `COLLECTION_TAG_STRIP_PREFIXES` and `COLLECTION_TAG_HIDE_PREFIXES` control how tags are shortened or hidden when displaying events on the data collection page.
 
 | Setting | Description |
 |---|---|
@@ -495,6 +509,8 @@ This tab covers the MISP tags and presets for the zsazsa's tags. The entity type
 | `TAG_VEA` | Marks published VEA products |
 | `TAG_BRIEFING` | Marks published daily briefing products |
 | `TAG_TLR` | Marks published threat landscape report products |
+| `TAG_INDICATOR_FEED` | Marks indicator feed products |
+| `TAG_THREAT_ACTOR_PROFILE` | Marks threat actor profile products |
 | `SCRAPER_MARKER_TAG` | Identifies events coming from the misp-scraper instance |
 | `TAG_COLLECTION_FOLLOWUP` | Flags collection items for analyst follow-up |
 | `RECOMMENDED_ACTIONS_IMMEDIATE` | Preset immediate actions offered as one-click inserts |
@@ -522,8 +538,11 @@ Email channels share one SMTP server, configured in the same tab and stored in t
 
 The Styling tab covers branding used in PDF exports and notifications: `BRAND_COMPANY` and `BRAND_DEPARTMENT` (shown in PDF headers and footers), `BRAND_LOGO` (uploaded here and stored under the application's static files), and the three brand colours `BRAND_COLOR_1`, `BRAND_COLOR_2` and `BRAND_COLOR_3`, used throughout generated PDFs and Mattermost message styling.
 
+The same tab also chooses the **UI theme**, which re-colours the whole interface and takes effect on the next page load. Three themes ship with zsazsa: **Overmind** (a MISP-style teal theme with a top navigation bar, the default on a new install), **UiBeta** (a MISP-style light theme, also top navigation), and **Zsazsa legacy** (the original navy theme with the side menu).
+
 | Setting | Description |
 |---|---|
+| `THEME` | UI theme: `overmind` (default), `uibeta` or `default` (Zsazsa legacy navy) |
 | `BRAND_COMPANY` | Company name shown in PDF headers and footers |
 | `BRAND_DEPARTMENT` | Department name shown in PDF headers and footers |
 | `BRAND_LOGO` | Logo image used in generated PDFs and notifications |
