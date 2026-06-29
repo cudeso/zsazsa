@@ -58,6 +58,64 @@ A separate **Scope statistics** page (under Reporting) charts how often each sco
 
 Community pages provide a local registry of organisations validated against MISP UUIDs and reusable across stakeholder records.
 
+## What the analyser does
+
+The dashboard has a **Start analyser** button with three options: **Daily threat briefing**, **Flash intel alert** and **Vulnerability advisory**. All three start from the same pool of events, but each one decides differently what to do with them. None of them publish anything or notify stakeholders. They only create **drafts** that you then review, edit and publish yourself.
+
+### The events all three start from
+
+Whichever option you choose, the analyser first builds the same candidate list:
+
+1. It refreshes the data collection cache.
+2. It asks the scraper MISP (the server set as `MISP_URL`) for events created **today** (UTC) that carry the scraper marker tag (`SCRAPER_MARKER_TAG`), up to `MISP_SCRAPER_LIMIT` events.
+3. It keeps only the events that still need work, meaning their workflow state is `incomplete` or `ongoing`. Events already marked `complete` or `rejected` are left alone.
+4. It drops events it cannot use: the article could not be fetched (HTTP error) or the report is empty. These are marked `rejected`.
+5. For each remaining event it makes sure an AI summary report exists, and creates one if it is missing.
+
+So every run works on "today's freshly scraped events that have not been processed yet". An event that has already been turned into a given product is skipped for that same product, so running an option twice does not create duplicates.
+
+### Daily threat briefing
+
+This option is about **situational awareness**, not requirements.
+
+- It applies the title exclusion list (`DAILY_BRIEFING_TITLE_EXCLUSIONS`) and skips events already used in an earlier briefing.
+- For each candidate it asks the AI whether the story is relevant to your organisation, judged against the focus points (geographies, sectors, technologies, threat types and threat actors) set in Settings. Stories that are not relevant are rejected, with the reason written back onto the event.
+- For the stories it keeps, it drafts a short write-up, pulls out sectors, geographies, techniques, threat actors and vendors from the summary, and drops near-duplicate stories.
+- The result is one **daily briefing draft** holding the day's stories, ready to review and publish.
+
+There is no PIR or GIR step here. What is relevant is decided by your focus points and the AI, not by your requirements.
+
+### Flash intel alert
+
+This option is **requirement-driven**. It only acts on events that match something you are actively tracking.
+
+- For each candidate event it compares the event's tags and galaxy clusters against the scope of your **active PIRs and GIRs**.
+- An event that matches at least one PIR or GIR gets a **flash intel draft**, pre-filled with the summary and linked to the best-matching PIR.
+- An event that matches nothing is skipped and logged as **"no PIR/GIR match"**. This is the line you see in the pipeline run. It is not an error. It means the event was not relevant to any current requirement, so no draft was made.
+- If you have no active PIRs or GIRs, or none whose scope fits today's events, this option creates nothing. That is expected.
+
+In other words, the "no PIR/GIR match" entries are the analyser showing you which events it looked at but deliberately left alone, because they do not line up with your stated priorities.
+
+### Vulnerability advisory
+
+This option is **CVE-driven**.
+
+- For each candidate event it looks for a CVE identifier, in the event attributes or the report text.
+- An event with at least one CVE gets a **vulnerability advisory draft**. The CVE is enriched from a vulnerability database (CVSS score, affected products and versions, description) and the advisory sections are drafted by the AI.
+- An event with no CVE is skipped and logged as **"no CVE found"**.
+
+Like the daily briefing, this option does not use PIR or GIR matching. Its only filter is whether the event mentions a CVE.
+
+### The three options side by side
+
+| Option | What it acts on | What it skips, and why | Output |
+|---|---|---|---|
+| Daily threat briefing | Today's scraped events the AI judges relevant to your focus points | Off-topic stories, excluded titles, events already briefed | One daily briefing draft with the day's stories |
+| Flash intel alert | Today's scraped events that match an active PIR or GIR | Events logged as "no PIR/GIR match" | One flash intel draft per matched event |
+| Vulnerability advisory | Today's scraped events that mention a CVE | Events logged as "no CVE found" | One vulnerability advisory draft per CVE event |
+
+In every case the analyser stops at drafts. Publishing and sending to stakeholders is always a separate step you take by hand.
+
 ## Notification and distribution flow
 
 Distribution is built around stakeholders, roles, product subscriptions, audiences and notification channels. The intended flow is the following.
