@@ -68,6 +68,20 @@
           <div class="form-text"><i class="fas fa-lock me-1"></i>The response can be recorded once the RFI has been triaged (acknowledged) from the RFI list.</div>
           {% endif %}
         </div>
+        <div class="mb-3">
+          <label class="form-label">Confidence
+            <span class="text-muted fw-normal small">(estimative language)</span>
+          </label>
+          {% set cur_conf = rfi.response_confidence if is_edit else '' %}
+          <select name="response_confidence" class="form-select" {{ 'disabled' if not triaged }}>
+            <option value="">-</option>
+            {% for value, label, desc in estimative_confidence %}
+            <option value="{{ value }}" {{ 'selected' if cur_conf == value }} title="{{ desc }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Confidence in the analytic judgment of the response.</div>
+          {% include "_estimative_help.html" %}
+        </div>
         <div>
           <label class="form-label">Output formats</label>
           <div id="fmt-list">

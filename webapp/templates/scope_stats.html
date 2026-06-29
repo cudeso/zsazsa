@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Scope stats | zsazsa CTI{% endblock %}
+{% block page_title %}Scope statistics{% endblock %}
+
+{% block content %}
+<style>
+  .scope-bar-row { margin-bottom: .5rem; }
+  .scope-bar-head { display: flex; justify-content: space-between; gap: .5rem; font-size: .82rem; }
+  .scope-bar-head .scope-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scope-bar-head .scope-cnt { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .scope-bar-track { height: 8px; border-radius: 4px; background: var(--surface-muted); overflow: hidden; margin-top: 2px; }
+  .scope-bar-fill { height: 100%; border-radius: 4px; background: var(--accent-blue); }
+  .scope-list { max-height: 340px; overflow-y: auto; }
+</style>
+
+<p class="text-muted mb-3">
+  Frequency of each scope value across PIRs, GIRs, threat actor profiles and daily briefings.
+  Geography, sectors and MITRE ATT&amp;CK techniques come from MISP galaxies; the rest are curated free-text scope items.
+</p>
+
+<div class="row g-4">
+  {% for cat in categories %}
+  <div class="col-lg-6">
+    <div class="card content-card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="fas fa-crosshairs me-2"></i>{{ cat.label }}</span>
+        <span class="badge text-bg-light" style="font-weight:400;">{{ cat.distinct }} distinct · {{ cat.total }} total</span>
+      </div>
+      <div class="card-body">
+        {% if cat['items'] %}
+        {% set top = cat['items'][0].count %}
+        <div class="scope-list">
+          {% for item in cat['items'] %}
+          <div class="scope-bar-row">
+            <div class="scope-bar-head">
+              <span class="scope-val" title="{{ item.value }}">{{ item.value }}</span>
+              <span class="scope-cnt">{{ item.count }}</span>
+            </div>
+            <div class="scope-bar-track">
+              <div class="scope-bar-fill" style="width: {{ (item.count / top * 100) | round(1) }}%;"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0"><em>No scope items recorded.</em></p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -5,12 +5,65 @@
 
 {% block misp_object_url %}{{ tap.misp_url }}{% endblock %}
 {% block topbar_actions %}
+{% if tap.status == 'Published' %}
+<a href="{{ url_for('threat_actor_profile.pdf', id=tap.uuid) }}" class="btn btn-sm btn-outline-secondary" title="Download PDF">
+  <i class="fas fa-file-pdf me-1"></i> Download PDF
+</a>
+{% endif %}
 <a href="{{ url_for('threat_actor_profile.review') }}" class="btn btn-sm btn-light border shadow-sm">
   <i class="fas fa-arrow-left me-1"></i> Back to list
 </a>
 {% endblock %}
 
 {% block content %}
+<style>
+  /* Diamond Model: four nodes (adversary top, infrastructure left, capability
+     right, victim bottom) around a central diamond, with a connector cross. */
+  .dm-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 1rem .75rem;
+    align-items: center;
+    justify-items: center;
+    max-width: 720px;
+    margin: .5rem auto;
+  }
+  .dm-adversary { grid-column: 2; grid-row: 1; }
+  .dm-infra     { grid-column: 1; grid-row: 2; justify-self: end; }
+  .dm-center    { grid-column: 2; grid-row: 2; }
+  .dm-cap       { grid-column: 3; grid-row: 2; justify-self: start; }
+  .dm-victim    { grid-column: 2; grid-row: 3; }
+  .dm-grid::before { content: ""; position: absolute; top: 50%; left: 18%; right: 18%;
+                     height: 2px; background: var(--border-light); transform: translateY(-1px); z-index: 0; }
+  .dm-grid::after  { content: ""; position: absolute; left: 50%; top: 16%; bottom: 16%;
+                     width: 2px; background: var(--border-light); transform: translateX(-1px); z-index: 0; }
+  .dm-node {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 230px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-light);
+    border-radius: .55rem;
+    padding: .6rem .75rem;
+    text-align: center;
+    box-shadow: var(--card-shadow);
+  }
+  .dm-node .dm-val { font-size: .85rem; font-weight: 600; line-height: 1.35; word-break: break-word; }
+  .dm-node .dm-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
+                       color: var(--text-muted); margin-top: .3rem; }
+  .dm-center {
+    position: relative; z-index: 1;
+    width: 52px; height: 52px;
+    transform: rotate(45deg);
+    border: 2px solid var(--accent-blue);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+  }
+  .dm-missing { border-style: dashed; border-color: var(--accent-orange);
+                background: color-mix(in srgb, var(--accent-orange) 8%, transparent); }
+  .dm-missing .dm-val { color: var(--accent-orange); font-style: italic; font-weight: 500; }
+</style>
 <div class="row g-4">
 
   <div class="col-lg-8">
@@ -47,6 +100,12 @@
           {% endif %}
           <dt class="col-sm-3">Synonyms</dt>
           <dd class="col-sm-9">{{ tap.synonyms or '-' }}</dd>
+          <dt class="col-sm-3">Suspected origin</dt>
+          <dd class="col-sm-9">{{ tap.suspected_origin or '-' }}{% if tap.origin_confidence %} <span class="text-muted">({{ tap.origin_confidence | capitalize }} confidence)</span>{% endif %}</dd>
+          <dt class="col-sm-3">Motivation</dt>
+          <dd class="col-sm-9">{{ tap.motivation or '-' }}</dd>
+          <dt class="col-sm-3">Sponsorship</dt>
+          <dd class="col-sm-9">{{ tap.sponsorship or '-' }}</dd>
         </dl>
         {% if tap.capabilities %}
         <p class="small fw-semibold text-muted mb-1">Capabilities</p>
@@ -54,19 +113,50 @@
         {% endif %}
         {% if tap.mode_of_operation %}
         <p class="small fw-semibold text-muted mb-1">Mode of operation</p>
-        <div class="report-md-body small mb-0" data-md="{{ tap.mode_of_operation | e }}"></div>
+        <div class="report-md-body small mb-2" data-md="{{ tap.mode_of_operation | e }}"></div>
+        {% endif %}
+        {% if tap.infrastructure %}
+        <p class="small fw-semibold text-muted mb-1">Infrastructure</p>
+        <div class="report-md-body small mb-0" data-md="{{ tap.infrastructure | e }}"></div>
         {% endif %}
       </div>
     </div>
 
     <div class="card content-card mb-4">
-      <div class="card-header"><i class="fas fa-fingerprint me-2"></i>Attribution</div>
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="fas fa-fingerprint me-2"></i>Attribution</span>
+        {% if tap.assessment_confidence %}
+        <span class="badge bg-secondary" title="Confidence in the analytic judgment (estimative language)">
+          Confidence: {{ tap.assessment_confidence | capitalize }}
+        </span>
+        {% endif %}
+      </div>
       <div class="card-body">
         {% if tap.attribution_rationale %}
         <div class="report-md-body small mb-0" data-md="{{ tap.attribution_rationale | e }}"></div>
         {% else %}<p class="text-muted small mb-0"><em>No attribution rationale.</em></p>{% endif %}
       </div>
     </div>
+
+    {% if tap.rec_prevention or tap.rec_detection or tap.rec_response %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Recommendations</div>
+      <div class="card-body">
+        {% if tap.rec_prevention %}
+        <p class="small fw-semibold text-muted mb-1">Prevention</p>
+        <div class="report-md-body small mb-2" data-md="{{ tap.rec_prevention | e }}"></div>
+        {% endif %}
+        {% if tap.rec_detection %}
+        <p class="small fw-semibold text-muted mb-1">Detection</p>
+        <div class="report-md-body small mb-2" data-md="{{ tap.rec_detection | e }}"></div>
+        {% endif %}
+        {% if tap.rec_response %}
+        <p class="small fw-semibold text-muted mb-1">Response</p>
+        <div class="report-md-body small mb-0" data-md="{{ tap.rec_response | e }}"></div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <div class="card content-card mb-4">
       <div class="card-header"><i class="fas fa-crosshairs me-2"></i>Scope</div>
@@ -85,6 +175,46 @@
       </div>
     </div>
 
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-gem me-2"></i>Diamond Model</div>
+      <div class="card-body">
+        <div class="dm-grid">
+          <div class="dm-node dm-adversary{{ ' dm-missing' if not tap.title }}">
+            <div class="dm-val">{{ tap.title or 'Not set' }}</div>
+            <div class="dm-label">Adversary</div>
+          </div>
+
+          <div class="dm-node dm-infra{{ ' dm-missing' if not tap.infrastructure }}">
+            <div class="dm-val">{{ tap.infrastructure or 'Not set' }}</div>
+            <div class="dm-label">Infrastructure</div>
+          </div>
+
+          <div class="dm-center" aria-hidden="true"></div>
+
+          <div class="dm-node dm-cap{{ ' dm-missing' if not (tap.capabilities or tap.mitre_attack_techniques) }}">
+            <div class="dm-val">
+              {% if tap.capabilities %}{{ tap.capabilities }}{% endif %}
+              {% if tap.mitre_attack_techniques %}
+              <div class="mt-1">{% for x in tap.mitre_attack_techniques %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</div>
+              {% endif %}
+              {% if not (tap.capabilities or tap.mitre_attack_techniques) %}Not set{% endif %}
+            </div>
+            <div class="dm-label">Capability</div>
+          </div>
+
+          <div class="dm-node dm-victim{{ ' dm-missing' if not (tap.geographic_scope or tap.sectors) }}">
+            <div class="dm-val">
+              {% for x in tap.geographic_scope %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}
+              {% for x in tap.sectors %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}
+              {% if not (tap.geographic_scope or tap.sectors) %}Not set{% endif %}
+            </div>
+            <div class="dm-label">Victim</div>
+          </div>
+        </div>
+        <p class="text-muted small text-center mb-0 mt-2">Dashed amber nodes are not yet completed.</p>
+      </div>
+    </div>
+
     {% if tap.external_references %}
     <div class="card content-card mb-4">
       <div class="card-header"><i class="fas fa-book me-2"></i>References</div>
@@ -94,6 +224,25 @@
           <li><a href="{{ r }}" target="_blank" rel="noopener">{{ r }}</a></li>
           {% endfor %}
         </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if linked_feeds %}
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-satellite-dish me-2"></i>Indicator feeds</div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush">
+          {% for f in linked_feeds %}
+          <li class="list-group-item">
+            <a href="{{ url_for('indicator_feed.detail', id=f.uuid) }}" class="text-decoration-none">
+              <span class="req-id-badge">{{ f.feed_id }}</span> {{ f.name }}
+            </a>
+            {% if f.description %}<div class="text-muted small mt-1">{{ f.description }}</div>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="px-3 py-2 text-muted small border-top">Embedded (name, description, CSV) when this profile is sent through a channel.</div>
       </div>
     </div>
     {% endif %}
@@ -138,6 +287,10 @@
           <dd class="col-7">{{ tap.creator or '-' }}</dd>
           <dt class="col-5">Published</dt>
           <dd class="col-7">{{ tap.published_at.strftime('%Y-%m-%d') if tap.published_at else '-' }}</dd>
+          {% if tap.review_date %}
+          <dt class="col-5">Review date</dt>
+          <dd class="col-7">{{ tap.review_date.strftime('%d-%m-%Y') }}</dd>
+          {% endif %}
           {% if tap.feedback_deadline %}
           <dt class="col-5">Feedback by</dt>
           <dd class="col-7">{{ tap.feedback_deadline.strftime('%d-%m-%Y') }}</dd>
@@ -152,7 +305,10 @@
         {% if feedback %}
         {% for f in feedback %}
         <div class="border rounded p-2 mb-2 small">
-          <div class="text-muted mb-1">{{ f.name }}</div>
+          <div class="text-muted mb-1 d-flex justify-content-between gap-2">
+            <span>{{ f.name }}</span>
+            {% if f.created_at %}<span class="small text-nowrap">{{ f.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>{% endif %}
+          </div>
           <div class="report-md-body" data-md="{{ f.content | e }}"></div>
         </div>
         {% endfor %}

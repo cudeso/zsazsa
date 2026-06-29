@@ -373,3 +373,9 @@ def index():
         actor_type_product_counts=actor_type_product_counts,
         maturity_signals=maturity_signals,
     )
+
+
+@bp.route("/stats/scope")
+def scope():
+    categories = misp_store.scope_stats()
+    return render_template("scope_stats.html", categories=categories)

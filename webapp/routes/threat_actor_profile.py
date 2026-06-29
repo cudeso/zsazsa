@@ -1,13 +1,16 @@
 """Threat actor profile product: analyst write-ups of a threat actor combining
 the MISP threat-actor galaxy with the analyst's own investigation."""
 
+import base64
 import logging
+import os
 from datetime import datetime
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
 import config
 from webapp import audit, misp_store
+from webapp.diamond import render_diamond_png
 from webapp.utils import sort_products
 from notifier import dispatcher
 
@@ -31,10 +34,21 @@ def _form_data(form, tap_id=""):
         "source_reliability": (form.get("source_reliability") or "").strip(),
         "source_credibility": (form.get("source_credibility") or "").strip(),
         "attribution_rationale": (form.get("attribution_rationale") or "").strip(),
+        "assessment_confidence": (form.get("assessment_confidence") or "").strip(),
+        "review_date": (form.get("review_date") or "").strip(),
         "actor_types": form.getlist("actor_types"),
         "synonyms": (form.get("synonyms") or "").strip(),
+        "suspected_origin": (form.get("suspected_origin") or "").strip(),
+        "origin_confidence": (form.get("origin_confidence") or "").strip(),
+        "motivation": (form.get("motivation") or "").strip(),
+        "sponsorship": (form.get("sponsorship") or "").strip(),
         "capabilities": (form.get("capabilities") or "").strip(),
         "mode_of_operation": (form.get("mode_of_operation") or "").strip(),
+        "infrastructure": (form.get("infrastructure") or "").strip(),
+        "rec_prevention": (form.get("rec_prevention") or "").strip(),
+        "rec_detection": (form.get("rec_detection") or "").strip(),
+        "rec_response": (form.get("rec_response") or "").strip(),
+        "indicator_feeds": form.getlist("indicator_feeds"),
         "geographic_scope": form.getlist("geographic_scope"),
         "sectors": form.getlist("sectors"),
         "mitre_attack_techniques": form.getlist("mitre_attack_techniques"),
@@ -57,10 +71,12 @@ def _form_context(tap=None):
         "credibilities": misp_store.FIA_CREDIBILITIES,
         "threat_actor_items": misp_store.galaxy_threat_actors(),
         "threat_actor_types": getattr(config, "THREAT_ACTOR_TYPES", []),
+        "estimative_confidence": misp_store.ESTIMATIVE_CONFIDENCE,
         "geo_items": misp_store.galaxy_geography(),
         "galaxy_sectors": misp_store.galaxy_sectors(),
         "galaxy_mitre_attack": misp_store.galaxy_mitre_attack_patterns(),
         "pirs": misp_store.list_pirs(),
+        "feeds": misp_store.list_indicator_feeds(),
     }
 
 
@@ -92,6 +108,9 @@ def galaxy_enrich():
         "mode_of_operation": data["mode_of_operation"],
         "synonyms": data["synonyms"],
         "refs": data["refs"],
+        "suspected_origin": data["suspected_origin"],
+        "motivation": data["motivation"],
+        "sponsorship": data["sponsorship"],
     })
 
 
@@ -133,6 +152,43 @@ def new():
     return render_template("threat_actor_profile/form.html", **_form_context(), form_values=None)
 
 
+@bp.route("/<string:id>/pdf")
+def pdf(id):
+    tap = misp_store.get_threat_actor_profile(id)
+    if tap is None:
+        return "Threat actor profile not found", 404
+    # Shared product PDF stylesheet (same look as the flash-intel PDF).
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "fia_pdf.css")
+    css_url = "file://" + os.path.abspath(css_path)
+    diamond_b64 = base64.b64encode(render_diamond_png(tap)).decode("ascii")
+    pir = misp_store.get_pir(tap.linked_pir_uuid) if tap.linked_pir_uuid else None
+    linked_feeds = [f for f in (misp_store.get_indicator_feed(u) for u in tap.indicator_feeds) if f]
+    html = render_template("threat_actor_profile/pdf.html", tap=tap, css_url=css_url,
+                           diamond_b64=diamond_b64, pir=pir, linked_feeds=linked_feeds)
+    try:
+        import weasyprint
+        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    except Exception as exc:
+        logger.warning("pdf: weasyprint failed for %s: %s", id, exc)
+        return f"PDF generation failed: {exc}", 500
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{tap.tap_id}.pdf"'},
+    )
+
+
+@bp.route("/<string:id>/diamond.png")
+def diamond_png(id):
+    """Serve the Diamond Model as a PNG. Unauthenticated so notification channels
+    (e.g. a Mattermost webhook) can fetch it by image URL; it only reveals the
+    same four-node summary already shown on the profile."""
+    tap = misp_store.get_threat_actor_profile(id)
+    if tap is None:
+        return "Threat actor profile not found", 404
+    return Response(render_diamond_png(tap), mimetype="image/png")
+
+
 @bp.route("/<string:id>")
 def detail(id):
     tap = misp_store.get_threat_actor_profile(id)
@@ -141,8 +197,10 @@ def detail(id):
     recipients = misp_store.recipient_preview(PRODUCT_NAME, tap.tlp, tap.audience)
     pir = misp_store.get_pir(tap.linked_pir_uuid) if tap.linked_pir_uuid else None
     feedback = misp_store.list_product_feedback(tap.uuid)
+    linked_feeds = [f for f in (misp_store.get_indicator_feed(u) for u in tap.indicator_feeds) if f]
     return render_template("threat_actor_profile/detail.html",
-                           tap=tap, recipients=recipients, pir=pir, feedback=feedback)
+                           tap=tap, recipients=recipients, pir=pir, feedback=feedback,
+                           linked_feeds=linked_feeds)
 
 
 @bp.route("/<string:id>/edit", methods=["GET", "POST"])
@@ -194,9 +252,12 @@ def notify(id):
     green = {r["uuid"] for r in misp_store.recipient_preview(PRODUCT_NAME, tap.tlp, tap.audience)
              if r["status"] == "green" and r.get("uuid")}
     recipients = [s for s in misp_store.list_stakeholders() if s.uuid in green]
-    markdown = _markdown(tap)
+    markdown = _markdown(tap) + _linked_feeds_markdown(tap)
+    diamond_png = render_diamond_png(tap)
+    diamond_url = url_for("threat_actor_profile.diamond_png", id=id, _external=True)
     try:
-        summary = dispatcher.send_threat_actor_profile(tap, markdown, recipients)
+        summary = dispatcher.send_threat_actor_profile(tap, markdown, recipients,
+                                                       diamond_png=diamond_png, diamond_url=diamond_url)
         ok, message = dispatcher.delivery_outcome(summary)
         audit.record("notify", "threat-actor-profile", entity_id=id, entity_label=tap.tap_id, details=message)
         flash(f"{tap.tap_id}: {message}.", "success" if ok else "warning")
@@ -280,4 +341,24 @@ def _markdown(tap):
         lines += ["## Summary", "", tap.summary, ""]
     if tap.attribution_rationale:
         lines += ["## Attribution", "", tap.attribution_rationale, ""]
+    return "\n".join(lines)
+
+
+def _linked_feeds_markdown(tap):
+    """Embed each linked indicator feed (name, description, CSV) into the product
+    so it travels inside the notification rather than as a separate attachment."""
+    lines = []
+    for fuuid in tap.indicator_feeds:
+        feed = misp_store.get_indicator_feed(fuuid)
+        if feed is None:
+            continue
+        lines += ["", f"## Indicator feed: {feed.name}", ""]
+        if feed.description:
+            lines += [feed.description, ""]
+        try:
+            csv_text = misp_store.indicator_feed_csv_text(feed).strip()
+        except Exception as exc:
+            logger.warning("Could not render feed %s for TAP %s: %s", feed.feed_id, tap.tap_id, exc)
+            csv_text = ""
+        lines += ["```", csv_text or "(no indicators)", "```", ""]
     return "\n".join(lines)

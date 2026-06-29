@@ -266,8 +266,13 @@ def send_vea_notification(vea, markdown: str, stakeholders: list | None = None,
 
 
 def send_threat_actor_profile_notification(tap, markdown: str, stakeholders: list | None = None,
-                                           channel_ids: list[str] | None = None) -> bool:
-    """Send a threat actor profile notification to subscribed stakeholders."""
+                                           channel_ids: list[str] | None = None,
+                                           diamond_url: str | None = None) -> bool:
+    """Send a threat actor profile notification to subscribed stakeholders.
+
+    When `diamond_url` is given, the Diamond Model image is posted as a webhook
+    message attachment (Mattermost fetches it by URL, so the URL must be reachable
+    from the Mattermost server)."""
     if channel_ids is None and stakeholders:
         ids: set[str] = set()
         for s in stakeholders:
@@ -284,8 +289,13 @@ def send_threat_actor_profile_notification(tap, markdown: str, stakeholders: lis
         body += f"{subtitle}\n\n"
     body += markdown
 
+    label = f"threat actor profile {getattr(tap, 'tap_id', '')}"
     targets = _active_webhooks(channel_ids)
-    return _chunk_and_send(targets, body, f"threat actor profile {getattr(tap, 'tap_id', '')}")
+    ok = _chunk_and_send(targets, body, label)
+    if diamond_url:
+        payload = {"attachments": [{"title": "Diamond Model", "image_url": diamond_url}]}
+        ok = bool(_post(targets, payload, f"{label} diamond")) and ok
+    return ok
 
 
 def send_rfi_notification(

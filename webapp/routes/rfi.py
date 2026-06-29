@@ -64,6 +64,7 @@ def _form_data(form, rfi_id):
         "linked_gir_uuid": form.get("linked_gir_uuid") or "",
         "output_format_list": fmt_list,
         "response": form.get("response"),
+        "response_confidence": form.get("response_confidence") or "",
         "feedback_requirement_met": form.get("feedback_requirement_met"),
         "feedback_on_time": form.get("feedback_on_time"),
         "feedback_usefulness": form.get("feedback_usefulness"),
@@ -93,6 +94,7 @@ def _rfi_data_from_store(rfi, status: str | None = None) -> dict:
         "linked_gir_uuid": rfi.linked_gir_uuid or "",
         "output_format_list": list(rfi.output_format_list),
         "response": rfi.response or "",
+        "response_confidence": rfi.response_confidence or "",
         "feedback_requirement_met": rfi.feedback_requirement_met or "",
         "feedback_on_time": rfi.feedback_on_time or "",
         "feedback_usefulness": rfi.feedback_usefulness or "",
@@ -182,6 +184,7 @@ def rfi_new():
         feedback_on_time=FEEDBACK_ON_TIME,
         feedback_usefulness=FEEDBACK_USEFULNESS,
         sla_days=misp_store.RFI_SLA_DAYS,
+        estimative_confidence=misp_store.ESTIMATIVE_CONFIDENCE,
     )
 
 
@@ -235,6 +238,7 @@ def rfi_feedback(id):
         "linked_pir_uuid": rfi.linked_pir_uuid or "", "linked_gir_uuid": rfi.linked_gir_uuid or "",
         "output_format_list": list(rfi.output_format_list),
         "response": rfi.response or "",
+        "response_confidence": rfi.response_confidence or "",
         "status": rfi.status,
         **data,
     }
@@ -284,6 +288,7 @@ def rfi_edit(id):
         feedback_on_time=FEEDBACK_ON_TIME,
         feedback_usefulness=FEEDBACK_USEFULNESS,
         sla_days=misp_store.RFI_SLA_DAYS,
+        estimative_confidence=misp_store.ESTIMATIVE_CONFIDENCE,
     )
 
 
@@ -403,7 +408,10 @@ def rfi_notify(id):
     if rfi.due_date:
         lines += [f"**Due:** {rfi.due_date.strftime('%d-%m-%Y')}"]
     if rfi.response:
-        lines += ["", "## Response", "", rfi.response]
+        lines += ["", "## Response", ""]
+        if rfi.response_confidence:
+            lines += [f"*Confidence: {rfi.response_confidence.capitalize()}*", ""]
+        lines += [rfi.response]
     lines += ["", "[Open RFI preview](" + preview_url + ")", "", "---", f"*Sent from zsazsa CTI on {today}*"]
     md = "\n".join(lines)
     recipients = _rfi_notify_recipients(rfi)

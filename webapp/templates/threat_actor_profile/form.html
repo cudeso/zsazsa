@@ -72,15 +72,49 @@
           <input name="synonyms" class="form-control" placeholder="Other names for this actor"
             value="{{ src.synonyms if src else '' }}">
         </div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-8">
+            <label class="form-label">Suspected origin</label>
+            <input name="suspected_origin" class="form-control" placeholder="Country or region"
+              value="{{ src.suspected_origin if src else '' }}">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label">Confidence</label>
+            {% set v_oc = src.origin_confidence if src else '' %}
+            <select name="origin_confidence" class="form-select">
+              <option value="">-</option>
+              {% for value, label, desc in estimative_confidence %}
+              <option value="{{ value }}" {{ 'selected' if v_oc == value }} title="{{ desc }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label">Motivation</label>
+            <input name="motivation" class="form-control" placeholder="Espionage, financial, …"
+              value="{{ src.motivation if src else '' }}">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Sponsorship</label>
+            <input name="sponsorship" class="form-control" placeholder="State-aligned, independent, …"
+              value="{{ src.sponsorship if src else '' }}">
+          </div>
+        </div>
         <div class="mb-3">
           <label class="form-label">Capabilities</label>
           <textarea name="capabilities" class="form-control" rows="3"
             placeholder="Tooling, malware, techniques the actor is known to use.">{{ src.capabilities if src else '' }}</textarea>
         </div>
-        <div>
+        <div class="mb-3">
           <label class="form-label">Mode of operation</label>
           <textarea name="mode_of_operation" class="form-control" rows="3"
             placeholder="How the actor typically operates.">{{ src.mode_of_operation if src else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Infrastructure</label>
+          <textarea name="infrastructure" class="form-control" rows="3"
+            placeholder="Hosting preferences, domain patterns, C2 characteristics.">{{ src.infrastructure if src else '' }}</textarea>
         </div>
       </div>
     </div>
@@ -88,9 +122,44 @@
     <div class="card content-card mb-4">
       <div class="card-header"><i class="fas fa-fingerprint me-2"></i>Attribution</div>
       <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Assessment confidence
+            <span class="text-muted fw-normal small">(estimative language)</span>
+          </label>
+          {% set v_ac = src.assessment_confidence if src else '' %}
+          <select name="assessment_confidence" class="form-select">
+            <option value="">-</option>
+            {% for value, label, desc in estimative_confidence %}
+            <option value="{{ value }}" {{ 'selected' if v_ac == value }} title="{{ desc }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Confidence in the analytic judgment of this profile.</div>
+          {% include "_estimative_help.html" %}
+        </div>
         <label class="form-label">Rationale</label>
         <textarea name="attribution_rationale" class="form-control" rows="3"
           placeholder="Basis for attribution: overlapping infrastructure, TTPs, tooling, victimology.">{{ src.attribution_rationale if src else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="card content-card mb-4">
+      <div class="card-header"><i class="fas fa-shield-halved me-2"></i>Recommendations</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Prevention</label>
+          <textarea name="rec_prevention" class="form-control" rows="2"
+            placeholder="Controls or configuration to prevent initial access / limit impact.">{{ src.rec_prevention if src else '' }}</textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Detection</label>
+          <textarea name="rec_detection" class="form-control" rows="2"
+            placeholder="Detection rules, hunt hypotheses, log sources to prioritise.">{{ src.rec_detection if src else '' }}</textarea>
+        </div>
+        <div>
+          <label class="form-label">Response</label>
+          <textarea name="rec_response" class="form-control" rows="2"
+            placeholder="Playbook or procedure if this actor is detected; escalation path.">{{ src.rec_response if src else '' }}</textarea>
+        </div>
       </div>
     </div>
 
@@ -215,7 +284,7 @@
             {% endfor %}
           </select>
         </div>
-        <div>
+        <div class="mb-3">
           <label class="form-label">Linked PIR</label>
           <select name="linked_pir_uuid" class="form-select">
             <option value="">None</option>
@@ -223,6 +292,22 @@
             <option value="{{ p.uuid }}" {{ 'selected' if src and src.linked_pir_uuid == p.uuid }}>{{ p.pir_id }} - {{ p.title }}</option>
             {% endfor %}
           </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Review date</label>
+          <input type="date" name="review_date" class="form-control"
+            value="{{ src.review_date if src and src.review_date else '' }}">
+          <div class="form-text">Quarterly for active actors, annually for dormant.</div>
+        </div>
+        <div>
+          <label class="form-label">Indicator feeds</label>
+          {% set sel_feeds = src.indicator_feeds if src else [] %}
+          <select name="indicator_feeds" class="form-select" multiple size="4">
+            {% for f in feeds %}
+            <option value="{{ f.uuid }}" {{ 'selected' if f.uuid in sel_feeds }}>{{ f.feed_id }} - {{ f.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Linked feeds are embedded (name, description, CSV) when this profile is sent.</div>
         </div>
       </div>
     </div>
@@ -425,6 +510,9 @@ document.querySelectorAll('.actor-type-pill').forEach(function(pill) {
       appendText(document.querySelector('[name="capabilities"]'), d.capabilities, '\n');
       appendText(document.querySelector('[name="mode_of_operation"]'), d.mode_of_operation, '\n');
       appendText(document.querySelector('[name="synonyms"]'), d.synonyms, ', ');
+      appendText(document.querySelector('[name="suspected_origin"]'), d.suspected_origin, ', ');
+      appendText(document.querySelector('[name="motivation"]'), d.motivation, ', ');
+      appendText(document.querySelector('[name="sponsorship"]'), d.sponsorship, ', ');
       var refs = document.querySelector('[name="external_references"]');
       (d.refs || []).forEach(function(u) { appendText(refs, u, '\n'); });
       status.textContent = 'Filled from MISP galaxy. Victimology is added as a note on save.';

@@ -1279,9 +1279,9 @@
         <div class="card-body">
           <label class="form-label">UI theme</label>
           <select name="THEME" class="form-select" style="max-width:320px;">
-            <option value="default" {{ 'selected' if cfg.THEME == 'default' }}>Default (zsazsa navy)</option>
+            <option value="overmind" {{ 'selected' if cfg.THEME == 'overmind' }}>Overmind (MISP teal, default)</option>
             <option value="uibeta" {{ 'selected' if cfg.THEME == 'uibeta' }}>UiBeta (MISP-style light)</option>
-            <option value="overmind" {{ 'selected' if cfg.THEME == 'overmind' }}>Overmind (MISP teal)</option>
+            <option value="default" {{ 'selected' if cfg.THEME == 'default' }}>Zsazsa legacy (navy)</option>
           </select>
           <div class="form-text">
             Re-colours the entire interface. "UiBeta" mirrors MISP's UiBeta theme and

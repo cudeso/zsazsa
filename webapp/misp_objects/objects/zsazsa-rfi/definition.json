@@ -107,6 +107,12 @@
       "description": "Final response text delivered to the requester",
       "disable_correlation": true
     },
+    "response-confidence": {
+      "misp-attribute": "text",
+      "ui-priority": 27,
+      "description": "Estimative-language confidence in the response (low/moderate/high)",
+      "disable_correlation": true
+    },
     "feedback-requirement-met": {
       "misp-attribute": "text",
       "ui-priority": 16,

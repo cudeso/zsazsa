@@ -87,8 +87,8 @@ def send_email(recipients: list[str], subject: str, markdown: str, label: str,
                attachments: list[tuple] | None = None) -> bool:
     """Send one multipart (plaintext + HTML) email to the given recipients.
 
-    `attachments` is an optional list of (filename, bytes, mime_subtype) tuples,
-    attached as text/<mime_subtype> (e.g. ("feed.csv", b"...", "csv")).
+    `attachments` is an optional list of (filename, bytes, maintype, subtype)
+    tuples, e.g. ("feed.csv", b"...", "text", "csv") or ("d.png", b"...", "image", "png").
     """
     if not recipients:
         logger.debug("No email recipients for %s", label)
@@ -106,8 +106,8 @@ def send_email(recipients: list[str], subject: str, markdown: str, label: str,
     msg["To"] = recipients[0] if len(recipients) == 1 else cfg["sender"]
     msg.set_content(markdown or "")
     msg.add_alternative(_html_document(markdown), subtype="html")
-    for filename, data, subtype in attachments or []:
-        msg.add_attachment(data, maintype="text", subtype=subtype, filename=filename)
+    for filename, data, maintype, subtype in attachments or []:
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
     try:
         with _smtp_session(cfg["host"], cfg["port"], cfg["use_tls"], cfg["username"], cfg["password"]) as server:
@@ -152,11 +152,14 @@ def send_vea_notification(vea, markdown: str, channel_ids: list[str] | None = No
     return send_email(_recipients(channel_ids), subject, markdown, f"VEA {vea_id}")
 
 
-def send_threat_actor_profile_notification(tap, markdown: str, channel_ids: list[str] | None = None) -> bool:
+def send_threat_actor_profile_notification(tap, markdown: str, channel_ids: list[str] | None = None,
+                                           diamond_png: bytes | None = None) -> bool:
     tap_id = getattr(tap, "tap_id", "")
     title = getattr(tap, "title", "")
     subject = f"[CTI] {tap_id}: {title}" if title else f"[CTI] {tap_id}"
-    return send_email(_recipients(channel_ids), subject, markdown, f"threat actor profile {tap_id}")
+    attachments = [("diamond-model.png", diamond_png, "image", "png")] if diamond_png else None
+    return send_email(_recipients(channel_ids), subject, markdown,
+                      f"threat actor profile {tap_id}", attachments)
 
 
 def send_flash_intel_alert(fia_id: str, content: str, channel_ids: list[str] | None = None) -> bool:
@@ -172,5 +175,5 @@ def send_indicator_feed_notification(feed, markdown: str, channel_ids: list[str]
     attachments = None
     if csv_bytes:
         slug = (name or feed_id or "indicator-feed").lower().replace(" ", "-")
-        attachments = [(f"{slug}.csv", csv_bytes, "csv")]
+        attachments = [(f"{slug}.csv", csv_bytes, "text", "csv")]
     return send_email(_recipients(channel_ids), subject, markdown, f"Indicator feed {feed_id}", attachments)

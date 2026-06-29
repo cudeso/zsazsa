@@ -248,7 +248,7 @@ def _read() -> dict:
         "BRAND_COLOR_2": getattr(_config, "BRAND_COLOR_2", "#0078f1"),
         "BRAND_COLOR_3": getattr(_config, "BRAND_COLOR_3", "#64748b"),
         "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
-        "THEME": getattr(_config, "THEME", "default"),
+        "THEME": getattr(_config, "THEME", "overmind"),
     }
 
 
@@ -494,9 +494,9 @@ BRAND_COLOR_2    = {values.get('BRAND_COLOR_2', '#0078f1')!r}
 BRAND_COLOR_3    = {values.get('BRAND_COLOR_3', '#64748b')!r}
 BRAND_LOGO       = {values.get('BRAND_LOGO', '')!r}
 
-# UI theme: 'default' (zsazsa navy), 'uibeta' (MISP UiBeta-style light) or
-# 'overmind' (MISP Overmind teal)
-THEME = {values.get('THEME', 'default')!r}
+# UI theme: 'overmind' (MISP Overmind teal, default), 'uibeta' (MISP UiBeta-style
+# light) or 'default' (zsazsa legacy navy)
+THEME = {values.get('THEME', 'overmind')!r}
 """
     cfg_path = str(_CONFIG_FILE)
     cfg_dir = os.path.dirname(cfg_path)
@@ -619,10 +619,10 @@ def index():
             "BRAND_COLOR_2": request.form.get("BRAND_COLOR_2", "#0078f1").strip() or "#0078f1",
             "BRAND_COLOR_3": request.form.get("BRAND_COLOR_3", "#64748b").strip() or "#64748b",
             "BRAND_LOGO": getattr(_config, "BRAND_LOGO", ""),
-            "THEME": request.form.get("THEME", "default").strip() or "default",
+            "THEME": request.form.get("THEME", "overmind").strip() or "overmind",
         }
         if values["THEME"] not in ("default", "uibeta", "overmind"):
-            values["THEME"] = "default"
+            values["THEME"] = "overmind"
         active_tab = request.form.get("active_tab", "tab-connections")
         if active_tab not in _CONFIG_TABS:
             active_tab = "tab-connections"

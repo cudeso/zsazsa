@@ -111,7 +111,7 @@
 <div class="card content-card mb-4">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span><i class="fas fa-user-shield me-2"></i>Products by threat actor type</span>
-    <span class="badge text-bg-light" style="font-size:.7rem;font-weight:400;">daily briefings + flash intel</span>
+    <span class="badge text-bg-light" style="font-size:.7rem;font-weight:400;">daily briefings + flash intel + threat actor profiles</span>
   </div>
   <div class="card-body">
     <div class="table-responsive">
@@ -121,6 +121,7 @@
             <th>Threat actor type</th>
             <th class="text-end">Daily briefings</th>
             <th class="text-end">Flash intel alerts</th>
+            <th class="text-end">Threat actor profiles</th>
             <th class="text-end">Total</th>
           </tr>
         </thead>
@@ -130,6 +131,7 @@
             <td>{{ row.actor_type }}</td>
             <td class="text-end">{{ row.daily_briefings }}</td>
             <td class="text-end">{{ row.flash_intel_alerts }}</td>
+            <td class="text-end">{{ row.threat_actor_profiles }}</td>
             <td class="text-end fw-semibold">{{ row.total }}</td>
           </tr>
           {% endfor %}

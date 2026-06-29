@@ -35,17 +35,9 @@ ATTR_RANGES = [("1h", "Last hour"), ("1d", "Last day"), ("7d", "Last week"), ("3
 EVENT_RANGES = [("0", "Today"), ("7", "Last 7 days"), ("30", "Last 30 days"), ("90", "Last 90 days")]
 
 # (filter key, CSV/table header). Order defines the table columns and CSV layout.
-COLUMNS = [
-    ("server_label", "Server"),
-    ("event_id", "Event ID"),
-    ("event_title", "Event title"),
-    ("creator_org", "Creator org"),
-    ("event_date", "Event date"),
-    ("attribute_timestamp", "Attribute timestamp"),
-    ("type", "Type"),
-    ("value", "Value"),
-    ("to_ids", "to_ids"),
-]
+# Result column order (Server, Event ID, …) — defined once in misp_store and
+# reused here and by the threat-actor-profile feed embed.
+COLUMNS = misp_store.INDICATOR_FEED_COLUMNS
 
 # `servers` is a list filter too, but it selects targets rather than narrowing
 # the indicator query, so it is kept out of _has_query.
@@ -150,6 +142,7 @@ def _run_search(filters):
 
 def _render(feed, filters, run, rows):
     recipients = misp_store.recipient_preview(PRODUCT_NAME, feed.tlp, feed.audience) if feed else []
+    linked_pir = misp_store.get_pir(feed.linked_pir_uuid) if feed and feed.linked_pir_uuid else None
     return render_template(
         "indicator_feed/index.html",
         feed=feed,
@@ -157,6 +150,8 @@ def _render(feed, filters, run, rows):
         run=run,
         rows=rows,
         recipients=recipients,
+        pirs=misp_store.list_pirs(),
+        linked_pir=linked_pir,
         audiences=misp_store.FIA_AUDIENCES,
         columns=COLUMNS,
         feeds=misp_store.list_indicator_feeds(),
@@ -195,6 +190,7 @@ def save():
         "audience": ", ".join(request.form.getlist("audience")),
         "author": (request.form.get("author") or "").strip(),
         "feedback_by": (request.form.get("feedback_by") or "").strip(),
+        "linked_pir_uuid": (request.form.get("linked_pir_uuid") or "").strip(),
         "query": filters,
     }
     try:
@@ -234,6 +230,7 @@ def edit(id):
         "audience": ", ".join(request.form.getlist("audience")),
         "author": (request.form.get("author") or "").strip(),
         "feedback_by": (request.form.get("feedback_by") or "").strip(),
+        "linked_pir_uuid": (request.form.get("linked_pir_uuid") or "").strip(),
         "query": _filters_from(request.form),
     }
     try:

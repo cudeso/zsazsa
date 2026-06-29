@@ -13,7 +13,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 from webapp import audit, misp_session, org_store, sso_users, collection_cache, indicator_meta_store
-from webapp.utils import md_to_html_inline
+from webapp.utils import md_to_html, md_to_html_inline
 from webapp.version import APP_VERSION
 
 
@@ -69,7 +69,8 @@ def create_app():
                 abort(403)
 
     # Endpoints reachable without a MISP login (capability-URL / public APIs).
-    _PUBLIC_ENDPOINTS = {"static", "indicator_feed.public_feed"}
+    _PUBLIC_ENDPOINTS = {"static", "indicator_feed.public_feed",
+                         "threat_actor_profile.diamond_png"}
 
     @app.before_request
     def _load_misp_user():
@@ -91,7 +92,7 @@ def create_app():
         return {
             "misp_webapp_url": config.MISP_WEBAPP_URL,
             "brand_company": getattr(config, "BRAND_COMPANY", ""),
-            "ui_theme": getattr(config, "THEME", "default"),
+            "ui_theme": getattr(config, "THEME", "overmind"),
             "current_user_email": misp_session.current_user_email(),
         }
 
@@ -101,6 +102,12 @@ def create_app():
         without a wrapping block element, for values shown inside a sentence,
         table cell or list item."""
         return Markup(md_to_html_inline(s))
+
+    @app.template_filter("md")
+    def _md(s):
+        """Render a multi-paragraph text field as block Markdown (used in PDFs and
+        other server-rendered output where client-side Markdown is unavailable)."""
+        return Markup(md_to_html(s)) if s else ""
 
     @app.template_filter("slug")
     def _slug(s):

@@ -207,14 +207,20 @@ def send_vea(vea, markdown: str, stakeholders: list) -> dict:
     return _dispatch(stakeholders, senders, "VEA", getattr(vea, "vea_id", ""))
 
 
-def send_threat_actor_profile(tap, markdown: str, stakeholders: list) -> dict:
-    """Deliver a threat actor profile to stakeholder channels across all channel types."""
+def send_threat_actor_profile(tap, markdown: str, stakeholders: list,
+                              diamond_png: bytes | None = None, diamond_url: str | None = None) -> dict:
+    """Deliver a threat actor profile to stakeholder channels across all channel types.
+
+    The Diamond Model travels as an email attachment (`diamond_png`) and a
+    Mattermost image attachment (`diamond_url`)."""
     senders = {
         "mattermost": lambda channel_ids: bool(
-            mattermost.send_threat_actor_profile_notification(tap, markdown, channel_ids=channel_ids)
+            mattermost.send_threat_actor_profile_notification(tap, markdown, channel_ids=channel_ids,
+                                                              diamond_url=diamond_url)
         ),
         "email": lambda channel_ids: bool(
-            email.send_threat_actor_profile_notification(tap, markdown, channel_ids=channel_ids)
+            email.send_threat_actor_profile_notification(tap, markdown, channel_ids=channel_ids,
+                                                         diamond_png=diamond_png)
         ),
     }
     return _dispatch(stakeholders, senders, "threat actor profile", getattr(tap, "tap_id", ""))

@@ -407,6 +407,9 @@ def threat_actor_galaxy_meta(value: str) -> dict:
         "synonyms": agg.get("synonyms") or [],
         "refs": agg.get("refs") or [],
         "victimology": agg.get("victimology") or [],
+        "suspected_origin": agg.get("country") or agg.get("nationality") or [],
+        "motivation": agg.get("motive") or agg.get("cfr-type-of-incident") or [],
+        "sponsorship": agg.get("cfr-suspected-state-sponsor") or [],
     }
 
 
@@ -1704,6 +1707,7 @@ def _rfi_obj(data):
     _oa(obj, "linked-gir-uuid", data.get("linked_gir_uuid"))
     _oa_json(obj, "output-format-list", data.get("output_format_list", []))
     _oa(obj, "response", data.get("response"))
+    _oa(obj, "response-confidence", data.get("response_confidence"))
     _oa(obj, "feedback-requirement-met", data.get("feedback_requirement_met"))
     _oa(obj, "feedback-on-time", data.get("feedback_on_time"))
     _oa(obj, "feedback-usefulness", data.get("feedback_usefulness"))
@@ -1759,6 +1763,7 @@ def _rfi_ns(event):
         output_format_list=fmt_list,
         deliverable_tlp=fmt_list[0]["tlp"] if fmt_list else "amber",
         response=_obj_attr(obj, "response") or "",
+        response_confidence=_obj_attr(obj, "response-confidence") or "",
         feedback_requirement_met=_obj_attr(obj, "feedback-requirement-met") or "",
         feedback_on_time=_obj_attr(obj, "feedback-on-time") or "",
         feedback_usefulness=_obj_attr(obj, "feedback-usefulness") or "",
@@ -1905,6 +1910,7 @@ def _indicator_feed_obj(data):
     _oa(obj, "feedback-by", data.get("feedback_by"))
     _oa(obj, "token", data.get("token"))
     _oa(obj, "creator", data.get("creator"))
+    _oa(obj, "linked-pir-uuid", data.get("linked_pir_uuid"))
     return obj
 
 
@@ -1927,6 +1933,7 @@ def _indicator_feed_ns(event):
         feedback_by=_parse_date(_obj_attr(obj, "feedback-by")),
         token=_obj_attr(obj, "token") or "",
         creator=_obj_attr(obj, "creator") or "",
+        linked_pir_uuid=_obj_attr(obj, "linked-pir-uuid") or "",
         created_at=_parse_dt(event_date.isoformat() if event_date else None),
     )
 
@@ -2011,6 +2018,7 @@ def galaxy_enrichment(actors) -> dict:
     as (actor, text) pairs since it is recorded as a note rather than a field.
     """
     caps, modes, syns, refs, victimology = [], [], [], [], []
+    origin, motivation, sponsorship = [], [], []
     seen_syn = set()
     for actor in actors:
         meta = threat_actor_galaxy_meta(actor)
@@ -2025,14 +2033,27 @@ def galaxy_enrichment(actors) -> dict:
         for r in meta["refs"]:
             if r and r not in refs:
                 refs.append(r)
+        origin += [o for o in meta["suspected_origin"] if o]
+        motivation += [m for m in meta["motivation"] if m]
+        sponsorship += [s for s in meta["sponsorship"] if s]
         vic = "\n".join(meta["victimology"]).strip()
         if vic:
             victimology.append((actor, vic))
+    # De-duplicate the single-line fields while keeping order.
+    def _uniq_join(items, sep=", "):
+        out = []
+        for i in items:
+            if i not in out:
+                out.append(i)
+        return sep.join(out)
     return {
         "capabilities": "\n".join(caps),
         "mode_of_operation": "\n".join(modes),
         "synonyms": ", ".join(syns),
         "refs": refs,
+        "suspected_origin": _uniq_join(origin),
+        "motivation": _uniq_join(motivation),
+        "sponsorship": _uniq_join(sponsorship),
         "victimology": victimology,
     }
 
@@ -2056,10 +2077,21 @@ def _tap_obj(data):
     _oa(obj, "source-reliability", data.get("source_reliability"))
     _oa(obj, "source-credibility", data.get("source_credibility"))
     _oa(obj, "attribution-rationale", data.get("attribution_rationale"))
+    _oa(obj, "assessment-confidence", data.get("assessment_confidence"))
+    _oa(obj, "review-date", data.get("review_date"))
     _oa_json(obj, "actor-types", data.get("actor_types", []))
     _oa(obj, "synonyms", data.get("synonyms"))
+    _oa(obj, "suspected-origin", data.get("suspected_origin"))
+    _oa(obj, "origin-confidence", data.get("origin_confidence"))
+    _oa(obj, "motivation", data.get("motivation"))
+    _oa(obj, "sponsorship", data.get("sponsorship"))
     _oa(obj, "capabilities", data.get("capabilities"))
     _oa(obj, "mode-of-operation", data.get("mode_of_operation"))
+    _oa(obj, "infrastructure", data.get("infrastructure"))
+    _oa(obj, "rec-prevention", data.get("rec_prevention"))
+    _oa(obj, "rec-detection", data.get("rec_detection"))
+    _oa(obj, "rec-response", data.get("rec_response"))
+    _oa_json(obj, "indicator-feeds", data.get("indicator_feeds", []))
     _oa_json(obj, "geographic-scope", data.get("geographic_scope", []))
     _oa_json(obj, "sectors", data.get("sectors", []))
     _oa_json(obj, "mitre-attack-techniques", data.get("mitre_attack_techniques", []))
@@ -2104,10 +2136,21 @@ def _tap_ns(event):
         source_reliability=_obj_attr(obj, "source-reliability") or "",
         source_credibility=_obj_attr(obj, "source-credibility") or "",
         attribution_rationale=_obj_attr(obj, "attribution-rationale") or "",
+        assessment_confidence=_obj_attr(obj, "assessment-confidence") or "",
+        review_date=_parse_date(_obj_attr(obj, "review-date")),
         actor_types=_json_list(_obj_attr(obj, "actor-types")),
         synonyms=_obj_attr(obj, "synonyms") or "",
+        suspected_origin=_obj_attr(obj, "suspected-origin") or "",
+        origin_confidence=_obj_attr(obj, "origin-confidence") or "",
+        motivation=_obj_attr(obj, "motivation") or "",
+        sponsorship=_obj_attr(obj, "sponsorship") or "",
         capabilities=_obj_attr(obj, "capabilities") or "",
         mode_of_operation=_obj_attr(obj, "mode-of-operation") or "",
+        infrastructure=_obj_attr(obj, "infrastructure") or "",
+        rec_prevention=_obj_attr(obj, "rec-prevention") or "",
+        rec_detection=_obj_attr(obj, "rec-detection") or "",
+        rec_response=_obj_attr(obj, "rec-response") or "",
+        indicator_feeds=_json_list(_obj_attr(obj, "indicator-feeds")),
         geographic_scope=_json_list(_obj_attr(obj, "geographic-scope")),
         sectors=_json_list(_obj_attr(obj, "sectors")),
         mitre_attack_techniques=_json_list(_obj_attr(obj, "mitre-attack-techniques")),
@@ -2201,8 +2244,15 @@ def publish_threat_actor_profile(uuid):
         "linked_pir_uuid": tap.linked_pir_uuid, "source_reliability": tap.source_reliability,
         "source_credibility": tap.source_credibility,
         "attribution_rationale": tap.attribution_rationale,
+        "assessment_confidence": tap.assessment_confidence,
+        "review_date": tap.review_date.isoformat() if tap.review_date else "",
         "actor_types": tap.actor_types, "synonyms": tap.synonyms,
+        "suspected_origin": tap.suspected_origin, "origin_confidence": tap.origin_confidence,
+        "motivation": tap.motivation, "sponsorship": tap.sponsorship,
         "capabilities": tap.capabilities, "mode_of_operation": tap.mode_of_operation,
+        "infrastructure": tap.infrastructure,
+        "rec_prevention": tap.rec_prevention, "rec_detection": tap.rec_detection,
+        "rec_response": tap.rec_response, "indicator_feeds": tap.indicator_feeds,
         "geographic_scope": tap.geographic_scope, "sectors": tap.sectors,
         "mitre_attack_techniques": tap.mitre_attack_techniques, "threat_types": tap.threat_types,
         "time_frame": tap.time_frame, "technology": tap.technology, "vendor": tap.vendor,
@@ -2443,6 +2493,35 @@ def _parse_attribute_rows(raw, server_id, server_label, server_url, filters):
     return rows
 
 
+# Column order for indicator-feed result exports (CSV). Single source of truth,
+# reused by the indicator-feed views and the threat-actor-profile embed.
+INDICATOR_FEED_COLUMNS = [
+    ("server_label", "Server"),
+    ("event_id", "Event ID"),
+    ("event_title", "Event title"),
+    ("creator_org", "Creator org"),
+    ("event_date", "Event date"),
+    ("attribute_timestamp", "Attribute timestamp"),
+    ("type", "Type"),
+    ("value", "Value"),
+    ("to_ids", "to_ids"),
+]
+
+
+def indicator_feed_csv_text(feed) -> str:
+    """Run a saved feed's query and return its results as CSV text."""
+    import csv
+    import io
+    query = feed.query or {}
+    rows = search_indicators(query, server_ids=query.get("servers"))
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([header for _, header in INDICATOR_FEED_COLUMNS])
+    for r in rows:
+        writer.writerow([r.get(key, "") for key, _ in INDICATOR_FEED_COLUMNS])
+    return buf.getvalue()
+
+
 def search_indicators(filters, server_ids=None):
     """Run the attribute search across the selected MISP servers and merge.
 
@@ -2518,14 +2597,31 @@ def list_product_feedback(event_uuid):
     for er in getattr(event, "event_reports", []) or []:
         name = getattr(er, "name", "") or ""
         if name.startswith("feedback"):
+            ts = getattr(er, "timestamp", None)
             reports.append(SimpleNamespace(
                 id=er.id,
                 uuid=er.uuid,
                 name=name,
                 content=getattr(er, "content", "") or "",
-                timestamp=getattr(er, "timestamp", None),
+                timestamp=ts,
+                created_at=_report_timestamp(ts),
             ))
+    reports.sort(key=lambda r: r.created_at or datetime.min)
     return reports
+
+
+def _report_timestamp(ts):
+    """Parse a MISP event-report timestamp (datetime, epoch int or str) to a
+    naive UTC datetime, or None. Normalising to naive keeps values comparable
+    when sorting (PyMISP returns tz-aware datetimes, the epoch path is naive)."""
+    if isinstance(ts, datetime):
+        return ts.replace(tzinfo=None) if ts.tzinfo else ts
+    if ts in (None, ""):
+        return None
+    try:
+        return datetime.utcfromtimestamp(int(ts))
+    except (ValueError, TypeError, OSError):
+        return None
 
 
 def add_product_feedback(event_uuid, author, rating, comment):
@@ -2767,6 +2863,15 @@ FIA_AUDIENCES = list(STAKEHOLDER_ROLES)
 FIA_TLP_LEVELS = ["clear", "green", "amber", "amber+strict", "red"]
 FIA_RELIABILITIES = ["A", "B", "C", "D", "E", "F"]
 FIA_CREDIBILITIES = ["1", "2", "3", "4", "5", "6"]
+
+# Estimative-language confidence, from the MISP estimative-language taxonomy
+# (confidence-in-analytic-judgment predicate). Stored as the lower-case value;
+# the description is shown as help text.
+ESTIMATIVE_CONFIDENCE = [
+    ("low", "Low", "Uncorroborated information from good or marginal sources. Many assumptions. Mostly weak logical inferences."),
+    ("moderate", "Moderate", "Partially corroborated information from good sources. Several assumptions. Mix of strong and weak inferences."),
+    ("high", "High", "Well-corroborated information from proven sources. Minimal assumptions. Strong logical inferences and methods."),
+]
 
 _ROLE_ALIASES = {
     "soc": "SOC",
@@ -4122,12 +4227,59 @@ def counts():
     }
 
 
-def product_counts_by_threat_actor_type() -> list[dict]:
-    """Count daily briefings and flash intel alerts per threat actor type.
+# Scope categories shared by requirements (PIR/GIR) and products, in display order.
+SCOPE_CATEGORIES = [
+    ("Geographic scope", "geographic_scope"),
+    ("Sector scope", "sectors"),
+    ("MITRE ATT&CK techniques", "mitre_attack_techniques"),
+    ("Threat types", "threat_types"),
+    ("Technology", "technology"),
+    ("Vendor", "vendor"),
+    ("Incident", "incident"),
+    ("Campaign", "campaign"),
+]
 
-    Each row is {"actor_type", "daily_briefings", "flash_intel_alerts", "total"}.
-    A briefing/alert with no actor type counts under "Unspecified", which sorts
-    last. Used by the statistics page and the dashboard.
+
+def scope_stats() -> list[dict]:
+    """Frequency of each scope value across all entities that carry scope (PIRs,
+    GIRs, threat actor profiles and daily briefings).
+
+    Returns one entry per category: {"label", "attr", "items", "total", "distinct"},
+    where items is [{"value", "count"}] sorted by count descending.
+    """
+    entities = []
+    for fetch in (list_pirs, list_girs, list_threat_actor_profiles, list_briefings):
+        try:
+            entities += fetch() or []
+        except Exception:
+            logger.warning("scope_stats: %s failed", fetch.__name__)
+
+    result = []
+    for label, attr in SCOPE_CATEGORIES:
+        counter = Counter()
+        for entity in entities:
+            for value in (getattr(entity, attr, None) or []):
+                value = (value or "").strip()
+                if value:
+                    counter[value] += 1
+        items = [{"value": v, "count": c} for v, c in counter.most_common()]
+        result.append({
+            "label": label,
+            "attr": attr,
+            "items": items,
+            "total": sum(counter.values()),
+            "distinct": len(items),
+        })
+    return result
+
+
+def product_counts_by_threat_actor_type() -> list[dict]:
+    """Count daily briefings, flash intel alerts and threat actor profiles per
+    threat actor type.
+
+    Each row is {"actor_type", "daily_briefings", "flash_intel_alerts",
+    "threat_actor_profiles", "total"}. A product with no actor type counts under
+    "Unspecified", which sorts last. Used by the statistics page and dashboard.
     """
     try:
         briefings = list_briefings()
@@ -4137,6 +4289,10 @@ def product_counts_by_threat_actor_type() -> list[dict]:
         fias = list_fias()
     except Exception:
         fias = []
+    try:
+        taps = list_threat_actor_profiles()
+    except Exception:
+        taps = []
 
     briefing_counter = Counter()
     for briefing in briefings or []:
@@ -4151,27 +4307,31 @@ def product_counts_by_threat_actor_type() -> list[dict]:
 
     fia_counter = Counter()
     for fia in fias or []:
-        types = {
-            (t or "").strip()
-            for t in (getattr(fia, "actor_types", []) or [])
-            if (t or "").strip()
-        }
+        types = {(t or "").strip() for t in (getattr(fia, "actor_types", []) or []) if (t or "").strip()}
         for actor_type in (types or {"Unspecified"}):
             fia_counter[actor_type] += 1
 
+    tap_counter = Counter()
+    for tap in taps or []:
+        types = {(t or "").strip() for t in (getattr(tap, "actor_types", []) or []) if (t or "").strip()}
+        for actor_type in (types or {"Unspecified"}):
+            tap_counter[actor_type] += 1
+
     all_types = sorted(
-        set(briefing_counter) | set(fia_counter),
+        set(briefing_counter) | set(fia_counter) | set(tap_counter),
         key=lambda x: (x.lower() == "unspecified", x.lower()),
     )
     rows = []
     for actor_type in all_types:
         briefing_n = briefing_counter.get(actor_type, 0)
         fia_n = fia_counter.get(actor_type, 0)
+        tap_n = tap_counter.get(actor_type, 0)
         rows.append({
             "actor_type": actor_type,
             "daily_briefings": briefing_n,
             "flash_intel_alerts": fia_n,
-            "total": briefing_n + fia_n,
+            "threat_actor_profiles": tap_n,
+            "total": briefing_n + fia_n + tap_n,
         })
     return rows
 

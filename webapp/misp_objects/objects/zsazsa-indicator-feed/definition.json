@@ -64,6 +64,12 @@
       "ui-priority": 6,
       "description": "User who created the feed",
       "disable_correlation": true
+    },
+    "linked-pir-uuid": {
+      "misp-attribute": "text",
+      "ui-priority": 10,
+      "description": "UUID of a linked PIR",
+      "disable_correlation": true
     }
   }
 }

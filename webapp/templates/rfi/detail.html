@@ -47,7 +47,14 @@
     </div>
 
     <div class="card content-card mb-4">
-      <div class="card-header"><i class="fas fa-paper-plane me-2"></i>Response</div>
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="fas fa-paper-plane me-2"></i>Response</span>
+        {% if rfi.response_confidence %}
+        <span class="badge bg-secondary" title="Confidence in the analytic judgment (estimative language)">
+          Confidence: {{ rfi.response_confidence | capitalize }}
+        </span>
+        {% endif %}
+      </div>
       <div class="card-body">
         {% if rfi.response %}
         <div class="report-md-body" data-md="{{ rfi.response | e }}"></div>
