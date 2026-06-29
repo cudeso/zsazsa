@@ -300,7 +300,7 @@
           <select name="linked_pir_uuid" class="form-select">
             <option value="">None</option>
             {% for p in pirs %}
-            <option value="{{ p.uuid }}" {{ 'selected' if sel_pir == p.uuid }}>{{ p.pir_id }} - {{ p.title }}</option>
+            <option value="{{ p.uuid }}" {{ 'selected' if sel_pir == p.uuid }}>{{ p.pir_id }} - {{ p.question | truncate(60) }}</option>
             {% endfor %}
           </select>
         </div>
@@ -352,7 +352,7 @@
           <dd class="col-7">{{ feed.creator or '-' }}</dd>
           <dt class="col-5">Linked PIR</dt>
           <dd class="col-7">
-            {% if linked_pir %}<a href="{{ url_for('requirements.pir_detail', id=linked_pir.uuid) }}">{{ linked_pir.pir_id }}</a>
+            {% if linked_pir %}<a href="{{ url_for('requirements.pir_detail', id=linked_pir.uuid) }}">{{ linked_pir.pir_id }}</a>{% if linked_pir.question %} - {{ linked_pir.question | truncate(60) }}{% endif %}
             {% else %}-{% endif %}
           </dd>
           {% if feed.feedback_by %}

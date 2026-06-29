@@ -31,26 +31,29 @@ def _font(bold: bool, size: int):
 
 
 def _wrap(text: str, font, max_w: float, max_lines: int = 4):
-    """Greedy word wrap to fit `max_w`, capped at `max_lines` with an ellipsis."""
-    words = (text or "").split()
-    lines, cur = [], ""
-    for w in words:
-        trial = (cur + " " + w).strip()
-        if font.getlength(trial) <= max_w or not cur:
-            cur = trial
-        else:
-            lines.append(cur)
-            cur = w
-            if len(lines) == max_lines:
-                break
-    if cur and len(lines) < max_lines:
+    """Word-wrap to fit `max_w` while keeping the author's own line breaks.
+    Capped at `max_lines`, with an ellipsis when content is dropped."""
+    lines = []
+    for segment in (text or "").split("\n"):
+        words = segment.split()
+        if not words:
+            lines.append("")  # keep a blank line the author typed
+            continue
+        cur = ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if font.getlength(trial) <= max_w or not cur:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = w
         lines.append(cur)
-    if len(lines) == max_lines:
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
         last = lines[-1]
-        if font.getlength(last) > max_w or len(words) > sum(len(l.split()) for l in lines):
-            while last and font.getlength(last + "…") > max_w:
-                last = last[:-1]
-            lines[-1] = last + "…"
+        while last and font.getlength(last + "…") > max_w:
+            last = last[:-1]
+        lines[-1] = (last + "…") if last else "…"
     return lines or [""]
 
 

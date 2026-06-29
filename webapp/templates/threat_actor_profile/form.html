@@ -289,7 +289,7 @@
           <select name="linked_pir_uuid" class="form-select">
             <option value="">None</option>
             {% for p in pirs %}
-            <option value="{{ p.uuid }}" {{ 'selected' if src and src.linked_pir_uuid == p.uuid }}>{{ p.pir_id }} - {{ p.title }}</option>
+            <option value="{{ p.uuid }}" {{ 'selected' if src and src.linked_pir_uuid == p.uuid }}>{{ p.pir_id }} - {{ p.question | truncate(60) }}</option>
             {% endfor %}
           </select>
         </div>

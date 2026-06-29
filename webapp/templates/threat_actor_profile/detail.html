@@ -180,12 +180,12 @@
       <div class="card-body">
         <div class="dm-grid">
           <div class="dm-node dm-adversary{{ ' dm-missing' if not tap.title }}">
-            <div class="dm-val">{{ tap.title or 'Not set' }}</div>
+            <div class="dm-val" style="white-space: pre-line;">{{ tap.title or 'Not set' }}</div>
             <div class="dm-label">Adversary</div>
           </div>
 
           <div class="dm-node dm-infra{{ ' dm-missing' if not tap.infrastructure }}">
-            <div class="dm-val">{{ tap.infrastructure or 'Not set' }}</div>
+            <div class="dm-val" style="white-space: pre-line;">{{ tap.infrastructure or 'Not set' }}</div>
             <div class="dm-label">Infrastructure</div>
           </div>
 
@@ -193,7 +193,7 @@
 
           <div class="dm-node dm-cap{{ ' dm-missing' if not (tap.capabilities or tap.mitre_attack_techniques) }}">
             <div class="dm-val">
-              {% if tap.capabilities %}{{ tap.capabilities }}{% endif %}
+              {% if tap.capabilities %}<span style="white-space: pre-line;">{{ tap.capabilities }}</span>{% endif %}
               {% if tap.mitre_attack_techniques %}
               <div class="mt-1">{% for x in tap.mitre_attack_techniques %}<span class="badge chip-source me-1">{{ x }}</span>{% endfor %}</div>
               {% endif %}
@@ -278,7 +278,7 @@
           <dd class="col-7">{{ tap.author or '-' }}</dd>
           <dt class="col-5">Linked PIR</dt>
           <dd class="col-7">
-            {% if pir %}<a href="{{ url_for('requirements.pir_detail', id=pir.uuid) }}">{{ pir.pir_id }}</a>
+            {% if pir %}<a href="{{ url_for('requirements.pir_detail', id=pir.uuid) }}">{{ pir.pir_id }}</a>{% if pir.question %} - {{ pir.question | truncate(60) }}{% endif %}
             {% else %}-{% endif %}
           </dd>
           <dt class="col-5">Created</dt>

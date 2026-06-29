@@ -670,6 +670,8 @@ def _sync_object_attributes(misp, event, object_name, new_obj, label="object"):
 
     existing = {}
     for a in getattr(old, "attributes", []) or []:
+        if getattr(a, "deleted", False):
+            continue  # a soft-deleted attribute is already absent; ignore it
         existing.setdefault(a.object_relation, a)
 
     # Carry the existing object and attribute UUIDs onto the new object so MISP
@@ -683,10 +685,15 @@ def _sync_object_attributes(misp, event, object_name, new_obj, label="object"):
             a.uuid = old_attr.uuid
     _check(misp.update_object(new_obj), f"update {label} object")
 
-    # Soft-delete attributes whose relation is no longer present.
+    # Soft-delete attributes whose relation is no longer present. If MISP already
+    # considers the attribute gone (404 / "Invalid attribute"), that is the
+    # desired end state, so treat it as success rather than failing the edit.
     for relation, old_attr in existing.items():
         if relation not in desired_relations:
-            _check(misp.delete_attribute(old_attr.uuid), f"delete {label} {relation}")
+            result = misp.delete_attribute(old_attr.uuid)
+            if _is_not_found(result):
+                continue
+            _check(result, f"delete {label} {relation}")
 
 
 def _get_fp_attrs(event):
@@ -733,6 +740,18 @@ def _check(result, label="MISP"):
     if isinstance(result, dict) and "errors" in result:
         raise RuntimeError(f"{label}: {result['errors']}")
     return result
+
+
+def _is_not_found(result) -> bool:
+    """True when a MISP call failed only because the target no longer exists.
+
+    PyMISP returns the HTTP error as a ``(status_code, body)`` tuple under the
+    ``errors`` key, so a 404 here means the attribute or object is already gone.
+    """
+    if not isinstance(result, dict) or "errors" not in result:
+        return False
+    err = result["errors"]
+    return isinstance(err, (list, tuple)) and bool(err) and err[0] == 404
 
 
 def _json_list(raw):

@@ -24,7 +24,7 @@
     {% if tap.assessment_confidence %}
     <tr><td>Assessment confidence:</td><td>{{ tap.assessment_confidence | capitalize }}</td></tr>
     {% endif %}
-    {% if pir %}<tr><td>Linked PIR:</td><td>{{ pir.pir_id }}: {{ pir.title }}</td></tr>{% endif %}
+    {% if pir %}<tr><td>Linked PIR:</td><td>{{ pir.pir_id }}: {{ pir.question }}</td></tr>{% endif %}
     {% if tap.review_date %}<tr><td>Review date:</td><td>{{ tap.review_date.strftime('%Y-%m-%d') }}</td></tr>{% endif %}
     {% if tap.threat_actors %}<tr><td>Threat actors:</td><td>{{ tap.threat_actors | join(', ') }}</td></tr>{% endif %}
   </table>
